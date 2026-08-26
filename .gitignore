@@ -1,0 +1,13 @@
+# Segredos e dados de instalação
+.env
+*.env
+!.env.example
+acme.json
+
+# Logs e temporários
+*.log
+*.tmp
+tmp/
+
+# Sistema
+.DS_Store

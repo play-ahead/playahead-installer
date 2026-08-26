@@ -1,0 +1,275 @@
+# ============================================================
+# PLAY AHEAD
+# Mautic 7 - Docker Stack
+#
+# Treinamento completo de automação:
+# https://impulse.playahead.com.br/
+#
+# Arquitetura:
+# Mautic Web + MariaDB + Cron + Worker
+# ============================================================
+#
+# COMO USAR:
+# 1) Crie um arquivo .env na mesma pasta com:
+#      MYSQL_PASSWORD=senha_forte_aqui
+#      MYSQL_ROOT_PASSWORD=outra_senha_forte_aqui
+#      MAUTIC_DOMAIN=mautic.seudominio.com.br
+#
+#    Opcional (só se você JÁ tem um Traefik rodando com outros nomes):
+#      TRAEFIK_NETWORK=nome_da_sua_rede        # padrão: traefik_public
+#      TRAEFIK_ENTRYPOINT=nome_do_entrypoint   # padrão: websecure
+#      TRAEFIK_CERTRESOLVER=nome_do_resolver   # padrão: letsencrypt
+#
+# 2) Rode: docker compose up -d
+# 3) Aguarde uns 2 minutos e acesse https://mautic.seudominio.com.br
+# 4) Complete o assistente de instalação (host do banco: mariadb)
+# ============================================================
+
+services:
+
+  # ============================================================
+  # MARIADB - Banco de dados
+  # 10.11 é o MÍNIMO exigido pelo Mautic 7 (LTS, suporte até 2028)
+  # ============================================================
+
+  mariadb:
+    image: mariadb:10.11
+    restart: unless-stopped
+
+    environment:
+      MYSQL_DATABASE: mautic
+      MYSQL_USER: mautic
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      TZ: America/Sao_Paulo
+
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-file-per-table=1
+      - --max_allowed_packet=256M     # importante para importar CSV grande
+
+    volumes:
+      - playahead_mautic_mariadb:/var/lib/mysql
+
+    networks:
+      - playahead_mautic_internal
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "healthcheck.sh --connect --innodb_initialized"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+
+  # ============================================================
+  # MAUTIC WEB - O site (Apache + PHP)
+  # ============================================================
+
+  mautic_web:
+    image: mautic/mautic:7-apache
+    restart: unless-stopped
+
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+    environment:
+
+      DOCKER_MAUTIC_ROLE: mautic_web
+      DOCKER_MAUTIC_LOAD_TEST_DATA: "false"
+
+      # ----------------------------------------------------------
+      # DATABASE
+      # ----------------------------------------------------------
+
+      MAUTIC_DB_HOST: mariadb
+      MAUTIC_DB_PORT: 3306
+      MAUTIC_DB_DATABASE: mautic
+      MAUTIC_DB_USER: mautic
+      MAUTIC_DB_PASSWORD: ${MYSQL_PASSWORD}
+
+      # ----------------------------------------------------------
+      # PROXY REVERSO
+      # Sem isso o Mautic registra o IP do Traefik como IP do contato.
+      # O valor é lido como JSON pelo Symfony -> precisa ser array JSON.
+      # ----------------------------------------------------------
+
+      MAUTIC_TRUSTED_PROXIES: '["0.0.0.0/0"]'
+      MAUTIC_SITE_URL: https://${MAUTIC_DOMAIN}
+
+      # ----------------------------------------------------------
+      # FILAS - sem isso os workers não têm nada para consumir
+      # ATENÇÃO: sem aspas no valor (as aspas entrariam na variável)
+      # ----------------------------------------------------------
+
+      MAUTIC_MESSENGER_DSN_EMAIL: doctrine://default
+      MAUTIC_MESSENGER_DSN_HIT: doctrine://default
+
+      # ----------------------------------------------------------
+      # PHP - nomes conforme README oficial da imagem
+      # ----------------------------------------------------------
+
+      PHP_INI_VALUE_MEMORY_LIMIT: 1024M
+      PHP_INI_VALUE_UPLOAD_MAX_FILESIZE: 512M
+      PHP_INI_VALUE_POST_MAX_FILESIZE: 512M
+      PHP_INI_VALUE_MAX_EXECUTION_TIME: 300
+      PHP_INI_VALUE_DATE_TIMEZONE: America/Sao_Paulo
+
+    volumes:
+      - playahead_mautic_config:/var/www/html/config
+      - playahead_mautic_media:/var/www/html/docroot/media
+      - playahead_mautic_logs:/var/www/html/var/logs
+
+    networks:
+      - playahead_mautic_internal
+      - traefik_public
+
+    labels:
+
+      # ----------------------------------------------------------
+      # TRAEFIK - proxy reverso + certificado SSL automático
+      # O valor da regra PRECISA estar entre crases (exigência do Traefik)
+      # ----------------------------------------------------------
+
+      - "traefik.enable=true"
+
+      - "traefik.http.routers.playahead-mautic.rule=Host(`${MAUTIC_DOMAIN}`)"
+
+      - "traefik.http.routers.playahead-mautic.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+
+      - "traefik.http.routers.playahead-mautic.tls=true"
+
+      - "traefik.http.routers.playahead-mautic.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+
+      - "traefik.http.services.playahead-mautic.loadbalancer.server.port=80"
+
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik_public}"
+
+
+  # ============================================================
+  # MAUTIC CRON - tarefas agendadas (campanhas, segmentos, envios)
+  # ============================================================
+
+  mautic_cron:
+    image: mautic/mautic:7-apache
+    restart: unless-stopped
+
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      mautic_web:
+        condition: service_started
+
+    environment:
+
+      DOCKER_MAUTIC_ROLE: mautic_cron
+
+      MAUTIC_DB_HOST: mariadb
+      MAUTIC_DB_PORT: 3306
+      MAUTIC_DB_DATABASE: mautic
+      MAUTIC_DB_USER: mautic
+      MAUTIC_DB_PASSWORD: ${MYSQL_PASSWORD}
+
+      MAUTIC_TRUSTED_PROXIES: '["0.0.0.0/0"]'
+      MAUTIC_SITE_URL: https://${MAUTIC_DOMAIN}
+
+      MAUTIC_MESSENGER_DSN_EMAIL: doctrine://default
+      MAUTIC_MESSENGER_DSN_HIT: doctrine://default
+
+      PHP_INI_VALUE_MEMORY_LIMIT: 1024M
+      PHP_INI_VALUE_DATE_TIMEZONE: America/Sao_Paulo
+
+    volumes:
+      - playahead_mautic_config:/var/www/html/config
+      - playahead_mautic_media:/var/www/html/docroot/media
+      - playahead_mautic_logs:/var/www/html/var/logs
+
+    networks:
+      - playahead_mautic_internal
+
+
+  # ============================================================
+  # MAUTIC WORKER - consumidores das filas (e-mail, hit, failed)
+  # Só faz sentido com MAUTIC_MESSENGER_DSN_* configurado acima
+  # ============================================================
+
+  mautic_worker:
+    image: mautic/mautic:7-apache
+    restart: unless-stopped
+
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      mautic_web:
+        condition: service_started
+
+    environment:
+
+      DOCKER_MAUTIC_ROLE: mautic_worker
+
+      MAUTIC_DB_HOST: mariadb
+      MAUTIC_DB_PORT: 3306
+      MAUTIC_DB_DATABASE: mautic
+      MAUTIC_DB_USER: mautic
+      MAUTIC_DB_PASSWORD: ${MYSQL_PASSWORD}
+
+      MAUTIC_TRUSTED_PROXIES: '["0.0.0.0/0"]'
+      MAUTIC_SITE_URL: https://${MAUTIC_DOMAIN}
+
+      MAUTIC_MESSENGER_DSN_EMAIL: doctrine://default
+      MAUTIC_MESSENGER_DSN_HIT: doctrine://default
+
+      PHP_INI_VALUE_MEMORY_LIMIT: 1024M
+      PHP_INI_VALUE_DATE_TIMEZONE: America/Sao_Paulo
+
+      DOCKER_MAUTIC_WORKERS_CONSUME_EMAIL: 2
+      DOCKER_MAUTIC_WORKERS_CONSUME_HIT: 2
+      DOCKER_MAUTIC_WORKERS_CONSUME_FAILED: 2
+
+    volumes:
+      - playahead_mautic_config:/var/www/html/config
+      - playahead_mautic_media:/var/www/html/docroot/media
+      - playahead_mautic_logs:/var/www/html/var/logs
+
+    networks:
+      - playahead_mautic_internal
+
+
+# ============================================================
+# VOLUMES - dados persistentes
+# ============================================================
+
+volumes:
+
+  playahead_mautic_mariadb:
+    name: playahead_mautic_mariadb
+
+  playahead_mautic_config:
+    name: playahead_mautic_config
+
+  playahead_mautic_media:
+    name: playahead_mautic_media
+
+  playahead_mautic_logs:
+    name: playahead_mautic_logs
+
+
+# ============================================================
+# NETWORKS
+# ============================================================
+
+networks:
+
+  playahead_mautic_internal:
+    name: playahead_mautic_internal
+    driver: bridge
+
+  traefik_public:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik_public}
