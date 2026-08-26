@@ -213,8 +213,18 @@ ninguém olhando. Isso só fecha com flag para tudo.
 | 4 | Confirmar valores do Traefik | etapa 5, cenário 2 | aceitar o detectado | `--traefik-*` |
 | 5 | Subdomínio do Portainer | etapa 5 se veio `--portainer`; senão etapa 10 | — | `--portainer-domain=` |
 | 6 | Instalar o Portainer? | etapa 10, se não veio `--portainer` | não | — |
+| 7 | Continuar em Ubuntu LTS não testado? | etapa 1, só se o SO for LTS mais nova que a lista | sim | — |
 
 Nenhuma exige digitar "concordo". Com `--yes` mais as flags, nenhuma aparece.
+
+A pergunta 7 é a única fora do bloco único, e é de confirmação, não de
+dado: ela nasce da regra de não bloquear LTS mais nova, e só existe quando
+essa regra dispara. Não fere o princípio de perguntar antes de mexer na
+máquina, porque a etapa 1 acontece antes de qualquer alteração.
+
+No modo `--yes` ela adota o padrão e segue, em silêncio. É o comportamento
+certo para o serviço pago, onde a VPS é escolhida pela agência; para quem
+está seguindo o vídeo, a pergunta aparece normalmente.
 
 O admin do Mautic precisa de nome e sobrenome; usar `Admin` / `Play Ahead` sem
 perguntar. Não é dado que valha uma pergunta.
