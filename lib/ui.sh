@@ -91,8 +91,14 @@ ui_interativo() {
 
 # ui_linha <texto...>
 #
-# Único ponto de escrita do módulo. Mensagem de progresso vai
-# para stdout; erro e aviso vão para stderr, via ui_linha_erro.
+# Único ponto de escrita do módulo.
+#
+# Só erro vai para stderr. Aviso fica no stdout junto com o resto:
+# ui_aviso quase sempre vem seguido de ui_detalhe explicando o
+# aviso, e separar os dois fluxos faz as linhas trocarem de ordem
+# assim que a saída é redirecionada para um arquivo. Descoberto
+# testando a tabela de detecção do Traefik, onde o aviso aparecia
+# depois dos próprios detalhes.
 ui_linha() {
 	printf '%s\n' "$*"
 }
@@ -118,7 +124,7 @@ ui_ok() {
 }
 
 ui_aviso() {
-	ui_linha_erro "  ${PA_COR_AVISO}!${PA_COR_RESET} $*"
+	ui_linha "  ${PA_COR_AVISO}!${PA_COR_RESET} $*"
 }
 
 ui_erro() {
