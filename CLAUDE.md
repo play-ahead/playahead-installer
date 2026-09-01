@@ -581,6 +581,7 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
     LICENSE                 MIT
     lib/ui.sh               cores, prompts, mensagens
     lib/checks.sh           pré-checagens
+    lib/sistema.sh          swap e outras rotinas de sistema
     lib/docker.sh           instalação do Docker
     lib/traefik.sh          instalação e detecção do Traefik
     lib/portainer.sh        instalação do Portainer
