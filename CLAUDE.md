@@ -576,6 +576,125 @@ Testar sempre em VPS descartável, nunca na máquina de produção. O ciclo é
 destruir e recriar a VPS a cada teste, porque um instalador precisa ser validado
 sempre a partir do estado zero.
 
+## Comandos validados em VPS
+
+Validados em 2026-09-01, numa DigitalOcean Ubuntu 24.04.4 LTS, x86_64,
+3915 MB de RAM, sem swap, Docker ausente e portas 80/443 livres —
+cenário 1 puro. São a base de `lib/docker.sh` e `lib/traefik.sh`.
+
+### Inventário da imagem virgem
+
+Levantado **antes** de qualquer `apt`, senão uma dependência instalada
+no caminho contamina a resposta:
+
+| Ferramenta | Estado |
+|---|---|
+| `ss` | presente (`/usr/bin/ss`) |
+| `curl` | presente |
+| `netstat` | **ausente** |
+| `dig` | presente nesta imagem |
+| `getent`, `openssl`, `ip`, `awk`, `df`, `free` | presentes |
+| `/proc/net/tcp` | legível |
+
+O `netstat` ausente confirma que ele não serve como primeiro fallback,
+e o `/proc/net/tcp` legível confirma que a cadeia de `checks.sh` nunca
+se esgota de verdade.
+
+O `dig` estar presente **não** invalida a decisão de usar `getent`:
+esta é uma imagem da DigitalOcean, não Ubuntu puro, e o `dnsutils` não
+é garantido em Hetzner ou Contabo.
+
+### Docker
+
+Método oficial de repositório, não o script de conveniência do
+`get.docker.com`: o repositório é auditável, recebe atualização por
+`apt upgrade` junto com o resto do sistema e não pede que a pessoa
+execute mais um script remoto logo depois de o instalador ter pedido
+para ela ler scripts antes de rodar.
+
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get update -qq
+    apt-get install -y -qq ca-certificates curl
+
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+      -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
+
+    echo "deb [arch=$(dpkg --print-architecture) \
+    signed-by=/etc/apt/keyrings/docker.asc] \
+    https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+      > /etc/apt/sources.list.d/docker.list
+
+    apt-get update -qq
+    apt-get install -y -qq docker-ce docker-ce-cli containerd.io \
+      docker-buildx-plugin docker-compose-plugin
+
+Resultado: Docker 29.7.2, Compose v5.5.0, serviço `enabled` e `active`,
+Swarm `inactive`. O `docker-ce` já cria e habilita o serviço; não é
+preciso `systemctl enable --now`.
+
+**Docker Engine 29.x confirmado em Compose puro.** A incompatibilidade
+com Traefik v3 que o projeto registrou vale para Swarm e não apareceu
+aqui, como esperado.
+
+### Traefik
+
+Versão fixa `v3.7.12`, estável da linha v3 em 2026-09-01, conferida na
+API do Docker Hub em vez de assumida. Nunca `latest`.
+
+    docker network create traefik_public
+
+Compose em `/opt/playahead/traefik/docker-compose.yml`:
+
+    services:
+      traefik:
+        image: traefik:v3.7.12
+        restart: unless-stopped
+        command:
+          - --providers.docker=true
+          - --providers.docker.exposedByDefault=false
+          - --entrypoints.web.address=:80
+          - --entrypoints.web.http.redirections.entrypoint.to=websecure
+          - --entrypoints.web.http.redirections.entrypoint.scheme=https
+          - --entrypoints.websecure.address=:443
+          - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+          - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+          - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+          - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+        ports:
+          - "80:80"
+          - "443:443"
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock:ro
+          - traefik_letsencrypt:/letsencrypt
+        networks:
+          - traefik_public
+
+    volumes:
+      traefik_letsencrypt:
+        name: playahead_traefik_letsencrypt
+
+    networks:
+      traefik_public:
+        external: true
+        name: traefik_public
+
+Decisões que o `lib/traefik.sh` precisa preservar:
+
+- `exposedByDefault=false`. Sem isso todo container da máquina vira
+  roteador por acidente. O nosso compose já traz `traefik.enable=true`.
+- Redirecionamento 80→443 no entrypoint, não por middleware. Um
+  middleware precisaria ser referenciado por cada roteador; no
+  entrypoint vale para tudo e o `.env` do Mautic não precisa saber.
+- `httpchallenge`, não TLS-ALPN. O desafio HTTP é o que funciona
+  quando o DNS acabou de ser apontado e ainda não há certificado.
+- Socket montado como `:ro`. O Traefik só precisa ler.
+- O volume do ACME é nomeado com prefixo `playahead_`, para caber no
+  mesmo namespace do resto e não colidir com instalação alheia.
+
 ## Pendências
 
 **Bloqueia código da etapa 8:** subir VPS descartável e rodar o compose atual na
