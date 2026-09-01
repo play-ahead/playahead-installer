@@ -9,20 +9,45 @@
 # Mautic Web + MariaDB + Cron + Worker
 # ============================================================
 #
-# COMO USAR:
-# 1) Crie um arquivo .env na mesma pasta com:
+# ESTE ARQUIVO É GERADO PELO INSTALADOR.
+#
+# Se você chegou aqui pelo instalador da Play Ahead, não há nada
+# a fazer: a instalação já foi concluída por linha de comando e
+# as credenciais estão em credenciais.txt, nesta mesma pasta.
+#
+# Para reiniciar a stack:
+#     cd /opt/playahead/mautic && docker compose up -d
+#
+# ------------------------------------------------------------
+# USO MANUAL, sem o instalador
+#
+# 1) Crie um .env nesta pasta com:
 #      MYSQL_PASSWORD=senha_forte_aqui
 #      MYSQL_ROOT_PASSWORD=outra_senha_forte_aqui
 #      MAUTIC_DOMAIN=mautic.seudominio.com.br
 #
-#    Opcional (só se você JÁ tem um Traefik rodando com outros nomes):
+#    Opcional, se você JÁ tem um Traefik com outros nomes:
 #      TRAEFIK_NETWORK=nome_da_sua_rede        # padrão: traefik_public
 #      TRAEFIK_ENTRYPOINT=nome_do_entrypoint   # padrão: websecure
 #      TRAEFIK_CERTRESOLVER=nome_do_resolver   # padrão: letsencrypt
 #
-# 2) Rode: docker compose up -d
-# 3) Aguarde uns 2 minutos e acesse https://mautic.seudominio.com.br
-# 4) Complete o assistente de instalação (host do banco: mariadb)
+#    Opcional, para trocar de versão:
+#      MAUTIC_IMAGE=mautic/mautic:7-apache
+#      MARIADB_IMAGE=mariadb:10.11
+#
+# 2) docker compose up -d mariadb   # espere ficar healthy
+# 3) docker compose up -d mautic_web
+# 4) Conclua a instalação. Duas opções:
+#    a) por linha de comando, que é o que o instalador faz:
+#         docker compose exec -w /var/www/html mautic_web \
+#           php -d date.timezone=UTC bin/console mautic:install \
+#           --admin_email=voce@exemplo.com --admin_password=SENHA \
+#           --force https://mautic.seudominio.com.br
+#       O -d date.timezone=UTC não é opcional: com fuso
+#       brasileiro o instalador reprova na checagem de requisitos.
+#    b) pelo assistente web, acessando o domínio no navegador
+#       (host do banco: mariadb)
+# 5) docker compose up -d            # sobe cron e worker
 # ============================================================
 
 services:
@@ -33,7 +58,7 @@ services:
   # ============================================================
 
   mariadb:
-    image: mariadb:10.11
+    image: ${MARIADB_IMAGE:-mariadb:10.11}
     restart: unless-stopped
 
     environment:
@@ -72,7 +97,7 @@ services:
   # ============================================================
 
   mautic_web:
-    image: mautic/mautic:7-apache
+    image: ${MAUTIC_IMAGE:-mautic/mautic:7-apache}
     restart: unless-stopped
 
     depends_on:
@@ -125,6 +150,7 @@ services:
       - playahead_mautic_config:/var/www/html/config
       - playahead_mautic_media:/var/www/html/docroot/media
       - playahead_mautic_logs:/var/www/html/var/logs
+      - playahead_mautic_translations:/var/www/html/docroot/translations
 
     networks:
       - playahead_mautic_internal
@@ -151,13 +177,32 @@ services:
 
       - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik_public}"
 
+    # ----------------------------------------------------------
+    # HEALTHCHECK
+    # O script espera este healthcheck ficar healthy antes de
+    # rodar o mautic:install. Sem ele não há como "esperar de
+    # verdade", e o instalador viraria um sleep torcendo.
+    # start_period alto porque o primeiro boot faz cache warmup.
+    # ----------------------------------------------------------
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS -o /dev/null http://localhost/ || exit 1"
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
 
   # ============================================================
   # MAUTIC CRON - tarefas agendadas (campanhas, segmentos, envios)
   # ============================================================
 
   mautic_cron:
-    image: mautic/mautic:7-apache
+    image: ${MAUTIC_IMAGE:-mautic/mautic:7-apache}
     restart: unless-stopped
 
     depends_on:
@@ -189,6 +234,7 @@ services:
       - playahead_mautic_config:/var/www/html/config
       - playahead_mautic_media:/var/www/html/docroot/media
       - playahead_mautic_logs:/var/www/html/var/logs
+      - playahead_mautic_translations:/var/www/html/docroot/translations
 
     networks:
       - playahead_mautic_internal
@@ -200,7 +246,7 @@ services:
   # ============================================================
 
   mautic_worker:
-    image: mautic/mautic:7-apache
+    image: ${MAUTIC_IMAGE:-mautic/mautic:7-apache}
     restart: unless-stopped
 
     depends_on:
@@ -236,6 +282,7 @@ services:
       - playahead_mautic_config:/var/www/html/config
       - playahead_mautic_media:/var/www/html/docroot/media
       - playahead_mautic_logs:/var/www/html/var/logs
+      - playahead_mautic_translations:/var/www/html/docroot/translations
 
     networks:
       - playahead_mautic_internal
@@ -258,6 +305,9 @@ volumes:
 
   playahead_mautic_logs:
     name: playahead_mautic_logs
+
+  playahead_mautic_translations:
+    name: playahead_mautic_translations
 
 
 # ============================================================

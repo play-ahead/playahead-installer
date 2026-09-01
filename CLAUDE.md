@@ -477,17 +477,58 @@ O template `templates/docker-compose-mautic7-playahead.yml` expõe
 com default, exatamente para atender o cenário 2. O script gera o `.env` que
 alimenta essas variáveis, com `umask 077`.
 
-Ajustes pendentes no template, já decididos:
+Ajustes do template, aplicados e validados em VPS:
 
-- **Tags de imagem em variável.** Hoje `mautic/mautic:7-apache` está cravado em
-  três serviços e `mariadb:10.11` em um. Precisam virar `${MAUTIC_IMAGE:-...}` e
-  `${MARIADB_IMAGE:-...}`, alimentados pelo `.env`, conforme a regra de manter a
-  versão fácil de trocar.
-- **Healthcheck no `mautic_web`.** Só o `mariadb` tem. Sem healthcheck no web
-  não há como "esperar de verdade".
-- **Cabeçalho reescrito.** O comentário atual manda completar o assistente de
-  instalação, que é justamente o caminho que ficou atrás de `--wizard`. O
-  arquivo que a pessoa vai ler na VPS não pode contradizer o que o script fez.
+- **Tags de imagem em variável.** `${MAUTIC_IMAGE:-mautic/mautic:7-apache}` e
+  `${MARIADB_IMAGE:-mariadb:10.11}`, conforme a regra de manter a versão fácil
+  de trocar.
+- **Healthcheck no `mautic_web`**, por `curl` no Apache de dentro do container.
+  `start_period` de 120s porque o primeiro boot faz cache warmup. Medido: fica
+  `healthy` em 45s. Sem ele não há como "esperar de verdade".
+- **Cabeçalho reescrito.** O anterior mandava completar o assistente de
+  instalação, contradizendo o que o script faz. O novo diz que o arquivo é
+  gerado pelo instalador, e traz o passo a passo manual para quem usar o
+  template sozinho — incluindo o `-d date.timezone=UTC`, sem o qual a
+  instalação por CLI reprova.
+- **Volume para `docroot/translations`**, nos três serviços do Mautic. Motivo
+  na seção abaixo.
+
+### Idiomas: por que translations precisa de volume
+
+O pacote de idioma pt_BR é instalado em tempo de execução e fica em
+`docroot/translations/`. Esse caminho não estava em volume nenhum, então
+**sumia toda vez que o container fosse recriado** — o que acontece em qualquer
+`docker compose up -d` depois de mudar o compose, ou ao atualizar a imagem.
+
+Confirmado na VPS de teste: com `pt_BR` instalado, um
+`docker compose up -d --force-recreate mautic_web` deixou o diretório com
+apenas o `.htaccess` da imagem. A interface volta para inglês sozinha e nada
+no log explica por quê.
+
+Não há caminho por CLI: o console do Mautic 7 só tem `mautic:transifex:pull` e
+`push`, que são ferramentas de tradutor e exigem credencial do Transifex. Não
+existe `mautic:language:install`. Instalar o idioma é ação de interface.
+
+**Volume nomeado, e não bind mount.** A imagem traz um `.htaccess` com
+`deny from all` nesse diretório, protegendo os arquivos de acesso pela web.
+Volume nomeado vazio recebe uma cópia do conteúdo da imagem na primeira
+subida, e o `.htaccess` vai junto — verificado. Bind mount não copia nada da
+imagem: o diretório nasceria vazio, sem a proteção.
+
+Risco conhecido e aceito: volume nomeado sombreia atualizações futuras da
+imagem naquele caminho. Aqui isso quase não custa, porque a imagem só traz o
+`.htaccess` de 13 bytes; os idiomas sempre vêm de download em tempo de
+execução.
+
+**Nota de atualização.** Quem já tem uma instalação anterior e passa a usar o
+compose novo perde o idioma uma vez. O volume nasce com o conteúdo da
+*imagem*, não com o da camada de escrita do container antigo. Basta reinstalar
+o idioma pela interface; a partir daí ele persiste.
+
+O volume vai nos três serviços, e não só no `mautic_web`, pelo mesmo motivo de
+`config`, `media` e `logs` já irem: o `mautic_cron` dispara campanhas e o
+`mautic_worker` consome a fila de e-mail, e os dois renderizam conteúdo. Idioma
+presente só na web produziria e-mail em inglês sem nenhum aviso.
 
 ### Ordem de subida
 
