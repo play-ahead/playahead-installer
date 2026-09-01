@@ -163,8 +163,14 @@ têm de ser coerentes entre si.
 
 ## Swap
 
-No cenário 1 e 1.5, **se a RAM for menor que 4 GB e não houver swap nenhum,
-criar um swapfile de 2 GB**, anunciando na tela. `--no-swap` desliga.
+No cenário 1 e 1.5, **se a RAM for menor que 3800 MB e não houver swap
+nenhum, criar um swapfile de 2 GB**, anunciando na tela. `--no-swap`
+desliga.
+
+O limiar é 3800 MB, não 4096. Uma VPS vendida como "4 GB" reporta 3915 MB
+depois do que o kernel reserva — medido na máquina de teste. Comparar com
+4096 daria swap a toda máquina de 4 GB, que não precisa. É a mesma correção
+que levou o piso de RAM a ser 1900 e não 2048.
 
 Motivo: 2 GB é o piso do README, e MariaDB mais três containers PHP nesse
 espaço colocam o `cache:warmup` do Symfony em risco de OOM. OOM não deixa
@@ -887,10 +893,6 @@ teste; a implementação pode começar.
   e com `-w /var/www/html`.
 - A regra "senha por stdin, nunca em argv" precisa ser reescrita para
   descrever o que é possível.
-- O limiar do swap diz "RAM menor que 4 GB". A VPS de teste é uma
-  máquina de 4 GB e reporta 3915 MB, ou seja, cairia na regra e ganharia
-  swap sem precisar. É o mesmo problema que levou `PA_RAM_MINIMA_MB` a
-  ser 1900 e não 2048; o limiar do swap precisa do mesmo tratamento.
 
 **Ainda sem decisão:**
 

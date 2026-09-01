@@ -35,6 +35,17 @@ PA_SO_SUPORTADOS=("22.04" "24.04")
 # suportar.
 PA_RAM_MINIMA_MB=1900
 
+# Limiar do swap em MB.
+#
+# Abaixo disto, e sem swap ativo, o instalador cria um swapfile de
+# 2 GB.
+#
+# Não são 4096, pelo mesmo motivo de PA_RAM_MINIMA_MB não ser 2048:
+# uma VPS vendida como "4 GB" reporta 3915 MB depois do que o kernel
+# reserva, medido na máquina de teste. Comparar com 4096 daria swap
+# a toda máquina de 4 GB, que não precisa.
+PA_RAM_SWAP_MB=3800
+
 # Piso de disco livre em MB. Provisório: as imagens do Mautic e
 # do MariaDB somam perto de 2 GB, e o resto é folga para o banco
 # crescer. O CLAUDE.md marca este número como "a medir no
@@ -279,7 +290,7 @@ checks_memoria() {
 
 	ui_ok "RAM: ${mb} MB"
 
-	if [[ "$mb" -lt 4000 ]]; then
+	if [[ "$mb" -lt "$PA_RAM_SWAP_MB" ]]; then
 		ui_detalhe "Abaixo dos 4 GB recomendados; o swap será conferido adiante."
 	fi
 }
