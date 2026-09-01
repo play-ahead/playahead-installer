@@ -272,8 +272,9 @@ resolver. Além disso, o mesmo script roda nas instalações do serviço pago, o
 preencher formulário no navegador a cada cliente não escala.
 
 Uma flag `--wizard` pula o `mautic:install` e deixa o assistente web aparecer,
-para quem quiser acompanhar o processo. **Se é um `if` no final ou um caminho
-paralelo depende do teste descrito em Pendências.**
+para quem quiser acompanhar o processo. **É um `if` no final, não um caminho paralelo** — confirmado pelo
+teste B14: as variáveis de ambiente configuram só a conexão com o banco, e a
+imagem não conclui a instalação sozinha.
 
 Com `--wizard`, o bloco final precisa imprimir também **as credenciais do
 banco** — host `mariadb`, usuário `mautic` e a senha gerada. Sem isso a pessoa
@@ -282,8 +283,15 @@ não completa o assistente, porque a senha nasceu dentro do script.
 Cuidados obrigatórios:
 
 - Senha de admin gerada com `openssl rand`, nunca fixa.
-- Não passar a senha de forma que ela apareça no histórico do shell nem em `ps`.
-  Entregar por stdin, nunca em `argv`.
+- Senha do admin entregue em `--admin_password`, porque o Mautic 7 não
+  oferece alternativa: o comando não lê stdin e não existe
+  `mautic:user:create`. Ela não entra no histórico do shell, porque quem
+  monta a linha é o script, e não aparece em `docker inspect`, porque não
+  é variável de ambiente do container. Aparece num `ps` do host durante os
+  segundos do comando, e isso não tem contorno — ver Resultado do teste B14.
+- Rodar o instalador com `-d date.timezone=UTC` e `-w /var/www/html`.
+  Sem o override, toda instalação brasileira falha na checagem de
+  requisitos; sem o `-w`, o console nem é encontrado.
 - Detectar instalação já existente e não reinstalar por cima.
 - Imprimir URL, e-mail do admin, senha e caminho do `.env` no bloco final.
 
@@ -511,6 +519,13 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
 - **A tag `mautic/mautic:7-apache` hoje entrega Mautic 7.1.x**, não 7.0. Manter a
   versão numa variável no topo do script, fácil de trocar.
 - Usar a variante `apache`. A documentação oficial desaconselha a `fpm`.
+- **`America/Sao_Paulo` reprova na checagem de requisitos do `mautic:install`.**
+  A checagem do Symfony monta a lista de fusos aceitos a partir de
+  `DateTimeZone::listAbbreviations()`, que tem 376 entradas, e não de
+  `timezone_identifiers_list()`, que tem 419. Nenhum fuso brasileiro está nas
+  376, porque o fim do horário de verão em 2019 tirou BRT e BRST do banco de
+  fusos. Rodar o instalador com `-d date.timezone=UTC`. O assistente web não é
+  afetado. Verificado na imagem, não na documentação.
 
 ## Estrutura pretendida
 
@@ -695,24 +710,191 @@ Decisões que o `lib/traefik.sh` precisa preservar:
 - O volume do ACME é nomeado com prefixo `playahead_`, para caber no
   mesmo namespace do resto e não colidir com instalação alheia.
 
+## Resultado do teste B14
+
+Executado em 2026-09-01 na VPS descartável descrita em "Comandos
+validados em VPS". Mautic **7.1.2**, entregue pela tag `7-apache`,
+confirmando a nota de que a tag não entrega 7.0.
+
+### A imagem NÃO conclui a instalação sozinha
+
+Resposta da pendência que bloqueava a etapa 8. Três evidências
+independentes, colhidas com `mariadb` saudável e `mautic_web` de pé,
+sem nenhum `mautic:install` ter rodado:
+
+1. `config/local.php` **existe**, mas vem de dentro da imagem (data do
+   build) e contém apenas parâmetros de banco, todos como chamadas
+   `getenv()`. Não há `site_url`.
+2. O banco tem **zero tabelas**.
+3. O Apache responde `302` para `/index.php/installer`.
+
+Depois do `mautic:install`, os mesmos três pontos viram: `site_url`
+gravado no `local.php`, 124 tabelas e `302` para `/s/dashboard`.
+
+**Consequência de desenho: `--wizard` continua sendo um `if` no final,
+não um caminho paralelo.** Não é preciso subir a stack com um
+subconjunto das variáveis removido, porque as variáveis de ambiente
+configuram a conexão com o banco e nada mais. O desenho do CLAUDE.md
+sobrevive ao teste sem alteração.
+
+### Assinatura real do mautic:install
+
+    mautic:install [options] [--] <site_url> [<step>]
+
+`step` é o índice de início: 0 requisitos, 1 banco, 2 admin, 3
+configuração, 4 final. Cada passo bem-sucedido dispara o seguinte.
+Poder retomar de um passo específico é útil: numa falha no meio, dá
+para continuar sem refazer o schema.
+
+Opções que interessam: `--force`, `--admin_firstname`,
+`--admin_lastname`, `--admin_username`, `--admin_email`,
+`--admin_password`, mais os `--db_*`, que podem ser omitidos porque o
+`local.php` da imagem já os resolve por `getenv()`.
+
+### America/Sao_Paulo quebra o instalador via CLI
+
+O achado mais caro do teste, e o menos óbvio.
+
+Com `PHP_INI_VALUE_DATE_TIMEZONE: America/Sao_Paulo`, que é o que o
+template traz, o `mautic:install` morre no passo 0:
+
+    Missing requirements:
+      - [0] Your default timezone is not supported by PHP.
+    Install canceled
+
+O PHP aceita o timezone sem reclamar: `ini_get`, `date_default_timezone_get`
+e `timezone_identifiers_list()` concordam que `America/Sao_Paulo` é
+válido. A checagem de requisitos do Symfony, porém, monta a lista de
+timezones aceitos a partir de `DateTimeZone::listAbbreviations()`, que
+tem 376 entradas contra as 419 de `timezone_identifiers_list()`.
+
+**Nenhum timezone brasileiro está nas 376.** Verificados como ausentes:
+`America/Sao_Paulo`, `America/Fortaleza`, `America/Bahia` e
+`America/Recife`. `UTC`, `America/New_York` e `Europe/Lisbon` estão
+presentes. A causa é o fim do horário de verão brasileiro em 2019, que
+tirou BRT e BRST do banco de dados de fusos.
+
+Contorno validado, e é o que o `lib/mautic.sh` precisa fazer:
+
+    php -d date.timezone=UTC bin/console mautic:install ...
+
+O override vale só para o processo do instalador. O timezone da
+aplicação continua `America/Sao_Paulo`, que é o que importa para os
+contatos e para os relatórios.
+
+**O assistente web não é afetado.** Com o mesmo timezone, a página do
+instalador responde "Ready to Install". A checagem existe nos dois
+caminhos, mas só o CLI trata a falha como fatal. Isso significa que um
+usuário de `--wizard` nunca veria este problema, e que sem o override o
+caminho padrão do script falharia em 100% das instalações brasileiras.
+
+### A senha do admin não pode ir por stdin
+
+O requisito registrado neste documento — "entregar por stdin, nunca em
+`argv`" — **não é atendível** com o Mautic 7.
+
+Testado: omitir `--admin_password` e alimentar a senha pelo stdin faz o
+comando chegar ao passo 2 e abortar com `[password] A value is
+required`. O comando não pergunta nada e não lê stdin. Não existe
+`mautic:user:create` nem equivalente: `bin/console list mautic` não
+tem nenhum comando de usuário.
+
+Sobra `--admin_password` em `argv`. Mitigações possíveis, a decidir:
+
+- A exposição dura os poucos segundos do comando, dentro de um
+  container, numa VPS de dono único que acabou de ser provisionada.
+- Não entra no histórico do shell, porque quem monta a linha é o
+  script e não a pessoa.
+- `docker inspect` não mostra, porque não é variável de ambiente do
+  container.
+
+O que **não** dá para prometer é que a senha não apareça num `ps` do
+host durante a execução. O documento precisa dizer isso em vez de
+exigir o impossível.
+
+### Limites de PHP: aplicam
+
+Confirmado que a imagem substitui as variáveis dentro do `php.ini`:
+
+    date.timezone="${PHP_INI_VALUE_DATE_TIMEZONE}"
+    upload_max_filesize="${PHP_INI_VALUE_UPLOAD_MAX_FILESIZE}"
+    post_max_size="${PHP_INI_VALUE_POST_MAX_FILESIZE}"
+    memory_limit="${PHP_INI_VALUE_MEMORY_LIMIT}"
+    max_execution_time="${PHP_INI_VALUE_MAX_EXECUTION_TIME}"
+
+Por ser o `php.ini`, vale para CLI e Apache igualmente. Medido no CLI:
+`memory_limit` 1024M, `upload_max_filesize` 512M, `post_max_size` 512M,
+`date.timezone` America/Sao_Paulo. O `max_execution_time` aparece como
+0 no CLI, que é o normal — o valor 300 vale para o SAPI web.
+
+**`PHP_INI_VALUE_POST_MAX_FILESIZE` confirmado na prática**: alimenta
+`post_max_size`. A armadilha registrada neste documento está certa e
+segue valendo.
+
+### Filas e workers: funcionam
+
+Dentro do `mautic_worker`, seis processos, exatamente o que o compose
+pede:
+
+    php bin/console messenger:consume email    (x2)
+    php bin/console messenger:consume hit      (x2)
+    php bin/console messenger:consume failed   (x2)
+
+A tabela `messenger_messages` existe. O `doctrine://default` sem aspas
+funciona como documentado.
+
+O `mautic_cron` tem espera própria por banco no entrypoint — o log
+mostra "MySQL is not ready yet, waiting..." seguido de "MySQL is alive
+and well". Isso reduz, mas não elimina, o motivo da subida em três
+tempos: a espera dele é pelo banco responder, não pelo Mautic estar
+instalado.
+
+### Caminhos dentro do container
+
+O diretório de trabalho é `/var/www/html/docroot`, mas o console está
+em `/var/www/html/bin/console`. Um `docker compose exec ... php
+bin/console` falha com "Could not open input file". Todo comando
+precisa de `-w /var/www/html`.
+
+O Apache barra `.php` arbitrário no docroot com 403, o que é postura
+correta da imagem e impede o truque de jogar um arquivo de diagnóstico
+lá dentro.
+
+### Números medidos
+
+| Medida | Valor |
+|---|---|
+| Disco consumido pela instalação inteira | 4389 MB |
+| Imagens Docker | 3844 MB |
+| Volumes | 255 MB |
+| RAM com a stack completa, ociosa | 1152 MB |
+| MariaDB até `healthy` | 6 s |
+| Tabelas criadas | 124 |
+
+O piso de 10 GB em `PA_DISCO_MINIMO_MB` está validado: sobra folga
+sobre os 4,4 GB de instalação limpa. O de RAM também: 1152 MB ociosos
+significam que uma máquina de 2 GB funciona, mas sem margem — o que
+sustenta a decisão do swapfile.
+
 ## Pendências
 
-**Bloqueia código da etapa 8:** subir VPS descartável e rodar o compose atual na
-mão, para descobrir se o assistente web ainda aparece ou se a imagem
-`7-apache` conclui a instalação sozinha a partir das variáveis de ambiente
-(`MAUTIC_DB_*` gravadas no `local.php` pelo entrypoint).
+**Nada bloqueia a etapa 8.** O desenho do `--wizard` sobreviveu ao
+teste; a implementação pode começar.
 
-Se a imagem auto-instala, `--wizard` deixa de ser um `if` no final e vira um
-caminho paralelo — subir a stack com um subconjunto das variáveis removido. É a
-única coisa em aberto que pode mudar o desenho, não só a implementação. No mesmo
-teste, confirmar a assinatura exata do `mautic:install` no Mautic 7 contra a
-imagem, não contra a memória.
+**Correções que o teste tornou obrigatórias:**
 
-**Não bloqueia nada:** `lib/ui.sh` e `lib/checks.sh` não dependem dessa resposta
-e podem ser escritos antes.
+- `lib/mautic.sh` precisa rodar o instalador com `-d date.timezone=UTC`
+  e com `-w /var/www/html`.
+- A regra "senha por stdin, nunca em argv" precisa ser reescrita para
+  descrever o que é possível.
+- O limiar do swap diz "RAM menor que 4 GB". A VPS de teste é uma
+  máquina de 4 GB e reporta 3915 MB, ou seja, cairia na regra e ganharia
+  swap sem precisar. É o mesmo problema que levou `PA_RAM_MINIMA_MB` a
+  ser 1900 e não 2048; o limiar do swap precisa do mesmo tratamento.
 
 **Ainda sem decisão:**
 
-- Log da execução para suporte (caminho, rotação e mascaramento de segredos).
-- `.env.example`, que o `.gitignore` já prevê com `!.env.example` mas não existe.
-- Espaço mínimo em disco, a medir no primeiro teste real.
+- Log da execução para suporte (caminho, rotação e mascaramento de
+  segredos).
+- `.env.example`, que o `.gitignore` já prevê com `!.env.example` mas
+  não existe.
