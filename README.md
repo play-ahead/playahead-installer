@@ -33,7 +33,24 @@ certificado SSL não é emitido.
 
 ## Como usar
 
-Primeiro a base, uma vez por VPS:
+O caminho mais curto é o menu, que lista as ferramentas e roda a que você
+escolher:
+
+    curl -sL https://get.playahead.com.br -o playahead.sh
+    less playahead.sh
+    sudo bash playahead.sh
+
+**O menu contém os instaladores, não os baixa.** Nada é buscado na hora, então
+o que você leu é o que pode rodar. Como o arquivo é grande, ele imprime na tela
+em que linha cada instalador começa, e `--extrair` grava os dois em arquivos
+separados se você preferir ler um por um.
+
+Escolhido o número, o menu grava o instalador no diretório atual e passa o
+terminal para ele.
+
+### Ou direto, por instalador
+
+Cada um tem URL própria. Primeiro a base, uma vez por VPS:
 
     curl -sL https://get.playahead.com.br/base -o base.sh
     less base.sh
@@ -48,9 +65,10 @@ Depois o Mautic:
 O passo do `less` não é enfeite. Nunca execute um script da internet sem ler,
 inclusive estes.
 
-Os arquivos que o `curl` entrega são o [`dist/base.sh`](dist/base.sh) e o
-[`dist/mautic7.sh`](dist/mautic7.sh) deste repositório, exatamente como estão
-aqui. Você pode auditar no GitHub antes de baixar, e o cabeçalho de cada um traz
+Os arquivos que o `curl` entrega são o [`dist/base.sh`](dist/base.sh), o
+[`dist/mautic7.sh`](dist/mautic7.sh) e o
+[`dist/playahead.sh`](dist/playahead.sh) deste repositório, exatamente como
+estão aqui. Você pode auditar no GitHub antes de baixar, e o cabeçalho de cada um traz
 o número da versão e a data do build.
 
 **Um instalador nunca chama o outro.** Se você rodar o do Mautic antes da base,

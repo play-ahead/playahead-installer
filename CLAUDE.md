@@ -35,16 +35,20 @@ O código-fonte é modular (`lib/*.sh`), mas o que é publicado são **arquivos
 únicos**. Um script baixado sozinho por `curl` não consegue dar `source` em
 arquivos que não existem na VPS.
 
-`build.sh` concatena as libs de cada alvo e gera dois artefatos:
+`build.sh` concatena as libs de cada alvo e gera três artefatos:
 
-    dist/base.sh      get.playahead.com.br/base
-    dist/mautic7.sh   get.playahead.com.br/mautic7
+    dist/base.sh        get.playahead.com.br/base
+    dist/mautic7.sh     get.playahead.com.br/mautic7
+    dist/playahead.sh   get.playahead.com.br  (menu)
 
-Cada artefato leva só as libs que usa, e os dois são autocontidos: toda função
-chamada está definida no próprio arquivo. O que eles compartilham é
-código-fonte, não arquivo publicado.
+Cada artefato leva só as libs que usa, e é autocontido: toda função chamada
+está definida no próprio arquivo. O que eles compartilham é código-fonte, não
+arquivo publicado.
 
-**Os dois ficam versionados no git.** Qualquer pessoa precisa conseguir
+**A ordem de build importa:** o menu embute os outros dois, então eles têm de
+existir antes. É a única dependência entre alvos.
+
+**Os três ficam versionados no git.** Qualquer pessoa precisa conseguir
 abrir o GitHub e auditar exatamente o mesmo conteúdo que o `curl` baixou. Um
 artefato de build que só existe no servidor de distribuição derruba a promessa
 do `less mautic7.sh`.
@@ -159,6 +163,41 @@ Na base, atrás de `--portainer`. Isso resolve de graça o prazo de criação do
 administrador: rodando na base, o container sobe e o script termina ali, com a
 pessoa na frente do terminal. Instalá-lo no meio de uma instalação de Mautic,
 que leva minutos, faria o prazo expirar sempre.
+
+### O menu
+
+`dist/playahead.sh` lista os instaladores e roda o escolhido. Lista numerada,
+escolha por número, uma ferramenta por vez.
+
+**O menu contém os instaladores, não os busca.** O `build.sh` embute o
+`base.sh` e o `mautic7.sh` dentro dele como heredoc citado — mesmo mecanismo do
+template do compose. Escolhido o número, o menu grava o instalador no
+diretório atual e passa o terminal para ele com `exec`.
+
+É o que faz o menu conviver com a regra de que um instalador não baixa nem
+executa outro. O que se ganha:
+
+- nada é buscado na rede, então um download e um `less` bastam para auditar
+  tudo que pode rodar;
+- sem colisão de nomes: os instaladores entram como texto, não como código
+  concatenado, e cada um mantém o seu `main`, `PA_VERSAO` e `PA_FERRAMENTA`;
+- o `$0` do instalador fica certo, porque ele roda de um arquivo com o nome
+  real em vez de um temporário — verificado, sai `./base.sh`;
+- a pessoa fica com os scripts no disco, para reler e reusar.
+
+O preço é o tamanho: cerca de 7.600 linhas. Como um `less` nisso é pesado, o
+cabeçalho impresso na tela diz **em que linha cada instalador começa**, lendo o
+próprio arquivo em tempo de execução em vez de confiar num número gravado no
+build. E `--extrair` grava os dois em arquivos separados, sem instalar nada,
+para quem preferir auditar um por um.
+
+O menu não detecta estado nem mostra "já instalada" na lista. Faria ele
+carregar `checks`, `cenario`, `docker` e `traefik` só para desenhar a tela, e
+cada instalador já detecta e explica o seu estado quando roda. Fica para quando
+a lista virar um painel.
+
+Sem terminal, o menu recusa e manda usar os instaladores direto. Isso também
+cobre quem tenta `curl | bash`.
 
 ## Requisitos funcionais
 
@@ -733,6 +772,7 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
     build.sh                gera os artefatos de dist/ a partir de lib/
     dist/base.sh            artefato publicado: Docker, Traefik, Portainer
     dist/mautic7.sh         artefato publicado: Mautic 7
+    dist/playahead.sh       artefato publicado: menu, com os dois embutidos
     LICENSE                 MIT
     templates/              arquivos docker-compose
 
@@ -751,6 +791,8 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
 
     lib/mautic.sh           .env, stack e regionalização     mautic7
     lib/mautic_main.sh      orquestrador do Mautic           mautic7
+
+    lib/menu_main.sh        orquestrador do menu             playahead
 
 Só o compose do Mautic é template em arquivo. Os do Traefik e do Portainer
 são gerados em código, por `traefik_gerar_compose` e

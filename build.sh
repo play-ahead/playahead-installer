@@ -9,12 +9,16 @@
 # únicos: um script baixado sozinho por curl não consegue dar
 # source em arquivos que não existem na VPS.
 #
-# Dois alvos hoje:
-#     dist/base.sh      Docker, Traefik e Portainer
-#     dist/mautic7.sh   Mautic 7
+# Tres alvos hoje:
+#     dist/base.sh        Docker, Traefik e Portainer
+#     dist/mautic7.sh     Mautic 7
+#     dist/playahead.sh   menu, com os dois embutidos
+#
+# A ORDEM IMPORTA: o menu embute os outros dois, entao eles precisam
+# estar gerados antes.
 #
 # USO
-#     ./build.sh            gera os dois
+#     ./build.sh            gera os tres
 #     ./build.sh --check    só verifica se dist/ está em dia
 #                           (para CI e para o hook de commit)
 # ============================================================
@@ -40,7 +44,9 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # detecta Docker e Traefik mas não os instala, então os módulos de
 # instalação, a descoberta de portas e o swap não entram nele.
 
-PA_ALVOS=(base mautic7)
+# A ordem desta lista e de dependencia, nao de gosto: o menu embute
+# os artefatos dos outros dois, e por isso vem por ultimo.
+PA_ALVOS=(base mautic7 playahead)
 
 # Saída e template por alvo em array associativo, e não em nome de
 # variável montado em tempo de execução: assim o shellcheck
@@ -49,6 +55,7 @@ PA_ALVOS=(base mautic7)
 declare -A PA_SAIDA=(
 	[base]="dist/base.sh"
 	[mautic7]="dist/mautic7.sh"
+	[playahead]="dist/playahead.sh"
 )
 
 # A base não tem template: os composes do Traefik e do Portainer
@@ -57,7 +64,13 @@ declare -A PA_SAIDA=(
 declare -A PA_TEMPLATE=(
 	[base]=""
 	[mautic7]="templates/docker-compose-mautic7-playahead.yml"
+	[playahead]=""
 )
+
+# Artefatos que o menu carrega dentro de si. Só ele embute outros
+# artefatos, então isto é um caso próprio e não um sistema: o dia em
+# que houver um segundo menu, aí se generaliza.
+PA_EMBUTIDOS=(base mautic7)
 
 # Lidas por nameref em gerar(); o shellcheck não enxerga uso por
 # nameref, daí a diretiva.
@@ -87,11 +100,26 @@ PA_LIBS_mautic7=(
 	mautic_main
 )
 
+# O menu não precisa de detecção nem de checagem: ele grava um
+# instalador e passa o terminal para ele. Quem detecta e decide é o
+# instalador escolhido.
+# shellcheck disable=SC2034
+PA_LIBS_playahead=(
+	ui
+	menu_main
+)
+
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
-# Delimitador do heredoc que embute o template. Precisa ser algo
-# que não apareça dentro do próprio template; o build confere.
+# Delimitadores dos heredocs que embutem conteúdo. Precisam ser algo
+# que não apareça dentro do que está sendo embutido; o build confere.
+#
+# O do instalador é diferente do do template de propósito: o
+# mautic7.sh já carrega o template dentro dele, e o menu carrega o
+# mautic7.sh inteiro. São dois heredocs aninhados, e o de fora só
+# termina no delimitador dele.
 PA_DELIM="PA_FIM_DO_TEMPLATE_MAUTIC"
+PA_DELIM_INSTALADOR="PA_FIM_DO_INSTALADOR"
 
 # ------------------------------------------------------------
 # Mensagens
@@ -138,6 +166,85 @@ ler_var() {
 	[[ -n "$valor" ]] || erro "não achei ${nome} em ${arquivo}"
 
 	printf '%s\n' "$valor"
+}
+
+# ------------------------------------------------------------
+# Instaladores embutidos no menu
+# ------------------------------------------------------------
+
+# delim_de <alvo>
+delim_de() {
+	printf '%s_%s\n' "$PA_DELIM_INSTALADOR" "$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')"
+}
+
+# marcador_de <alvo>
+#
+# O comentário que o menu procura para dizer em que linha cada
+# instalador começa. É lido em tempo de execução pelo próprio menu,
+# então o texto aqui e o de lib/menu_main.sh têm de bater.
+marcador_de() {
+	local alvo="$1"
+	local arq="${PA_SAIDA[$alvo]}"
+
+	printf '# ===== INSTALADOR %s =====\n' "${arq##*/}"
+}
+
+# embutir_instaladores
+#
+# Escreve cada artefato como heredoc citado dentro de uma função.
+# Citado é obrigatório: o conteúdo é código bash cheio de $ e de
+# crase, e precisa chegar literal ao arquivo final.
+embutir_instaladores() {
+	local alvo arq delim
+
+	for alvo in "${PA_EMBUTIDOS[@]}"; do
+		arq="${PA_SAIDA[$alvo]}"
+		delim="$(delim_de "$alvo")"
+
+		[[ -f "$arq" ]] ||
+			erro "playahead: falta ${arq}; gere os instaladores antes"
+
+		if grep -qF "$delim" "$arq"; then
+			erro "playahead: ${arq} contém ${delim}; troque o delimitador"
+		fi
+
+		marcador_de "$alvo"
+		printf 'menu_conteudo_%s() {\n' "$alvo"
+		printf "\tcat <<'%s'\n" "$delim"
+		cat "$arq"
+		printf '%s\n' "$delim"
+		printf '}\n\n'
+	done
+}
+
+# verificar_embutidos <arquivo_do_menu>
+#
+# Prova que cada instalador embutido saiu byte a byte igual ao
+# artefato publicado. Mesma verificação do template, e pelo mesmo
+# motivo: o menu promete conter exatamente o que as URLs entregam.
+verificar_embutidos() {
+	local menu="$1"
+	local alvo arq delim extraido
+
+	for alvo in "${PA_EMBUTIDOS[@]}"; do
+		arq="${PA_SAIDA[$alvo]}"
+		delim="$(delim_de "$alvo")"
+		extraido="$(mktemp)"
+
+		awk -v d="$delim" '
+			index($0, d) && !dentro { dentro = 1; next }
+			dentro && $0 == d       { exit }
+			dentro                  { print }
+		' "$menu" >"$extraido"
+
+		if ! diff -q "$arq" "$extraido" >/dev/null 2>&1; then
+			rm -f "$extraido"
+			erro "playahead: o ${arq} embutido difere do publicado"
+		fi
+
+		info "playahead: ${arq##*/} embutido idêntico ($(wc -l <"$extraido") linhas)"
+		rm -f "$extraido"
+	done
 }
 
 # ------------------------------------------------------------
@@ -244,6 +351,14 @@ CABECALHO
 			printf '}\n\n'
 		fi
 
+		# Os instaladores embutidos, só no menu.
+		if [[ "$alvo" == "playahead" ]]; then
+			printf '# ============================================================\n'
+			printf '# Instaladores embutidos pelo build.sh\n'
+			printf '# ============================================================\n\n'
+			embutir_instaladores
+		fi
+
 		printf '# ============================================================\n'
 		printf '# Ponto de entrada\n'
 		printf '# ============================================================\n\n'
@@ -257,6 +372,26 @@ CABECALHO
 
 	grep -q "^PA_BUILD=\"${build}\"$" "$destino" ||
 		erro "${alvo}: não consegui injetar a data de build"
+
+	# O menu reporta a versão de quem carrega dentro, e não decide
+	# versão de ninguém. Os valores vêm do orquestrador de cada
+	# instalador embutido, mesma fonte única do resto.
+	if [[ "$alvo" == "playahead" ]]; then
+		local embutido versao_embutida maiuscula
+		for embutido in "${PA_EMBUTIDOS[@]}"; do
+			versao_embutida="$(
+				ler_var PA_VERSAO "$(orquestrador_de "$embutido")"
+			)"
+			maiuscula="$(printf '%s' "$embutido" | tr '[:lower:]' '[:upper:]')"
+
+			sed -i \
+				"s/^PA_VERSAO_${maiuscula}=\"desenvolvimento\"$/PA_VERSAO_${maiuscula}=\"${versao_embutida}\"/" \
+				"$destino"
+
+			grep -q "^PA_VERSAO_${maiuscula}=\"${versao_embutida}\"$" "$destino" ||
+				erro "playahead: não consegui injetar a versão de ${embutido}"
+		done
+	fi
 }
 
 # ------------------------------------------------------------
@@ -284,6 +419,10 @@ validar() {
 	# máquina e exercita o parse de flags e a concatenação.
 	bash "$arquivo" --version >/dev/null ||
 		erro "${alvo}: falhou em --version"
+
+	if [[ "$alvo" == "playahead" ]]; then
+		verificar_embutidos "$arquivo"
+	fi
 
 	[[ -n "$template" ]] || return 0
 
