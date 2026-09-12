@@ -5,8 +5,8 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-12T13:09:41Z
-# Fonte:  https://github.com/playahead/script-mautic-7
+# Build:  2026-09-12T14:19:31Z
+# Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
 #
@@ -24,7 +24,7 @@
 # ============================================================
 #
 # ARQUIVO GERADO POR build.sh. NÃO EDITE AQUI.
-# O código-fonte é modular e vive em lib/*.sh, em https://github.com/playahead/script-mautic-7
+# O código-fonte é modular e vive em lib/*.sh, em https://github.com/play-ahead/playahead-installer
 # ============================================================
 
 set -euo pipefail
@@ -3154,8 +3154,8 @@ mautic_verificar_roteamento() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-12T13:09:41Z"
-PA_FONTE="https://github.com/playahead/script-mautic-7"
+PA_BUILD="2026-09-12T14:19:31Z"
+PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # ------------------------------------------------------------
 # Respostas e flags
@@ -3225,7 +3225,7 @@ EXEMPLOS
         --acme-email=voce@exemplo.com.br --yes
 
 DOCUMENTAÇÃO
-    https://github.com/playahead/script-mautic-7
+    https://github.com/play-ahead/playahead-installer
 AJUDA
 }
 

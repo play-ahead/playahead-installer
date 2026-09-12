@@ -39,7 +39,7 @@ PA_LIBS=(
 
 PA_SAIDA="dist/install.sh"
 PA_TEMPLATE="templates/docker-compose-mautic7-playahead.yml"
-PA_FONTE="https://github.com/playahead/script-mautic-7"
+PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Delimitador do heredoc que embute o template. Precisa ser algo
 # que não apareça dentro do próprio template; o build confere.

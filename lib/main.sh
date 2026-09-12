@@ -25,7 +25,7 @@
 
 PA_VERSAO="0.1.0"
 PA_BUILD="desenvolvimento"
-PA_FONTE="https://github.com/playahead/script-mautic-7"
+PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # ------------------------------------------------------------
 # Respostas e flags
@@ -95,7 +95,7 @@ EXEMPLOS
         --acme-email=voce@exemplo.com.br --yes
 
 DOCUMENTAÇÃO
-    https://github.com/playahead/script-mautic-7
+    https://github.com/play-ahead/playahead-installer
 AJUDA
 }
 

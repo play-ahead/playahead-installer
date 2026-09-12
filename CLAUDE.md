@@ -41,7 +41,7 @@ O topo do arquivo gerado carrega, obrigatoriamente:
 
     # Versão: 0.1.0
     # Build:  2026-08-26T14:03:11Z
-    # Fonte:  https://github.com/playahead/script-mautic-7
+    # Fonte:  https://github.com/play-ahead/playahead-installer
 
 Motivo: quando aparecer comentário no vídeo dizendo que não funcionou, a
 primeira pergunta é qual versão a pessoa rodou. Sem isso não há suporte
