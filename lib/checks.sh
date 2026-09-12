@@ -86,6 +86,11 @@ PA_SO_ID=""
 PA_SO_VERSAO=""
 PA_IP_PUBLICO=""
 
+# Conclusão da checagem de DNS, em texto, para a tela de resumo.
+# Quem lê é o orquestrador; dizer "verificado" sem dizer o que foi
+# concluído não ajudaria ninguém a conferir.
+PA_DNS_RESULTADO="não verificado"
+
 # Existe para poder apontar o parser para um arquivo de exemplo
 # durante os testes. Em produção nunca muda.
 PA_ARQ_OS_RELEASE="/etc/os-release"
@@ -436,6 +441,9 @@ checks_ip_em_cdn() {
 # DNS
 # ------------------------------------------------------------
 
+# PA_DNS_RESULTADO é lida pela tela de resumo, que vive em outro
+# arquivo, e uso entre arquivos não é enxergado pela análise.
+# shellcheck disable=SC2034
 # checks_dns <dominio>
 #
 # A checagem que mais economiza suporte: se o DNS aponta para
@@ -464,6 +472,7 @@ checks_dns() {
 	fi
 
 	if [[ -z "$PA_IP_PUBLICO" ]]; then
+		PA_DNS_RESULTADO="não validado: IP desta VPS desconhecido"
 		ui_aviso "IP público desconhecido; não dá para validar o DNS."
 		ui_detalhe "Resolvido: ${resolvidos[*]}"
 		return 0
@@ -472,6 +481,7 @@ checks_dns() {
 	local ip
 	for ip in "${resolvidos[@]}"; do
 		if [[ "$ip" == "$PA_IP_PUBLICO" ]]; then
+			PA_DNS_RESULTADO="aponta para esta VPS"
 			ui_ok "DNS de ${dominio} aponta para esta VPS"
 			return 0
 		fi
@@ -479,6 +489,7 @@ checks_dns() {
 
 	for ip in "${resolvidos[@]}"; do
 		if checks_ip_em_cdn "$ip"; then
+			PA_DNS_RESULTADO="atrás de CDN, resolve para ${ip}"
 			ui_aviso "${dominio} está atrás de CDN (Cloudflare)."
 			ui_detalhe "Resolve para ${ip}, não para ${PA_IP_PUBLICO}."
 			ui_detalhe "Isso está certo, e a instalação segue."

@@ -6,7 +6,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-12T19:20:10Z
+# Build:  2026-09-12T19:47:59Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -77,6 +77,9 @@ PA_INTERATIVO=0
 
 # Largura dos blocos e separadores.
 PA_LARGURA=64
+
+# Coluna onde os valores do resumo começam, em caracteres.
+PA_RESUMO_COLUNA=20
 
 # ------------------------------------------------------------
 # Inicialização
@@ -190,6 +193,71 @@ ui_secao() {
 	ui_vazio
 	ui_linha "${PA_COR_TITULO}${PA_COR_DESTAQUE}$1${PA_COR_RESET}"
 	ui_separador
+}
+
+# ------------------------------------------------------------
+# Resumo
+# ------------------------------------------------------------
+
+# ui_largura <texto>
+#
+# Largura de exibição em caracteres.
+#
+# Nem `${#texto}` nem o `%-16s` do printf servem: os dois contam
+# bytes quando o locale não é UTF-8, e daí todo rótulo acentuado
+# desloca a coluna. Em vez de depender do locale da máquina, conta
+# removendo os bytes de continuação do UTF-8 — os que começam com
+# 10xxxxxx, na faixa 0x80 a 0xBF.
+ui_largura() {
+	LC_ALL=C printf '%s' "$1" | LC_ALL=C tr -d '\200-\277' | LC_ALL=C wc -c
+}
+
+# ui_resumo <titulo> [<rótulo> <valor>]...
+#
+# A tela de confirmação antes de começar. Existe por dois motivos,
+# e os dois são de gente, não de código: pegar domínio digitado
+# errado antes de o Let's Encrypt falhar, e dar um momento de
+# narrar, no vídeo, o que vai acontecer.
+ui_resumo() {
+	local titulo="$1"
+	shift
+
+	ui_secao "$titulo"
+
+	local rotulo valor preenchimento
+	while [[ "$#" -ge 2 ]]; do
+		rotulo="$1"
+		valor="$2"
+		shift 2
+
+		preenchimento=$((PA_RESUMO_COLUNA - $(ui_largura "$rotulo")))
+		[[ "$preenchimento" -lt 1 ]] && preenchimento=1
+
+		printf '  %s%*s%s\n' \
+			"$rotulo" "$preenchimento" "" "$valor"
+	done
+
+	ui_vazio
+}
+
+# ui_confirmar_resumo
+#
+# Pergunta se pode começar, depois do resumo.
+#
+# O resumo é impresso sempre, inclusive com --yes: ele vale como
+# registro do que foi decidido naquela execução. A pergunta é que
+# não aparece no modo automático.
+ui_confirmar_resumo() {
+	ui_interativo || return 0
+
+	if ui_confirmar "Posso começar?" 1; then
+		return 0
+	fi
+
+	ui_vazio
+	ui_info "Nada foi alterado nesta máquina."
+	ui_vazio
+	exit 0
 }
 
 # ------------------------------------------------------------
@@ -561,6 +629,11 @@ PA_SO_ID=""
 PA_SO_VERSAO=""
 PA_IP_PUBLICO=""
 
+# Conclusão da checagem de DNS, em texto, para a tela de resumo.
+# Quem lê é o orquestrador; dizer "verificado" sem dizer o que foi
+# concluído não ajudaria ninguém a conferir.
+PA_DNS_RESULTADO="não verificado"
+
 # Existe para poder apontar o parser para um arquivo de exemplo
 # durante os testes. Em produção nunca muda.
 PA_ARQ_OS_RELEASE="/etc/os-release"
@@ -911,6 +984,9 @@ checks_ip_em_cdn() {
 # DNS
 # ------------------------------------------------------------
 
+# PA_DNS_RESULTADO é lida pela tela de resumo, que vive em outro
+# arquivo, e uso entre arquivos não é enxergado pela análise.
+# shellcheck disable=SC2034
 # checks_dns <dominio>
 #
 # A checagem que mais economiza suporte: se o DNS aponta para
@@ -939,6 +1015,7 @@ checks_dns() {
 	fi
 
 	if [[ -z "$PA_IP_PUBLICO" ]]; then
+		PA_DNS_RESULTADO="não validado: IP desta VPS desconhecido"
 		ui_aviso "IP público desconhecido; não dá para validar o DNS."
 		ui_detalhe "Resolvido: ${resolvidos[*]}"
 		return 0
@@ -947,6 +1024,7 @@ checks_dns() {
 	local ip
 	for ip in "${resolvidos[@]}"; do
 		if [[ "$ip" == "$PA_IP_PUBLICO" ]]; then
+			PA_DNS_RESULTADO="aponta para esta VPS"
 			ui_ok "DNS de ${dominio} aponta para esta VPS"
 			return 0
 		fi
@@ -954,6 +1032,7 @@ checks_dns() {
 
 	for ip in "${resolvidos[@]}"; do
 		if checks_ip_em_cdn "$ip"; then
+			PA_DNS_RESULTADO="atrás de CDN, resolve para ${ip}"
 			ui_aviso "${dominio} está atrás de CDN (Cloudflare)."
 			ui_detalhe "Resolve para ${ip}, não para ${PA_IP_PUBLICO}."
 			ui_detalhe "Isso está certo, e a instalação segue."
@@ -2840,7 +2919,7 @@ portainer_aviso_primeira_visita() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-12T19:20:10Z"
+PA_BUILD="2026-09-12T19:47:59Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
@@ -3070,6 +3149,60 @@ base_validar() {
 }
 
 # ------------------------------------------------------------
+# Confirmação
+# ------------------------------------------------------------
+
+# base_confirmar
+#
+# Último ponto antes de escrever qualquer coisa. Diz em palavras o
+# que vai ser feito com cada peça, e não só o que foi respondido:
+# "reaproveitar" e "instalar" são decisões que a pessoa precisa
+# poder conferir antes de o script mexer na máquina.
+base_confirmar() {
+	local ram acao_swap
+	ram="$(sistema_ram_mb)"
+
+	if [[ "$PA_NO_SWAP" -eq 1 ]]; then
+		acao_swap="não mexer, por --no-swap"
+	elif sistema_tem_swap; then
+		acao_swap="já existe, manter"
+	elif [[ "$ram" -lt "$PA_RAM_SWAP_MB" ]]; then
+		acao_swap="criar 2 GB (RAM de ${ram} MB)"
+	else
+		acao_swap="dispensado (RAM de ${ram} MB)"
+	fi
+
+	# Usa os sinalizadores que cenario_classificar preencheu, e não
+	# uma pergunta nova ao Docker: o resumo tem de dizer o que o
+	# resto do fluxo decidiu, não fazer a própria leitura.
+	local acao_docker="instalar"
+	[[ "$PA_TEM_DOCKER" -eq 1 ]] && [[ "$PA_TEM_COMPOSE" -eq 1 ]] &&
+		acao_docker="reaproveitar $(docker_versao)"
+
+	local acao_traefik="instalar ${PA_TRAEFIK_VERSAO}"
+	[[ "$PA_TEM_TRAEFIK" -eq 1 ]] &&
+		acao_traefik="reaproveitar o que já está no ar"
+
+	local -a itens=(
+		"Swap" "$acao_swap"
+		"Docker e Compose" "$acao_docker"
+		"Traefik" "$acao_traefik"
+	)
+
+	[[ "$PA_TEM_TRAEFIK" -eq 0 ]] &&
+		itens+=("E-mail do SSL" "$PA_EMAIL_ACME")
+
+	if [[ "$PA_PORTAINER" -eq 1 ]]; then
+		itens+=("Portainer" "https://${PA_PORTAINER_DOMINIO}")
+	else
+		itens+=("Portainer" "não instalar (use --portainer)")
+	fi
+
+	ui_resumo "Confira antes de começar" "${itens[@]}"
+	ui_confirmar_resumo
+}
+
+# ------------------------------------------------------------
 # Instalação
 # ------------------------------------------------------------
 
@@ -3138,6 +3271,7 @@ main() {
 	base_detectar
 	base_perguntar
 	base_validar
+	base_confirmar
 	base_instalar
 
 	if [[ "$PA_PORTAINER" -eq 1 ]]; then

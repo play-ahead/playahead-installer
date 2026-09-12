@@ -43,6 +43,9 @@ PA_INTERATIVO=0
 # Largura dos blocos e separadores.
 PA_LARGURA=64
 
+# Coluna onde os valores do resumo começam, em caracteres.
+PA_RESUMO_COLUNA=20
+
 # ------------------------------------------------------------
 # Inicialização
 # ------------------------------------------------------------
@@ -155,6 +158,71 @@ ui_secao() {
 	ui_vazio
 	ui_linha "${PA_COR_TITULO}${PA_COR_DESTAQUE}$1${PA_COR_RESET}"
 	ui_separador
+}
+
+# ------------------------------------------------------------
+# Resumo
+# ------------------------------------------------------------
+
+# ui_largura <texto>
+#
+# Largura de exibição em caracteres.
+#
+# Nem `${#texto}` nem o `%-16s` do printf servem: os dois contam
+# bytes quando o locale não é UTF-8, e daí todo rótulo acentuado
+# desloca a coluna. Em vez de depender do locale da máquina, conta
+# removendo os bytes de continuação do UTF-8 — os que começam com
+# 10xxxxxx, na faixa 0x80 a 0xBF.
+ui_largura() {
+	LC_ALL=C printf '%s' "$1" | LC_ALL=C tr -d '\200-\277' | LC_ALL=C wc -c
+}
+
+# ui_resumo <titulo> [<rótulo> <valor>]...
+#
+# A tela de confirmação antes de começar. Existe por dois motivos,
+# e os dois são de gente, não de código: pegar domínio digitado
+# errado antes de o Let's Encrypt falhar, e dar um momento de
+# narrar, no vídeo, o que vai acontecer.
+ui_resumo() {
+	local titulo="$1"
+	shift
+
+	ui_secao "$titulo"
+
+	local rotulo valor preenchimento
+	while [[ "$#" -ge 2 ]]; do
+		rotulo="$1"
+		valor="$2"
+		shift 2
+
+		preenchimento=$((PA_RESUMO_COLUNA - $(ui_largura "$rotulo")))
+		[[ "$preenchimento" -lt 1 ]] && preenchimento=1
+
+		printf '  %s%*s%s\n' \
+			"$rotulo" "$preenchimento" "" "$valor"
+	done
+
+	ui_vazio
+}
+
+# ui_confirmar_resumo
+#
+# Pergunta se pode começar, depois do resumo.
+#
+# O resumo é impresso sempre, inclusive com --yes: ele vale como
+# registro do que foi decidido naquela execução. A pergunta é que
+# não aparece no modo automático.
+ui_confirmar_resumo() {
+	ui_interativo || return 0
+
+	if ui_confirmar "Posso começar?" 1; then
+		return 0
+	fi
+
+	ui_vazio
+	ui_info "Nada foi alterado nesta máquina."
+	ui_vazio
+	exit 0
 }
 
 # ------------------------------------------------------------

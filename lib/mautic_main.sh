@@ -328,12 +328,47 @@ main_validar() {
 	ui_secao "Conferindo o domínio"
 
 	if [[ "$PA_SKIP_DNS" -eq 1 ]]; then
+		PA_DNS_RESULTADO="não verificado, por --skip-dns-check"
 		ui_aviso "Validação de DNS pulada por --skip-dns-check."
 		return 0
 	fi
 
 	checks_ip_publico || true
 	checks_dns "$PA_DOMINIO"
+}
+
+# ------------------------------------------------------------
+# Confirmação
+# ------------------------------------------------------------
+
+# main_confirmar
+#
+# Último ponto antes de escrever qualquer coisa. Mostra tudo que
+# foi decidido e pede licença para começar.
+#
+# Vem depois da validação de DNS, e não antes, para o resumo poder
+# dizer o que a validação concluiu. Um "aponta para esta VPS" na
+# tela vale mais que a promessa de que foi verificado.
+main_confirmar() {
+	local certresolver="${PA_TRAEFIK_CERTRESOLVER:-omitido}"
+
+	local conclusao="concluir pela linha de comando"
+	[[ "$PA_WIZARD" -eq 1 ]] &&
+		conclusao="deixar o assistente web (--wizard)"
+
+	ui_resumo "Confira antes de começar" \
+		"Domínio" "https://${PA_DOMINIO}" \
+		"E-mail do admin" "$PA_EMAIL_ADMIN" \
+		"DNS" "$PA_DNS_RESULTADO" \
+		"Rede do Traefik" "${PA_TRAEFIK_NETWORK:-traefik_public}" \
+		"Entrypoint" "${PA_TRAEFIK_ENTRYPOINT:-websecure}" \
+		"Certresolver" "$certresolver" \
+		"Idioma" "$PA_IDIOMA" \
+		"Fuso horário" "$PA_FUSO" \
+		"Pasta" "$PA_MAUTIC_DIR" \
+		"Conclusão" "$conclusao"
+
+	ui_confirmar_resumo
 }
 
 # ------------------------------------------------------------
@@ -443,6 +478,7 @@ main() {
 
 	main_perguntar
 	main_validar
+	main_confirmar
 	main_instalar
 
 	# Não aborta: o Mautic está no ar de qualquer jeito, e a regra do

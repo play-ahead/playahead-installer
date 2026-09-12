@@ -258,6 +258,60 @@ base_validar() {
 }
 
 # ------------------------------------------------------------
+# Confirmação
+# ------------------------------------------------------------
+
+# base_confirmar
+#
+# Último ponto antes de escrever qualquer coisa. Diz em palavras o
+# que vai ser feito com cada peça, e não só o que foi respondido:
+# "reaproveitar" e "instalar" são decisões que a pessoa precisa
+# poder conferir antes de o script mexer na máquina.
+base_confirmar() {
+	local ram acao_swap
+	ram="$(sistema_ram_mb)"
+
+	if [[ "$PA_NO_SWAP" -eq 1 ]]; then
+		acao_swap="não mexer, por --no-swap"
+	elif sistema_tem_swap; then
+		acao_swap="já existe, manter"
+	elif [[ "$ram" -lt "$PA_RAM_SWAP_MB" ]]; then
+		acao_swap="criar 2 GB (RAM de ${ram} MB)"
+	else
+		acao_swap="dispensado (RAM de ${ram} MB)"
+	fi
+
+	# Usa os sinalizadores que cenario_classificar preencheu, e não
+	# uma pergunta nova ao Docker: o resumo tem de dizer o que o
+	# resto do fluxo decidiu, não fazer a própria leitura.
+	local acao_docker="instalar"
+	[[ "$PA_TEM_DOCKER" -eq 1 ]] && [[ "$PA_TEM_COMPOSE" -eq 1 ]] &&
+		acao_docker="reaproveitar $(docker_versao)"
+
+	local acao_traefik="instalar ${PA_TRAEFIK_VERSAO}"
+	[[ "$PA_TEM_TRAEFIK" -eq 1 ]] &&
+		acao_traefik="reaproveitar o que já está no ar"
+
+	local -a itens=(
+		"Swap" "$acao_swap"
+		"Docker e Compose" "$acao_docker"
+		"Traefik" "$acao_traefik"
+	)
+
+	[[ "$PA_TEM_TRAEFIK" -eq 0 ]] &&
+		itens+=("E-mail do SSL" "$PA_EMAIL_ACME")
+
+	if [[ "$PA_PORTAINER" -eq 1 ]]; then
+		itens+=("Portainer" "https://${PA_PORTAINER_DOMINIO}")
+	else
+		itens+=("Portainer" "não instalar (use --portainer)")
+	fi
+
+	ui_resumo "Confira antes de começar" "${itens[@]}"
+	ui_confirmar_resumo
+}
+
+# ------------------------------------------------------------
 # Instalação
 # ------------------------------------------------------------
 
@@ -326,6 +380,7 @@ main() {
 	base_detectar
 	base_perguntar
 	base_validar
+	base_confirmar
 	base_instalar
 
 	if [[ "$PA_PORTAINER" -eq 1 ]]; then
