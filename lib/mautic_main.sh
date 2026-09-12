@@ -2,17 +2,25 @@
 # shellcheck shell=bash
 #
 # ============================================================
-# lib/main.sh
-# Orquestrador: flags, ordem das etapas e bloco final.
+# lib/mautic_main.sh
+# Orquestrador do instalador do Mautic 7.
 #
-# Depende de todas as outras libs. No dist/mautic7.sh gerado
-# pelo build.sh, este é o último trecho, e a chamada a
-# `main "$@"` fica no rodapé do arquivo.
+# Depende das libs compartilhadas e de lib/mautic.sh. No
+# dist/mautic7.sh gerado pelo build.sh, este é o último trecho, e
+# a chamada a `main "$@"` fica no rodapé do arquivo.
 #
-# O princípio que organiza tudo: **todas as perguntas acontecem
-# antes de qualquer alteração na máquina.** Depois que a
-# instalação começa, ela vai até o fim sem input. As duas
-# exceções são deliberadas e estão marcadas onde acontecem.
+# Este instalador **não instala a base**. Faltando Docker, Compose
+# ou Traefik, ele diz o que falta, mostra o comando do instalador
+# de base e encerra sem tocar em nada. A pessoa roda a base, vê o
+# que aconteceu, e volta.
+#
+# Decisão de projeto por trás disso: um script que a pessoa acabou
+# de ler com `less` não vai buscar e executar outro por conta
+# própria. E a base num lugar só é o que faz os próximos
+# instaladores herdarem infraestrutura em vez de recriá-la.
+#
+# O princípio que organiza o resto continua: **todas as perguntas
+# acontecem antes de qualquer alteração na máquina.**
 # ============================================================
 
 # ------------------------------------------------------------
@@ -40,12 +48,8 @@ PA_FERRAMENTA="Mautic 7 em Docker"
 
 PA_DOMINIO=""
 PA_EMAIL_ADMIN=""
-PA_EMAIL_ACME=""
-PA_PORTAINER=0
-PA_PORTAINER_DOMINIO=""
 PA_WIZARD=0
 PA_SKIP_DNS=0
-PA_NO_SWAP=0
 PA_NAO_INTERATIVO=0
 PA_SEM_CERTRESOLVER=0
 
@@ -56,9 +60,6 @@ PA_SEM_CERTRESOLVER=0
 # instalação, em mautic_regionalizar.
 PA_IDIOMA="pt_BR"
 PA_FUSO="America/Sao_Paulo"
-
-# Cenário detectado: 1, 1.5 ou 2.
-PA_CENARIO=""
 
 # Caminho do template do compose. No dist/mautic7.sh o template
 # vai embutido; aqui aponta para o repositório.
@@ -82,13 +83,16 @@ Play Ahead Installer - Mautic 7 em Docker
 USO
     sudo bash mautic7.sh [opções]
 
+Precisa da base instalada antes: Docker, Docker Compose e Traefik.
+Faltando qualquer um, este script diz o que falta e mostra o
+comando do instalador de base.
+
 Sem nenhuma opção, o script pergunta o que precisa e instala.
 Com as opções abaixo mais --yes, roda sem perguntar nada.
 
 OPÇÕES
     --domain=DOMINIO             domínio do Mautic
     --admin-email=EMAIL          e-mail do administrador
-    --acme-email=EMAIL           e-mail usado no Let's Encrypt
     --traefik-network=NOME       força o nome da rede do Traefik
     --traefik-entrypoint=NOME    força o nome do entrypoint
     --traefik-certresolver=NOME  força o nome do certresolver
@@ -97,10 +101,7 @@ OPÇÕES
     --fuso=FUSO                  fuso horário (padrão America/Sao_Paulo)
     --wizard                     não conclui a instalação, deixa o
                                  assistente web do Mautic
-    --portainer                  instala o Portainer ao final
-    --portainer-domain=DOMINIO   subdomínio do Portainer
     --skip-dns-check             pula a validação de DNS
-    --no-swap                    não cria arquivo de swap
     --yes                        não interativo, sem nenhuma pergunta
     --help                       mostra esta ajuda
     --version                    mostra a versão e a data do build
@@ -130,21 +131,14 @@ main_parse_flags() {
 		case "$arg" in
 			--domain=*) PA_DOMINIO="${arg#*=}" ;;
 			--admin-email=*) PA_EMAIL_ADMIN="${arg#*=}" ;;
-			--acme-email=*) PA_EMAIL_ACME="${arg#*=}" ;;
 			--traefik-network=*) PA_TRAEFIK_NETWORK="${arg#*=}" ;;
 			--traefik-entrypoint=*) PA_TRAEFIK_ENTRYPOINT="${arg#*=}" ;;
 			--traefik-certresolver=*) PA_TRAEFIK_CERTRESOLVER="${arg#*=}" ;;
 			--idioma=*) PA_IDIOMA="${arg#*=}" ;;
 			--fuso=*) PA_FUSO="${arg#*=}" ;;
 			--no-certresolver) PA_SEM_CERTRESOLVER=1 ;;
-			--portainer) PA_PORTAINER=1 ;;
-			--portainer-domain=*)
-				PA_PORTAINER_DOMINIO="${arg#*=}"
-				PA_PORTAINER=1
-				;;
 			--wizard) PA_WIZARD=1 ;;
 			--skip-dns-check) PA_SKIP_DNS=1 ;;
-			--no-swap) PA_NO_SWAP=1 ;;
 			--yes | -y) PA_NAO_INTERATIVO=1 ;;
 			--help | -h)
 				main_ajuda
@@ -181,47 +175,52 @@ main_parse_flags() {
 }
 
 # ------------------------------------------------------------
-# Etapa 2 — detecção do cenário
+# Etapa 2 — a base está pronta?
 # ------------------------------------------------------------
 
-# main_detectar_cenario
+# mautic_checar_base
 #
-# A tabela de cinco estados do CLAUDE.md. Dois deles abortam:
-# não são cenários, são máquinas em que não dá para instalar sem
-# quebrar o que já está lá.
-main_detectar_cenario() {
-	ui_secao "Descobrindo a situação desta máquina"
+# Para este instalador não existem cinco cenários, existem dois: a
+# base está pronta, ou falta rodar a base.
+#
+# Faltando, ele **não instala nada e não busca nada na rede**. Diz
+# o que falta, mostra o comando pronto na tela e encerra com 1. A
+# pessoa instala a base, vê o resultado, e roda isto de novo.
+mautic_checar_base() {
+	ui_secao "Conferindo a base"
 
-	docker_checar_swarm
+	cenario_classificar
 
-	local tem_docker=0 tem_traefik=0
-	docker_presente && tem_docker=1
-
-	if [[ "$tem_docker" -eq 1 ]] && traefik_detectar; then
-		tem_traefik=1
-	fi
-
-	if [[ "$tem_traefik" -eq 1 ]]; then
-		PA_CENARIO="2"
-		ui_ok "Cenário 2: já existe um proxy Traefik nesta máquina"
-		ui_detalhe "O Mautic vai ser anexado a ele, sem tocar na configuração."
+	if cenario_base_completa; then
+		ui_ok "Base pronta: Docker $(docker_versao), Compose $(docker_compose_versao)"
+		ui_detalhe "Traefik encontrado em ${PA_TRAEFIK_CONTAINER}."
 		return 0
 	fi
 
-	# Sem Traefik, as portas 80 e 443 precisam estar livres. Se
-	# alguém as ocupa, é servidor web instalado direto no sistema,
-	# e o instalador não desliga serviço de ninguém.
-	checks_portas_livres "$([[ "$tem_docker" -eq 0 ]] && printf 1 || printf 0)"
+	local faltando
+	faltando="$(cenario_faltando)"
 
-	if [[ "$tem_docker" -eq 1 ]]; then
-		PA_CENARIO="1.5"
-		ui_ok "Cenário 1.5: Docker presente, sem proxy"
-		ui_detalhe "Docker será reaproveitado; Traefik e Mautic serão instalados."
-	else
-		PA_CENARIO="1"
-		ui_ok "Cenário 1: máquina limpa"
-		ui_detalhe "Docker, Traefik e Mautic serão instalados."
-	fi
+	ui_vazio
+	ui_erro "Falta a base desta VPS: ${faltando}."
+	ui_vazio
+	ui_info "O Mautic precisa de Docker, Docker Compose e um proxy"
+	ui_info "Traefik já no ar. Quem instala isso é o instalador de base,"
+	ui_info "que roda uma vez por VPS e serve a todas as ferramentas."
+	ui_vazio
+	ui_info "Baixe, leia e rode a base:"
+	ui_vazio
+	ui_linha "    curl -sL https://get.playahead.com.br/base -o base.sh"
+	ui_linha "    less base.sh"
+	ui_linha "    sudo bash base.sh"
+	ui_vazio
+	ui_info "Terminada a base, rode este instalador de novo:"
+	ui_vazio
+	ui_linha "    sudo bash ${0}"
+	ui_vazio
+	ui_info "Nada foi alterado nesta máquina."
+	ui_vazio
+
+	exit 1
 }
 
 # ------------------------------------------------------------
@@ -267,40 +266,22 @@ main_perguntar() {
 			"" checks_validar_dominio
 	fi
 
-	# 2. e-mail do Let's Encrypt, só onde o script emite certificado
-	if [[ "$PA_CENARIO" != "2" ]] && [[ -z "$PA_EMAIL_ACME" ]]; then
-		ui_vazio
-		ui_info "O Let's Encrypt pede um e-mail para avisar sobre a"
-		ui_info "renovação do certificado. Ele vai para a Let's Encrypt,"
-		ui_info "não para a Play Ahead."
-		ui_perguntar PA_EMAIL_ACME \
-			"E-mail para o certificado SSL" \
-			"" checks_validar_email
-	fi
-
-	# 3. e-mail do admin, com o do ACME como padrão
+	# 2. e-mail do admin
+	#
+	# O e-mail do Let's Encrypt não é perguntado aqui: quem emite
+	# certificado é o Traefik, e quem configura o Traefik é a base.
 	if [[ -z "$PA_EMAIL_ADMIN" ]]; then
-		local sugestao="${PA_EMAIL_ACME:-admin@${PA_DOMINIO}}"
+		local sugestao="admin@${PA_DOMINIO}"
 		ui_vazio
-		ui_perguntar PA_EMAIL_ADMIN \
-			"E-mail para entrar no Mautic" \
-			"$sugestao" checks_validar_email
+		ui_perguntar PA_EMAIL_ADMIN 			"E-mail para entrar no Mautic" 			"$sugestao" checks_validar_email
 	fi
 
-	# 4. confirmação dos valores do Traefik, só no cenário 2
-	if [[ "$PA_CENARIO" == "2" ]]; then
-		main_confirmar_traefik
-	fi
-
-	# 5. subdomínio do Portainer, antecipado por --portainer.
-	# A instalação continua sendo a última etapa; o que a flag
-	# antecipa é só a pergunta.
-	if [[ "$PA_PORTAINER" -eq 1 ]] && [[ -z "$PA_PORTAINER_DOMINIO" ]]; then
-		ui_vazio
-		ui_perguntar PA_PORTAINER_DOMINIO \
-			"Subdomínio do Portainer (ex: portainer.suaempresa.com.br)" \
-			"" checks_validar_dominio
-	fi
+	# 3. confirmação dos valores do Traefik
+	#
+	# Sempre, e não mais só no cenário 2: daqui em diante o Traefik é
+	# sempre de outro script, mesmo quando foi a nossa base que o
+	# instalou. Um caminho só, e a tela diz de onde veio cada valor.
+	main_confirmar_traefik
 }
 
 # main_confirmar_traefik
@@ -360,17 +341,6 @@ main_validar() {
 # ------------------------------------------------------------
 
 main_instalar() {
-	ui_secao "Preparando a máquina"
-
-	if [[ "$PA_CENARIO" != "2" ]]; then
-		sistema_criar_swap "$PA_NO_SWAP"
-		docker_garantir
-	fi
-
-	if [[ "$PA_CENARIO" != "2" ]]; then
-		traefik_instalar "$PA_EMAIL_ACME"
-	fi
-
 	ui_secao "Instalando o Mautic"
 
 	mautic_gravar_compose "$PA_TEMPLATE_MAUTIC"
@@ -404,37 +374,6 @@ main_instalar() {
 
 	mautic_subir_resto
 	mautic_gravar_credenciais "$PA_DOMINIO" "$PA_EMAIL_ADMIN"
-}
-
-# ------------------------------------------------------------
-# Etapa 10 — Portainer
-#
-# Segunda exceção deliberada ao bloco único: a pergunta acontece
-# aqui, depois da instalação. É o motivo de o Portainer vir por
-# último — ele exige mais um apontamento de DNS, e uma falha dele
-# aqui é aviso, não desastre, porque o Mautic já está de pé.
-# ------------------------------------------------------------
-
-main_portainer() {
-	if [[ "$PA_PORTAINER" -eq 0 ]]; then
-		ui_vazio
-		if ! ui_confirmar "Quer instalar o Portainer para gerenciar os containers?" 0; then
-			return 0
-		fi
-		PA_PORTAINER=1
-	fi
-
-	if [[ -z "$PA_PORTAINER_DOMINIO" ]]; then
-		ui_perguntar PA_PORTAINER_DOMINIO \
-			"Subdomínio do Portainer" "" checks_validar_dominio
-	fi
-
-	# Nenhuma função de portainer.sh chama ui_fatal, por decisão de
-	# projeto: aqui o Mautic já está no ar, e uma falha do Portainer
-	# é aviso, não desastre. Daí o `|| true`.
-	portainer_instalar "$PA_PORTAINER_DOMINIO" || true
-
-	portainer_anexar_credenciais "$PA_MAUTIC_CREDENCIAIS"
 }
 
 # ------------------------------------------------------------
@@ -474,14 +413,6 @@ main_bloco_final() {
 	ui_info "Arquivos da instalação:"
 	ui_detalhe "$PA_MAUTIC_DIR"
 
-	if [[ -n "$PA_SWAP_CRIADO" ]]; then
-		ui_vazio
-		ui_info "Um arquivo de swap de 2 GB foi criado em ${PA_SWAP_CRIADO}"
-		ui_info "porque esta máquina tem pouca memória."
-	fi
-
-	portainer_aviso_primeira_visita
-
 	ui_vazio
 	ui_separador
 	ui_info "Quer receber avisos de novas versões, correções e conteúdos"
@@ -501,29 +432,22 @@ main() {
 	ui_init "$PA_NAO_INTERATIVO"
 	ui_cabecalho
 
-	# Etapa 1
 	checks_sistema
 
-	# Etapa 2 e 3
-	main_detectar_cenario
+	# Encerra aqui, sem tocar em nada, se a base não estiver pronta.
+	mautic_checar_base
 
-	# Etapa 4, antes de qualquer pergunta
+	# Antes de qualquer pergunta, para não fazer a pessoa digitar o
+	# domínio à toa quando o script vai apenas reconciliar e sair.
 	main_checar_instalacao_anterior
 
-	# Etapa 5 e 6
 	main_perguntar
 	main_validar
-
-	# Etapa 7 e 8
 	main_instalar
 
-	# Etapa 9. Não aborta: o Mautic está no ar de qualquer jeito, e
-	# a regra do projeto é não derrubar nada quando algo dá errado.
+	# Não aborta: o Mautic está no ar de qualquer jeito, e a regra do
+	# projeto é não derrubar nada quando algo dá errado.
 	mautic_verificar_roteamento "$PA_DOMINIO" || true
 
-	# Etapa 10
-	main_portainer
-
-	# Etapa 11
 	main_bloco_final
 }

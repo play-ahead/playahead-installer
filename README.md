@@ -1,14 +1,20 @@
 # Play Ahead Installer
 
-Instalador de Mautic 7 em Docker para VPS, mantido pela
+Instaladores em Docker para VPS, mantidos pela
 [Play Ahead](https://playahead.com.br).
 
-Sobe uma stack completa e pronta para produção: Mautic 7 (web, cron e workers),
-MariaDB, Traefik com certificado SSL automático e, opcionalmente, Portainer.
+São dois tipos de instalador, e a ordem importa:
 
-Este repositório reúne os instaladores da Play Ahead. Hoje só o do Mautic 7
-existe; Chatwoot, Typebot e Evolution API entram depois, cada um com o seu
-próprio arquivo em `dist/`.
+**A base**, que roda uma vez por VPS e entrega o que todas as ferramentas
+compartilham: swap, Docker, Docker Compose, a rede do proxy e o Traefik com
+certificado SSL automático. O Portainer é opcional.
+
+**Os instaladores de ferramenta**, que reaproveitam essa base em vez de
+recriá-la. Hoje só o do Mautic 7 existe; Chatwoot, Typebot e Evolution API
+entram depois, cada um com o seu próprio arquivo em `dist/`.
+
+O instalador do Mautic 7 sobe a stack completa e pronta para produção: Mautic 7
+(web, cron e workers), MariaDB, e o painel já em português do Brasil.
 
 ## Requisitos
 
@@ -16,6 +22,7 @@ próprio arquivo em `dist/`.
 - Acesso root ou sudo
 - 2 GB de RAM no mínimo (4 GB recomendado)
 - Um domínio ou subdomínio apontando para o IP da VPS
+- A base instalada, no caso dos instaladores de ferramenta
 
 Versões de Ubuntu LTS mais novas que essas não são bloqueadas: o script avisa
 que não foram testadas e pergunta se você quer continuar. Debian 12 entra numa
@@ -26,42 +33,58 @@ certificado SSL não é emitido.
 
 ## Como usar
 
-Baixe, leia e execute:
+Primeiro a base, uma vez por VPS:
+
+    curl -sL https://get.playahead.com.br/base -o base.sh
+    less base.sh
+    sudo bash base.sh
+
+Depois o Mautic:
 
     curl -sL https://get.playahead.com.br/mautic7 -o mautic7.sh
     less mautic7.sh
     sudo bash mautic7.sh
 
 O passo do `less` não é enfeite. Nunca execute um script da internet sem ler,
-inclusive este.
+inclusive estes.
 
-O arquivo que o `curl` entrega é o
-[`dist/mautic7.sh`](dist/mautic7.sh) deste repositório, exatamente como está
-aqui. Você pode auditar no GitHub antes de baixar, e o cabeçalho do arquivo traz
+Os arquivos que o `curl` entrega são o [`dist/base.sh`](dist/base.sh) e o
+[`dist/mautic7.sh`](dist/mautic7.sh) deste repositório, exatamente como estão
+aqui. Você pode auditar no GitHub antes de baixar, e o cabeçalho de cada um traz
 o número da versão e a data do build.
 
-O script precisa de root, mas **não escala privilégio sozinho**. Se você rodar
-sem `sudo`, ele avisa e para.
+**Um instalador nunca chama o outro.** Se você rodar o do Mautic antes da base,
+ele diz o que está faltando, mostra o comando pronto na tela e encerra sem
+alterar nada. Foi escolha de projeto: um script que pede para ser lido antes de
+rodar não deveria buscar e executar outro por conta própria.
 
-## O que o script faz
+Os dois precisam de root, mas **não escalam privilégio sozinhos**. Rodando sem
+`sudo`, avisam e param.
 
-Ele detecta sozinho em qual situação a sua VPS está.
+## O que a base faz
 
-**VPS zerada:** instala Docker, Docker Compose, Traefik e sobe o Mautic.
+Ela detecta sozinha em qual situação a sua VPS está.
 
-**VPS que já tem Docker, mas não tem proxy:** instala só o Traefik e o Mautic.
+**VPS zerada:** instala Docker, Docker Compose e Traefik.
 
-**VPS que já tem Docker e Traefik:** identifica o proxy existente, confirma os
-nomes de rede, entrypoint e certresolver com você, e sobe apenas o Mautic
-reaproveitando o que já está lá.
+**VPS que já tem Docker:** reaproveita o Docker e instala só o Traefik.
 
-Em ambos os casos o script gera senhas aleatórias, aguarda os serviços ficarem
-saudáveis de verdade e mostra no final a URL, o usuário e a senha de acesso.
-
-O painel já nasce em português do Brasil, com fuso America/Sao_Paulo.
+**VPS que já tem um proxy Traefik:** não toca nele. Mostra os nomes de rede,
+entrypoint e certresolver que encontrou, e segue.
 
 Se as portas 80 e 443 estiverem ocupadas por um servidor web instalado direto no
-sistema, o script para e mostra quem está ocupando, em vez de tentar contornar.
+sistema, ela para e mostra quem está ocupando, em vez de tentar contornar.
+
+## O que o instalador do Mautic faz
+
+Confere que a base está pronta, identifica o proxy existente, confirma com você
+os nomes de rede, entrypoint e certresolver, e sobe a stack do Mautic
+reaproveitando o que já está lá.
+
+Gera senhas aleatórias, aguarda os serviços ficarem saudáveis de verdade e mostra
+no final a URL, o usuário e a senha de acesso.
+
+O painel já nasce em português do Brasil, com fuso America/Sao_Paulo.
 
 ## Onde ficam os arquivos
 
@@ -87,17 +110,10 @@ ele prefere explicar e sair.
 
 ## Opções
 
-    --domain=DOMINIO             domínio do Mautic
-    --admin-email=EMAIL          e-mail do administrador
+Da base:
+
     --acme-email=EMAIL           e-mail usado no Let's Encrypt
-    --traefik-network=NOME       força o nome da rede do Traefik
-    --traefik-entrypoint=NOME    força o nome do entrypoint
-    --traefik-certresolver=NOME  força o nome do certresolver
-    --no-certresolver            para quem termina o SSL fora da VPS
-    --idioma=CODIGO              idioma do painel (padrão pt_BR)
-    --fuso=FUSO                  fuso horário (padrão America/Sao_Paulo)
-    --wizard                     não conclui a instalação, deixa o assistente web
-    --portainer                  instala o Portainer ao final
+    --portainer                  instala o Portainer também
     --portainer-domain=DOMINIO   subdomínio do Portainer
     --skip-dns-check             pula a validação de DNS
     --no-swap                    não cria arquivo de swap
@@ -105,8 +121,40 @@ ele prefere explicar e sair.
     --help                       lista todas as opções
     --version                    mostra a versão e a data do build
 
-Com `--yes` e as flags necessárias, o script roda do início ao fim sem
-perguntar nada.
+Do instalador do Mautic:
+
+    --domain=DOMINIO             domínio do Mautic
+    --admin-email=EMAIL          e-mail do administrador
+    --traefik-network=NOME       força o nome da rede do Traefik
+    --traefik-entrypoint=NOME    força o nome do entrypoint
+    --traefik-certresolver=NOME  força o nome do certresolver
+    --no-certresolver            para quem termina o SSL fora da VPS
+    --idioma=CODIGO              idioma do painel (padrão pt_BR)
+    --fuso=FUSO                  fuso horário (padrão America/Sao_Paulo)
+    --wizard                     não conclui a instalação, deixa o assistente web
+    --skip-dns-check             pula a validação de DNS
+    --yes                        não interativo, sem nenhuma pergunta
+    --help                       lista todas as opções
+    --version                    mostra a versão e a data do build
+
+Com `--yes` e as flags necessárias, cada um roda do início ao fim sem perguntar
+nada.
+
+## Portainer
+
+O Portainer é instalado pela base, com `--portainer`, e precisa de um subdomínio
+próprio apontando para a VPS:
+
+    sudo bash base.sh --portainer --portainer-domain=painel.exemplo.com.br
+
+**Abra o endereço e defina a senha logo depois de instalar.** O Portainer
+encerra a criação do administrador poucos minutos depois de subir, e passando
+desse prazo ele só volta a aceitar com um restart:
+
+    cd /opt/playahead/portainer && docker compose restart
+
+Quem entra no Portainer controla todos os containers da máquina. Use uma senha
+forte.
 
 ## Usa Cloudflare?
 
@@ -121,9 +169,9 @@ não abre.
 ## Memória
 
 Em VPS de 2 GB sem swap, o Mautic pode ser encerrado pelo sistema durante a
-instalação, sem mensagem de erro clara. Para evitar isso, o script cria um
-arquivo de swap de 2 GB quando encontra menos de 4 GB de RAM e nenhum swap
-configurado. Ele avisa na tela quando faz isso, e `--no-swap` desliga o
+instalação, sem mensagem de erro clara. Para evitar isso, **a base** cria um
+arquivo de swap de 2 GB quando encontra menos de 3800 MB de RAM e nenhum swap
+configurado. Ela avisa na tela quando faz isso, e `--no-swap` desliga o
 comportamento.
 
 ## Limpar o cache

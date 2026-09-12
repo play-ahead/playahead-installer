@@ -13,7 +13,14 @@ precisa funcionar sem intervenção manual.
 Público-alvo: pessoa iniciante em Linux, seguindo um tutorial em vídeo, numa VPS
 Ubuntu recém-criada na Hetzner, DigitalOcean ou Contabo.
 
-O script será hospedado em domínio próprio da Play Ahead e executado assim:
+São dois instaladores, e o tutorial mostra os dois. Primeiro a base, uma vez
+por VPS:
+
+    curl -sL https://get.playahead.com.br/base -o base.sh
+    less base.sh
+    sudo bash base.sh
+
+Depois a ferramenta:
 
     curl -sL https://get.playahead.com.br/mautic7 -o mautic7.sh
     less mautic7.sh
@@ -24,15 +31,20 @@ pessoa a ler um script antes de rodar.
 
 ## Distribuição e build
 
-O código-fonte é modular (`lib/*.sh`), mas o que é publicado é **um arquivo
-único**. Um script baixado sozinho por `curl` não consegue dar `source` em
+O código-fonte é modular (`lib/*.sh`), mas o que é publicado são **arquivos
+únicos**. Um script baixado sozinho por `curl` não consegue dar `source` em
 arquivos que não existem na VPS.
 
-`build.sh` concatena `lib/*.sh` dentro do esqueleto do orquestrador e gera
-`dist/mautic7.sh`. É esse arquivo que a URL `get.playahead.com.br/mautic7`
-entrega.
+`build.sh` concatena as libs de cada alvo e gera dois artefatos:
 
-**`dist/mautic7.sh` fica versionado no git.** Qualquer pessoa precisa conseguir
+    dist/base.sh      get.playahead.com.br/base
+    dist/mautic7.sh   get.playahead.com.br/mautic7
+
+Cada artefato leva só as libs que usa, e os dois são autocontidos: toda função
+chamada está definida no próprio arquivo. O que eles compartilham é
+código-fonte, não arquivo publicado.
+
+**Os dois ficam versionados no git.** Qualquer pessoa precisa conseguir
 abrir o GitHub e auditar exatamente o mesmo conteúdo que o `curl` baixou. Um
 artefato de build que só existe no servidor de distribuição derruba a promessa
 do `less mautic7.sh`.
@@ -89,27 +101,82 @@ só "qual versão" e passa a ser "qual instalador".
 **O que deliberadamente não foi feito**, para não preparar o projeto para
 instaladores que ainda não existem:
 
-- Multi-alvo no `build.sh`, diretório `targets/`, manifesto. Um alvo fixo se
-  estende depois com um parâmetro ou um laço; não há canto sendo pintado.
-- Separar `lib/` em genérico e por ferramenta. Os módulos já se dividem na
-  prática — `ui`, `checks`, `sistema`, `docker` e `traefik` são genéricos,
-  `mautic` e `main` são específicos — mas mover agora é chutar a divisão sem
-  conhecer o segundo caso.
-- Renomear `lib/main.sh`, que fica ambíguo com dois instaladores. Mesma razão:
-  espera o segundo existir.
+- Diretório `targets/`, manifesto de alvos, ou laço sobre uma lista externa. Os
+  dois alvos são declarados lado a lado no `build.sh`; o terceiro se acrescenta
+  copiando cinco linhas.
+- Qualquer abstração de "ferramenta" além do que a separação da base exigiu.
+
+## Arquitetura: base e ferramentas
+
+São dois tipos de instalador, e a regra que os separa é uma: **a base é dona de
+tudo que é compartilhado entre ferramentas; o instalador de ferramenta é dono
+do que só serve a ela.**
+
+| | `base.sh` | `mautic7.sh` |
+|---|---|---|
+| Checagens de máquina | sim | sim |
+| Swap | **sim** | não |
+| Docker e Compose | **instala** | só detecta |
+| Rede do proxy, Traefik | **instala** | só detecta |
+| Portainer | **sim** | não |
+| Stack do Mautic | não | sim |
+
+Assim os próximos instaladores herdam a base em vez de recriá-la, e a
+instalação do Docker existe num lugar só.
+
+### Os dois não se chamam
+
+**Faltando a base, o instalador de ferramenta diz o que falta, mostra o comando
+pronto na tela e encerra com 1, sem tocar em nada.** Não baixa a base, não a
+executa, e não pergunta se pode.
+
+Motivo: a promessa central do projeto é `less` antes de rodar. Um script que
+busca e executa outro por conta própria quebra isso — a pessoa leu um arquivo e
+dois rodaram. Essa decisão também elimina a necessidade de hash embutido, de
+verificação de assinatura e da pergunta de autorização.
+
+Consequência prática: cada instalador é dono da própria conversa, e a regra de
+"todas as perguntas antes de qualquer alteração" continua valendo dentro de cada
+um, sem coordenação entre eles.
+
+### Estado entre os dois
+
+Não há arquivo de estado. O instalador de ferramenta **redetecta** o Traefik, e
+isso é deliberado:
+
+- O código de detecção já existe e foi validado contra três Traefiks diferentes,
+  incluindo um configurado por arquivo estático com nomes arbitrários.
+- Redetectar é **verificar**. Um arquivo de estado seria acreditado sem prova.
+- O Traefik que a nossa base instalou passa a ser tratado igual ao Traefik de
+  terceiro. Um caminho só, e a tela diz de onde veio cada valor.
+
+Por isso a confirmação dos valores do Traefik deixou de ser exclusiva do cenário
+2: ela acontece sempre.
+
+### Onde o Portainer ficou
+
+Na base, atrás de `--portainer`. Isso resolve de graça o prazo de criação do
+administrador: rodando na base, o container sobe e o script termina ali, com a
+pessoa na frente do terminal. Instalá-lo no meio de uma instalação de Mautic,
+que leva minutos, faria o prazo expirar sempre.
 
 ## Requisitos funcionais
 
-O script decide sozinho em qual situação a máquina está. Não são dois estados,
-são cinco:
+Quem decide em qual situação a máquina está é `lib/cenario.sh`, compartilhado
+pelos dois instaladores. Não são dois estados, são cinco — e as duas linhas que
+abortam só interessam a quem vai subir um proxy, ou seja, à base:
 
 | Docker  | Traefik  | Portas 80/443 | Situação        | Ação                                  |
 |---------|----------|---------------|-----------------|---------------------------------------|
-| ausente | —        | livres        | **Cenário 1**   | instala Docker, Compose, Traefik, Mautic |
-| ausente | —        | ocupadas      | bloqueado       | **aborta**: há servidor web no host   |
-| presente| ausente  | livres        | **Cenário 1.5** | pula Docker, instala Traefik e Mautic |
-| presente| ausente  | ocupadas      | ambíguo         | **aborta**, mostrando quem ocupa      |
-| presente| rodando  | —             | **Cenário 2**   | detecta o proxy e sobe só o Mautic    |
+| ausente | —        | livres        | **Cenário 1**   | a base instala Docker, Compose e Traefik |
+| ausente | —        | ocupadas      | bloqueado       | a base **aborta**: há servidor web no host |
+| presente| ausente  | livres        | **Cenário 1.5** | a base pula o Docker e instala o Traefik |
+| presente| ausente  | ocupadas      | ambíguo         | a base **aborta**, mostrando quem ocupa |
+| presente| rodando  | —             | **Cenário 2**   | base pronta; a ferramenta pode instalar |
+
+Para o instalador de ferramenta não existem cinco estados, existem dois: a base
+está pronta, ou falta rodar a base. Nos cenários 1 e 1.5 ele diz o que falta e
+encerra sem tocar em nada.
 
 Swarm ativo aborta em qualquer linha (ver seção Swarm).
 
@@ -123,28 +190,39 @@ e o domínio devolve 404 sem nenhuma mensagem de erro.
 
 ## Ordem das etapas
 
-Princípio que organiza tudo: **todas as perguntas acontecem antes de qualquer
-alteração na máquina.** Depois que a instalação começa, ela vai até o fim sem
-input. A única exceção é o Portainer, que por decisão de projeto fica no fim.
+Princípio que organiza os dois: **todas as perguntas acontecem antes de
+qualquer alteração na máquina.** Depois que a instalação começa, ela vai até o
+fim sem input. Cada instalador é dono da própria conversa.
+
+**base.sh**
 
 0. Parse de flags, `--help` e `--version` (saem sem tocar em nada).
    Cabeçalho MIT/AVISO na tela, pausa curta, segue.
-1. Checagens independentes de cenário: bash real, root/sudo, arquitetura,
-   sistema operacional, RAM, disco, conectividade de saída.
-2. Detecção do cenário (tabela acima). Swarm ativo para aqui.
-3. Checagens dependentes do cenário: portas 80/443 só no cenário 1 e 1.5;
-   no cenário 2, validar que o Traefik está saudável e anexável.
-4. Detecção de instalação anterior, **antes** de perguntar qualquer coisa,
-   para não fazer a pessoa digitar o domínio à toa.
-5. Bloco único de perguntas.
-6. Validação das respostas, incluindo a checagem de DNS. Última chance de
-   abortar sem ter escrito nada.
-7. Preparação da máquina (cenário 1 e 1.5): swap, Docker, Compose plugin,
-   rede do proxy, Traefik.
-8. Mautic, em três tempos (ver Stack).
-9. Verificação externa de roteamento (anti-404).
-10. Portainer, se pedido.
-11. Bloco final.
+1. Checagens de máquina: bash real, root/sudo, arquitetura, sistema
+   operacional, RAM, disco.
+2. Classificação do estado. Swarm ativo para aqui. Havendo proxy, mostra o que
+   detectou; não havendo, exige as portas 80 e 443 livres.
+3. Perguntas: e-mail do ACME, se vai instalar o Traefik; subdomínio do
+   Portainer, se pedido.
+4. Validação do DNS do Portainer, que **avisa em vez de abortar**.
+5. Swap, Docker, Compose, rede do proxy, Traefik.
+6. Portainer, se pedido, com o aviso do prazo do primeiro acesso.
+7. Bloco final, com os nomes que os instaladores de ferramenta vão detectar.
+
+**mautic7.sh**
+
+0. Parse de flags, `--help` e `--version`. Cabeçalho e pausa.
+1. Checagens de máquina, as mesmas: ele também roda sozinho.
+2. **A base está pronta?** Faltando, diz o que falta, mostra o comando e
+   encerra com 1, sem tocar em nada.
+3. Detecção de instalação anterior, **antes** de perguntar qualquer coisa, para
+   não fazer a pessoa digitar o domínio à toa.
+4. Bloco único de perguntas, incluindo a confirmação dos valores do Traefik.
+5. Validação do DNS do domínio do Mautic. Última chance de abortar sem ter
+   escrito nada.
+6. Mautic, em três tempos (ver Stack), mais idioma, fuso e cache.
+7. Verificação externa de roteamento (anti-404).
+8. Bloco final.
 
 ## Checagens obrigatórias antes de qualquer instalação
 
@@ -239,19 +317,15 @@ O script atende dois públicos com o mesmo código: a pessoa do vídeo, que
 responde duas ou três perguntas, e a instalação do serviço pago, que roda sem
 ninguém olhando. Isso só fecha com flag para tudo.
 
+Cada instalador tem o seu conjunto. Nenhuma flag é compartilhada por acidente:
+o que saiu do `mautic7.sh` saiu porque a responsabilidade mudou de dono.
+
+**base.sh**
+
 | Flag | Efeito |
 |---|---|
-| `--domain=` | domínio do Mautic |
-| `--admin-email=` | e-mail do admin do Mautic |
-| `--acme-email=` | e-mail do Let's Encrypt (cenários 1 e 1.5) |
-| `--traefik-network=` | força o nome da rede em vez de detectar |
-| `--traefik-entrypoint=` | força o nome do entrypoint |
-| `--traefik-certresolver=` | força o nome do certresolver |
-| `--no-certresolver` | TLS terminado fora; omite o label de certresolver |
-| `--idioma=` | idioma do painel; padrão `pt_BR` |
-| `--fuso=` | fuso horário da aplicação; padrão `America/Sao_Paulo` |
-| `--wizard` | não conclui a instalação, deixa o assistente web |
-| `--portainer` | instala o Portainer ao final |
+| `--acme-email=` | e-mail do Let's Encrypt |
+| `--portainer` | instala o Portainer também |
 | `--portainer-domain=` | subdomínio do Portainer |
 | `--skip-dns-check` | pula a validação de DNS |
 | `--no-swap` | não cria swapfile |
@@ -259,17 +333,47 @@ ninguém olhando. Isso só fecha com flag para tudo.
 | `--help` | lista as opções |
 | `--version` | imprime versão e data de build |
 
+**mautic7.sh**
+
+| Flag | Efeito |
+|---|---|
+| `--domain=` | domínio do Mautic |
+| `--admin-email=` | e-mail do admin do Mautic |
+| `--traefik-network=` | força o nome da rede em vez de detectar |
+| `--traefik-entrypoint=` | força o nome do entrypoint |
+| `--traefik-certresolver=` | força o nome do certresolver |
+| `--no-certresolver` | TLS terminado fora; omite o label de certresolver |
+| `--idioma=` | idioma do painel; padrão `pt_BR` |
+| `--fuso=` | fuso horário da aplicação; padrão `America/Sao_Paulo` |
+| `--wizard` | não conclui a instalação, deixa o assistente web |
+| `--skip-dns-check` | pula a validação de DNS |
+| `--yes` | não interativo: nenhuma pergunta, falha se faltar dado |
+| `--help` | lista as opções |
+| `--version` | imprime versão e data de build |
+
 ### Inventário de perguntas
+
+**base.sh**
 
 | # | Pergunta | Quando | Default | Flag |
 |---|---|---|---|---|
-| 1 | Domínio do Mautic | etapa 5 | obrigatória | `--domain=` |
-| 2 | E-mail para o Let's Encrypt | etapa 5, cenários 1 e 1.5 | — | `--acme-email=` |
-| 3 | E-mail do admin | etapa 5 | o da #2, ou `admin@dominio` | `--admin-email=` |
-| 4 | Confirmar valores do Traefik | etapa 5, cenário 2 | aceitar o detectado | `--traefik-*` |
-| 5 | Subdomínio do Portainer | etapa 5 se veio `--portainer`; senão etapa 10 | — | `--portainer-domain=` |
-| 6 | Instalar o Portainer? | etapa 10, se não veio `--portainer` | não | — |
-| 7 | Continuar em Ubuntu LTS não testado? | etapa 1, só se o SO for LTS mais nova que a lista | sim | — |
+| 1 | E-mail para o Let's Encrypt | só se vai instalar o Traefik | — | `--acme-email=` |
+| 2 | Subdomínio do Portainer | só com `--portainer` | — | `--portainer-domain=` |
+| 3 | Continuar em Ubuntu LTS não testado? | só se o SO for LTS mais nova | sim | — |
+
+**mautic7.sh**
+
+| # | Pergunta | Quando | Default | Flag |
+|---|---|---|---|---|
+| 1 | Domínio do Mautic | bloco único | obrigatória | `--domain=` |
+| 2 | E-mail do admin | bloco único | `admin@dominio` | `--admin-email=` |
+| 3 | Confirmar valores do Traefik | bloco único, sempre | aceitar o detectado | `--traefik-*` |
+| 4 | Continuar em Ubuntu LTS não testado? | só se o SO for LTS mais nova | sim | — |
+
+Duas mudanças com a separação da base: a pergunta do Portainer saiu do
+instalador de ferramenta, porque ele mora na base; e a confirmação do Traefik
+passou a acontecer **sempre**, e não só no cenário 2, porque a ferramenta trata
+todo Traefik como sendo de outro script.
 
 Nenhuma exige digitar "concordo". Com `--yes` mais as flags, nenhuma aparece.
 
@@ -626,18 +730,27 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
 
 ## Estrutura pretendida
 
-    build.sh                gera dist/mautic7.sh a partir de lib/
-    dist/mautic7.sh         artefato publicado, versionado no git
+    build.sh                gera os artefatos de dist/ a partir de lib/
+    dist/base.sh            artefato publicado: Docker, Traefik, Portainer
+    dist/mautic7.sh         artefato publicado: Mautic 7
     LICENSE                 MIT
-    lib/ui.sh               cores, prompts, mensagens
-    lib/checks.sh           pré-checagens
-    lib/sistema.sh          swap e outras rotinas de sistema
-    lib/docker.sh           instalação do Docker
-    lib/traefik.sh          instalação e detecção do Traefik
-    lib/portainer.sh        instalação do Portainer
-    lib/mautic.sh           geração do .env e subida da stack
-    lib/main.sh             orquestrador
     templates/              arquivos docker-compose
+
+    lib/ui.sh               cores, prompts, mensagens        compartilhado
+    lib/checks.sh           pré-checagens e validadores      compartilhado
+    lib/cenario.sh          classificação do estado          compartilhado
+    lib/docker.sh           detecção do Docker               compartilhado
+    lib/traefik.sh          detecção do Traefik              compartilhado
+
+    lib/portas.sh           portas em escuta                 base
+    lib/sistema.sh          swap                             base
+    lib/docker_instalar.sh  instalação do Docker             base
+    lib/traefik_instalar.sh instalação do Traefik            base
+    lib/portainer.sh        instalação do Portainer          base
+    lib/base_main.sh        orquestrador da base             base
+
+    lib/mautic.sh           .env, stack e regionalização     mautic7
+    lib/mautic_main.sh      orquestrador do Mautic           mautic7
 
 Só o compose do Mautic é template em arquivo. Os do Traefik e do Portainer
 são gerados em código, por `traefik_gerar_compose` e
