@@ -248,6 +248,8 @@ ninguém olhando. Isso só fecha com flag para tudo.
 | `--traefik-entrypoint=` | força o nome do entrypoint |
 | `--traefik-certresolver=` | força o nome do certresolver |
 | `--no-certresolver` | TLS terminado fora; omite o label de certresolver |
+| `--idioma=` | idioma do painel; padrão `pt_BR` |
+| `--fuso=` | fuso horário da aplicação; padrão `America/Sao_Paulo` |
 | `--wizard` | não conclui a instalação, deixa o assistente web |
 | `--portainer` | instala o Portainer ao final |
 | `--portainer-domain=` | subdomínio do Portainer |
@@ -976,21 +978,147 @@ sobre os 4,4 GB de instalação limpa. O de RAM também: 1152 MB ociosos
 significam que uma máquina de 2 GB funciona, mas sem margem — o que
 sustenta a decisão do swapfile.
 
+## Resultado do teste do cenário 1
+
+Executado em 2026-09-12 numa DigitalOcean de 2 GB, Ubuntu 24.04. Passou de
+ponta a ponta: swap, Docker, Traefik, Mautic com SSL, workers e verificação de
+roteamento. Quatro problemas apareceram, e três viraram código.
+
+### var/cache e o console rodado como root
+
+**A armadilha mais grave encontrada até agora**, porque limpar cache é a
+primeira coisa que se tenta quando algo dá errado.
+
+`docker compose exec` entra como **root** por padrão. O Apache roda como
+`www-data`, e `var/cache` **não está em volume**: vive na camada de escrita do
+container, de dono `www-data`. Qualquer console rodado como root deixa arquivo
+de root ali, e a partir daí o Apache não consegue mais escrever — o Mautic
+responde 500.
+
+Medido: um `cache:clear` como root deixou **30.737 arquivos de root** em
+`var/cache` e derrubou o site. Os diretórios temporários do Symfony (`.!!AgY`,
+`.!!ENs`) também ficam de root, e depois bloqueiam até o `cache:clear` correto,
+com "Permission denied" que não explica a causa.
+
+**Volume para `var/cache` foi considerado e rejeitado.** Cache é descartável e
+específico da versão: um volume nomeado o preservaria através de atualização de
+imagem, que é exatamente quando ele precisa morrer. Seria o problema do volume
+de `translations` de novo, mas pior — lá o sombreamento custa idioma velho,
+aqui custaria aplicação quebrada.
+
+A correção é de dono, não de volume:
+
+- `mautic_console` centraliza todo comando de console e sempre passa
+  `-u www-data`. Nenhum caminho do script roda console como root.
+- `mautic_corrigir_dono` devolve `var/` para `www-data`, como root, e roda
+  antes de cada `cache:clear` — cobre cache já sujado numa execução anterior.
+- O comando correto e a recuperação ficam no `credenciais.txt` e no README.
+  Não dá para depender de a pessoa achar a documentação.
+
+Recuperação validada, para quem já caiu no 500:
+
+    docker compose exec mautic_web chown -R www-data:www-data /var/www/html/var
+    docker compose exec -u www-data mautic_web php bin/console cache:clear
+
+Reparar o dono é melhor que apagar: o cache se refaz sozinho e nada mais em
+`var/` morre por causa disso.
+
+### Idioma: a instalação nasce em pt_BR
+
+O diagnóstico do teste foi preciso: o idioma estava salvo corretamente em
+`config/local.php`, e faltava **limpar o cache**. O Mautic guarda a
+configuração compilada, então gravar idioma sem limpar não muda nada na tela.
+
+Isso derrubou a nota anterior de que instalar idioma "é ação de interface". Há
+caminho por CLI, e ele não usa o console do Mautic:
+
+- O pacote vem de `https://language-packs.mautic.com/<codigo>.zip`. As URLs
+  saíram do `app/bundles/CoreBundle/Config/config.php` do próprio Mautic, nas
+  chaves `translations_list_url` e `translations_fetch_url`.
+- `unzip` **não existe** no Ubuntu limpo, mas a imagem tem PHP com
+  `ZipArchive`. Download e extração acontecem dentro do container e como
+  `www-data`, o que já deixa o dono certo sem `chown` depois.
+- O zip oficial já traz o diretório do idioma na raiz, então extrair em
+  `docroot/translations/` basta. Medido: 169 itens, dono `www-data`.
+
+`--idioma` aceita qualquer código do manifesto oficial, e o padrão é `pt_BR`.
+Código inexistente **avisa e segue em inglês** em vez de abortar: idioma não
+vale derrubar uma instalação que deu certo no resto.
+
+### Fuso: corrigido depois da instalação
+
+O contorno do bug do `America/Sao_Paulo` tem um efeito colateral que o teste
+expôs: o instalador roda com `-d date.timezone=UTC` e o Mautic guarda esse UTC
+como fuso padrão da aplicação. Horário de campanha e relatório sairiam em UTC.
+
+`mautic_gravar_config` corrige as duas chaves em `config/local.php` depois da
+instalação, por substituição no texto. Não por `include` mais `var_export`: o
+`local.php` guarda a senha do banco em texto puro e outras chaves que não têm
+por que passar por um round-trip. Chave ausente é inserida antes do fecho do
+array.
+
+Validado invertendo os valores à mão e rodando a função: voltou para `pt_BR` e
+`America/Sao_Paulo`, o `php -l` continua limpo, e o painel abriu com "Usuário",
+"Senha" e "Esqueceu" na tela de login.
+
+Com `--wizard` o pacote de idioma entra mas a configuração não: quem completa
+o assistente reescreve o `local.php` no fim, e gravar antes seria trabalho
+jogado fora. Com o pacote no lugar, o idioma já aparece como opção no próprio
+assistente.
+
+### Portainer: os labels estavam certos
+
+A hipótese inicial era que o `lib/portainer.sh`, único módulo sem validação em
+VPS, gerava labels errados. **A hipótese estava errada**, e vale registrar por
+quê, para não voltar a investigar o lugar errado:
+
+- Os labels do Portainer são **idênticos em estrutura** aos do Mautic, que
+  roteou certo.
+- O certificado Let's Encrypt **foi emitido** para o subdomínio.
+- O log do Traefik não tem **nenhum** erro nem menção ao Portainer.
+- A resposta externa é **307, igual à interna** na porta 9000, com
+  `location: /timeout.html`. Ou seja: o Traefik roteou, e quem responde 307 é
+  o próprio Portainer.
+
+A causa real é o que já estava previsto em `portainer_aviso_primeira_visita`:
+o Portainer encerra a criação do administrador poucos minutos depois de subir
+e passa a servir a própria página de timeout. A versão 2.45 agrega um **token
+de setup**, impresso só no log do container.
+
+O que fazer com isso é decisão de produto, não correção de bug — está em
+Pendências.
+
 ## Pendências
 
-**Nada bloqueia a etapa 8.** O desenho do `--wizard` sobreviveu ao
-teste; a implementação pode começar.
+**Cenário 1 validado de ponta a ponta** em 2026-09-12. A tag `mautic7-v0.1.0`
+fica para depois de as correções deste teste serem revalidadas.
 
-**Correções que o teste tornou obrigatórias:**
+**Decisão de produto em aberto: o Portainer continua neste instalador?**
 
-- `lib/mautic.sh` precisa rodar o instalador com `-d date.timezone=UTC`
-  e com `-w /var/www/html`.
-- A regra "senha por stdin, nunca em argv" precisa ser reescrita para
-  descrever o que é possível.
+Os labels estão certos e o módulo funciona — ver Resultado do teste do cenário
+1. O problema não é técnico, é de encaixe:
+
+- O primeiro acesso do Portainer é deliberadamente hostil a instalação
+  desatendida. A janela de poucos minutos e o token de setup existem para
+  impedir que um terceiro crie o administrador. Automatizar em volta disso
+  significa desligar a postura de segurança dele dentro de um script que
+  promete não fazer nada surpreendente.
+- É a única peça que não consegue honrar a promessa central do projeto,
+  "entrega o painel pronto para login".
+- É também a única cujo sucesso depende de a pessoa agir em minutos, e a única
+  que exige um segundo apontamento de DNS. Os dois maiores geradores de
+  comentário "não funcionou" do projeto.
+
+Alternativa: `dist/portainer.sh` como instalador próprio, no mesmo
+repositório, com README próprio explicando o prazo do primeiro acesso. O
+CLAUDE.md já previa que "o Portainer vira conteúdo do próximo vídeo".
+
+Custo de remover daqui: `lib/portainer.sh` sai, as flags `--portainer` e
+`--portainer-domain` saem, e o inventário de perguntas cai de sete para cinco
+— o que simplifica o fluxo que o vídeo tem de explicar.
 
 **Ainda sem decisão:**
 
-- Log da execução para suporte (caminho, rotação e mascaramento de
-  segredos).
-- `.env.example`, que o `.gitignore` já prevê com `!.env.example` mas
-  não existe.
+- Log da execução para suporte (caminho, rotação e mascaramento de segredos).
+- `.env.example`, que o `.gitignore` já prevê com `!.env.example` mas não
+  existe.

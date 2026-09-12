@@ -49,6 +49,14 @@ PA_NO_SWAP=0
 PA_NAO_INTERATIVO=0
 PA_SEM_CERTRESOLVER=0
 
+# Idioma e fuso da instalação.
+#
+# O Mautic nasce em inglês e, por causa do contorno do fuso no
+# instalador, com fuso UTC. Os dois são corrigidos depois da
+# instalação, em mautic_regionalizar.
+PA_IDIOMA="pt_BR"
+PA_FUSO="America/Sao_Paulo"
+
 # Cenário detectado: 1, 1.5 ou 2.
 PA_CENARIO=""
 
@@ -85,6 +93,8 @@ OPÇÕES
     --traefik-entrypoint=NOME    força o nome do entrypoint
     --traefik-certresolver=NOME  força o nome do certresolver
     --no-certresolver            para quem termina o SSL fora da VPS
+    --idioma=CODIGO              idioma do painel (padrão pt_BR)
+    --fuso=FUSO                  fuso horário (padrão America/Sao_Paulo)
     --wizard                     não conclui a instalação, deixa o
                                  assistente web do Mautic
     --portainer                  instala o Portainer ao final
@@ -124,6 +134,8 @@ main_parse_flags() {
 			--traefik-network=*) PA_TRAEFIK_NETWORK="${arg#*=}" ;;
 			--traefik-entrypoint=*) PA_TRAEFIK_ENTRYPOINT="${arg#*=}" ;;
 			--traefik-certresolver=*) PA_TRAEFIK_CERTRESOLVER="${arg#*=}" ;;
+			--idioma=*) PA_IDIOMA="${arg#*=}" ;;
+			--fuso=*) PA_FUSO="${arg#*=}" ;;
 			--no-certresolver) PA_SEM_CERTRESOLVER=1 ;;
 			--portainer) PA_PORTAINER=1 ;;
 			--portainer-domain=*)
@@ -371,8 +383,23 @@ main_instalar() {
 		ui_ok "Instalação por linha de comando pulada por --wizard"
 		ui_detalhe "Conclua pelo navegador; as credenciais do banco estão"
 		ui_detalhe "no bloco final e em ${PA_MAUTIC_CREDENCIAIS}."
+
+		# Com --wizard o pacote de idioma entra, mas a configuração
+		# não: quem completa o assistente reescreve o local.php no
+		# fim, e gravar idioma e fuso antes disso seria trabalho
+		# jogado fora. Com o pacote no lugar, o idioma já aparece
+		# como opção na tela do assistente.
+		mautic_instalar_idioma "$PA_IDIOMA" || true
+		ui_detalhe "Escolha o idioma e o fuso no próprio assistente."
 	else
 		mautic_instalar "$PA_DOMINIO" "$PA_EMAIL_ADMIN"
+
+		# Só faz sentido depois de o instalador ter criado o
+		# local.php com as chaves. Numa instalação já existente,
+		# respeitar o que a pessoa configurou.
+		if [[ "$PA_MAUTIC_JA_INSTALADO" -eq 0 ]]; then
+			mautic_regionalizar "$PA_IDIOMA" "$PA_FUSO"
+		fi
 	fi
 
 	mautic_subir_resto

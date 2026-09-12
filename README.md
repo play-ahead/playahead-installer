@@ -58,6 +58,8 @@ reaproveitando o que já está lá.
 Em ambos os casos o script gera senhas aleatórias, aguarda os serviços ficarem
 saudáveis de verdade e mostra no final a URL, o usuário e a senha de acesso.
 
+O painel já nasce em português do Brasil, com fuso America/Sao_Paulo.
+
 Se as portas 80 e 443 estiverem ocupadas por um servidor web instalado direto no
 sistema, o script para e mostra quem está ocupando, em vez de tentar contornar.
 
@@ -92,6 +94,8 @@ ele prefere explicar e sair.
     --traefik-entrypoint=NOME    força o nome do entrypoint
     --traefik-certresolver=NOME  força o nome do certresolver
     --no-certresolver            para quem termina o SSL fora da VPS
+    --idioma=CODIGO              idioma do painel (padrão pt_BR)
+    --fuso=FUSO                  fuso horário (padrão America/Sao_Paulo)
     --wizard                     não conclui a instalação, deixa o assistente web
     --portainer                  instala o Portainer ao final
     --portainer-domain=DOMINIO   subdomínio do Portainer
@@ -121,6 +125,41 @@ instalação, sem mensagem de erro clara. Para evitar isso, o script cria um
 arquivo de swap de 2 GB quando encontra menos de 4 GB de RAM e nenhum swap
 configurado. Ele avisa na tela quando faz isso, e `--no-swap` desliga o
 comportamento.
+
+## Limpar o cache
+
+Limpar cache é a primeira coisa que se tenta quando algo estranho acontece no
+Mautic. **Use sempre com `-u www-data`:**
+
+    cd /opt/playahead/mautic
+    docker compose exec -u www-data mautic_web php bin/console cache:clear
+
+O `-u www-data` não é detalhe. Sem ele o comando roda como root, deixa arquivos
+de root no cache, e o Mautic passa a responder **erro 500** porque o Apache não
+consegue mais escrever ali. Foi medido num teste: um `cache:clear` sem a flag
+deixou 30.737 arquivos de root e derrubou o site.
+
+Se isso já aconteceu e o Mautic está em 500, a recuperação é devolver o dono:
+
+    cd /opt/playahead/mautic
+    docker compose exec mautic_web chown -R www-data:www-data /var/www/html/var
+    docker compose exec -u www-data mautic_web php bin/console cache:clear
+
+O `chown` roda como root de propósito: só root consegue devolver os arquivos
+para o `www-data`. Os dois comandos estão no `credenciais.txt` da instalação,
+para não depender de você achar esta página.
+
+## Idioma e fuso horário
+
+A instalação já nasce em português do Brasil e com fuso `America/Sao_Paulo`,
+sem nenhum passo manual. Para outro idioma ou outro fuso:
+
+    sudo bash mautic7.sh --idioma=es --fuso=Europe/Madrid
+
+Os códigos de idioma válidos são os do
+[manifesto oficial do Mautic](https://language-packs.mautic.com/manifest.json).
+Informando um código que não existe lá, o script avisa e segue em inglês, em
+vez de parar a instalação.
 
 ## O que o script NÃO faz
 
