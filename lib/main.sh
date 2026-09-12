@@ -395,14 +395,12 @@ main_portainer() {
 			"Subdomínio do Portainer" "" checks_validar_dominio
 	fi
 
-	if declare -F portainer_instalar >/dev/null; then
-		portainer_instalar "$PA_PORTAINER_DOMINIO" || {
-			ui_aviso "A instalação do Portainer falhou."
-			ui_detalhe "O Mautic não foi afetado e segue no ar."
-		}
-	else
-		ui_aviso "Suporte a Portainer ainda não está nesta versão."
-	fi
+	# Nenhuma função de portainer.sh chama ui_fatal, por decisão de
+	# projeto: aqui o Mautic já está no ar, e uma falha do Portainer
+	# é aviso, não desastre. Daí o `|| true`.
+	portainer_instalar "$PA_PORTAINER_DOMINIO" || true
+
+	portainer_anexar_credenciais "$PA_MAUTIC_CREDENCIAIS"
 }
 
 # ------------------------------------------------------------
@@ -447,6 +445,8 @@ main_bloco_final() {
 		ui_info "Um arquivo de swap de 2 GB foi criado em ${PA_SWAP_CRIADO}"
 		ui_info "porque esta máquina tem pouca memória."
 	fi
+
+	portainer_aviso_primeira_visita
 
 	ui_vazio
 	ui_separador

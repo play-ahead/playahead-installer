@@ -589,7 +589,11 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
     lib/main.sh             orquestrador
     templates/              arquivos docker-compose
 
-Faltam ainda os templates do Traefik e do Portainer; só o do Mautic existe.
+Só o compose do Mautic é template em arquivo. Os do Traefik e do Portainer
+são gerados em código, por `traefik_gerar_compose` e
+`portainer_gerar_compose`: os dois dependem de valores descobertos em
+execução (rede, entrypoint, certresolver), e um template com marcador para
+cada um deles seria mais difícil de ler que o heredoc que o gera.
 
 ## Decisões tomadas
 
