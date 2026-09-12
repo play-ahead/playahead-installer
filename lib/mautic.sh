@@ -175,6 +175,18 @@ mautic_gerar_env() {
 }
 
 # mautic_gravar_compose <caminho_template>
+#
+# Duas origens possíveis para o compose, porque o script vive em
+# dois formatos:
+#
+#   - rodando do repositório, copia templates/*.yml;
+#   - rodando do dist/install.sh, usa a função que o build.sh
+#     embutiu, já que na VPS não existe pasta templates/.
+#
+# O template vai embutido como heredoc, e não em base64, para
+# quem der `less install.sh` conseguir ler o compose que vai ser
+# instalado. Um blob opaco no meio do arquivo derrubaria a
+# promessa de auditabilidade que justifica o passo do `less`.
 mautic_gravar_compose() {
 	local template="$1"
 
@@ -183,6 +195,20 @@ mautic_gravar_compose() {
 	if [[ -f "$PA_MAUTIC_COMPOSE" ]]; then
 		ui_ok "docker-compose.yml já existe; mantido como está"
 		return 0
+	fi
+
+	if declare -F mautic_template_embutido >/dev/null; then
+		mautic_template_embutido >"$PA_MAUTIC_COMPOSE"
+		ui_ok "docker-compose.yml gravado em ${PA_MAUTIC_DIR}"
+		return 0
+	fi
+
+	if [[ ! -f "$template" ]]; then
+		ui_fatal \
+			"Não encontrei o template do compose em ${template}" \
+			"Rodando a partir do repositório, execute na raiz dele." \
+			"Rodando o install.sh publicado, o template deveria estar" \
+			"embutido — sinal de build quebrado. Baixe de novo."
 	fi
 
 	cp "$template" "$PA_MAUTIC_COMPOSE"

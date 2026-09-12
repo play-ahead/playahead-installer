@@ -50,6 +50,18 @@ possível. `--version` imprime os mesmos dados e sai.
 A versão vive numa variável única no fonte; o `build.sh` a propaga para o
 cabeçalho gerado. Regenerar o `dist/` faz parte do commit, não é passo separado.
 
+`./build.sh --check` verifica se o `dist/` está em dia com o `lib/` sem
+reescrever nada, e sai com 1 quando está defasado. Serve para CI e para
+hook de commit, já que a regra é o artefato ser versionado junto.
+
+O build não reescreve o arquivo quando só a data de build mudaria. Um diff
+que altera apenas o timestamp faz o revisor procurar uma alteração que não
+existe.
+
+O template do compose vai embutido como heredoc citado, não em base64: quem
+dá `less install.sh` precisa conseguir ler o compose que será instalado. O
+build confere que o template embutido é byte a byte igual ao original.
+
 ## Requisitos funcionais
 
 O script decide sozinho em qual situação a máquina está. Não são dois estados,
