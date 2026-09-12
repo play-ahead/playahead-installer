@@ -2,7 +2,7 @@
 # Fim de linha
 #
 # O produto deste repositório é um script bash que roda em
-# Ubuntu. Um CRLF que escape para dentro do dist/install.sh faz
+# Ubuntu. Um CRLF que escape para dentro do dist/mautic7.sh faz
 # a VPS responder "bash: \r: command not found" — erro que não
 # diz nada sobre a causa e some quando você olha o arquivo no
 # editor do Windows.

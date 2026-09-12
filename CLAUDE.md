@@ -15,9 +15,9 @@ Ubuntu recém-criada na Hetzner, DigitalOcean ou Contabo.
 
 O script será hospedado em domínio próprio da Play Ahead e executado assim:
 
-    curl -sL https://get.playahead.com.br/mautic7 -o install.sh
-    less install.sh
-    sudo bash install.sh
+    curl -sL https://get.playahead.com.br/mautic7 -o mautic7.sh
+    less mautic7.sh
+    sudo bash mautic7.sh
 
 O tutorial mostra o download separado da execução de propósito, para ensinar a
 pessoa a ler um script antes de rodar.
@@ -29,13 +29,13 @@ O código-fonte é modular (`lib/*.sh`), mas o que é publicado é **um arquivo
 arquivos que não existem na VPS.
 
 `build.sh` concatena `lib/*.sh` dentro do esqueleto do orquestrador e gera
-`dist/install.sh`. É esse arquivo que a URL `get.playahead.com.br/mautic7`
+`dist/mautic7.sh`. É esse arquivo que a URL `get.playahead.com.br/mautic7`
 entrega.
 
-**`dist/install.sh` fica versionado no git.** Qualquer pessoa precisa conseguir
+**`dist/mautic7.sh` fica versionado no git.** Qualquer pessoa precisa conseguir
 abrir o GitHub e auditar exatamente o mesmo conteúdo que o `curl` baixou. Um
 artefato de build que só existe no servidor de distribuição derruba a promessa
-do `less install.sh`.
+do `less mautic7.sh`.
 
 O topo do arquivo gerado carrega, obrigatoriamente:
 
@@ -59,8 +59,44 @@ que altera apenas o timestamp faz o revisor procurar uma alteração que não
 existe.
 
 O template do compose vai embutido como heredoc citado, não em base64: quem
-dá `less install.sh` precisa conseguir ler o compose que será instalado. O
+dá `less mautic7.sh` precisa conseguir ler o compose que será instalado. O
 build confere que o template embutido é byte a byte igual ao original.
+
+### Nome do artefato, versão e tags
+
+O artefato é `dist/mautic7.sh`, com o nome da ferramenta, e não
+`dist/install.sh`. O repositório reúne os instaladores de várias ferramentas,
+e um `install.sh` ao lado de um `chatwoot.sh` faria qualquer pessoa perguntar
+o que o primeiro instala. O `templates/` já usava essa convenção.
+
+Isso foi resolvido antes do lançamento de propósito: é a única parte desta
+decisão que fica mais cara com o tempo. Depois de publicado, mudar o nome
+significa atualizar o redirecionamento, deixar um 404 para quem já tinha o
+link, e conviver com tags antigas apontando para o caminho velho.
+
+`PA_VERSAO` é a versão **deste** instalador, não do repositório: com vários no
+mesmo lugar, cada um versiona por conta própria. Por isso as tags levam o
+prefixo da ferramenta — `mautic7-v0.1.0`. Uma tag `v0.1.0` solta ficaria
+ambígua no dia em que o segundo instalador entrar, e aí conviveriam dois
+formatos.
+
+O script diz qual ferramenta instala, no cabeçalho de tela, no cabeçalho do
+artefato e no `--version`. O nome vive em `PA_FERRAMENTA`, em `lib/main.sh`, e
+não em `lib/ui.sh`: o `ui.sh` é genérico e vai ser reaproveitado pelos
+próximos. Com vários instaladores, a primeira pergunta do suporte deixa de ser
+só "qual versão" e passa a ser "qual instalador".
+
+**O que deliberadamente não foi feito**, para não preparar o projeto para
+instaladores que ainda não existem:
+
+- Multi-alvo no `build.sh`, diretório `targets/`, manifesto. Um alvo fixo se
+  estende depois com um parâmetro ou um laço; não há canto sendo pintado.
+- Separar `lib/` em genérico e por ferramenta. Os módulos já se dividem na
+  prática — `ui`, `checks`, `sistema`, `docker` e `traefik` são genéricos,
+  `mautic` e `main` são específicos — mas mover agora é chutar a divisão sem
+  conhecer o segundo caso.
+- Renomear `lib/main.sh`, que fica ambíguo com dois instaladores. Mesma razão:
+  espera o segundo existir.
 
 ## Requisitos funcionais
 
@@ -332,7 +368,7 @@ o terminal se perder, ela se perde junto.
 - Esperar o healthcheck responder de verdade antes de declarar sucesso. Nada de
   `sleep 120`. Toda espera tem timeout e mensagem dizendo o que está esperando.
 - Mensagens em português, sem jargão desnecessário.
-- Passar em `shellcheck` sem warnings, no fonte e no `dist/install.sh` gerado.
+- Passar em `shellcheck` sem warnings, no fonte e no `dist/mautic7.sh` gerado.
 - Sem rollback. Falhando no meio, o script **não derruba nada**: imprime o
   estado e os comandos de diagnóstico.
 
@@ -380,7 +416,7 @@ Licença MIT. Arquivo `LICENSE` na raiz do repositório. Sem licença explícita
 ninguém tem permissão formal de redistribuir ou modificar o script, e ele vai
 circular.
 
-O `install.sh` traz este bloco como cabeçalho e o imprime na tela no início da
+O artefato publicado traz este bloco como cabeçalho e o imprime na tela no início da
 execução, com uma pausa curta:
 
     # ============================================================
@@ -588,8 +624,8 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
 
 ## Estrutura pretendida
 
-    build.sh                gera dist/install.sh a partir de lib/
-    dist/install.sh         artefato publicado, versionado no git
+    build.sh                gera dist/mautic7.sh a partir de lib/
+    dist/mautic7.sh         artefato publicado, versionado no git
     LICENSE                 MIT
     lib/ui.sh               cores, prompts, mensagens
     lib/checks.sh           pré-checagens

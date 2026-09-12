@@ -6,6 +6,10 @@ Instalador de Mautic 7 em Docker para VPS, mantido pela
 Sobe uma stack completa e pronta para produção: Mautic 7 (web, cron e workers),
 MariaDB, Traefik com certificado SSL automático e, opcionalmente, Portainer.
 
+Este repositório reúne os instaladores da Play Ahead. Hoje só o do Mautic 7
+existe; Chatwoot, Typebot e Evolution API entram depois, cada um com o seu
+próprio arquivo em `dist/`.
+
 ## Requisitos
 
 - VPS com Ubuntu 22.04 ou 24.04, arquitetura x86_64
@@ -24,15 +28,15 @@ certificado SSL não é emitido.
 
 Baixe, leia e execute:
 
-    curl -sL https://get.playahead.com.br/mautic7 -o install.sh
-    less install.sh
-    sudo bash install.sh
+    curl -sL https://get.playahead.com.br/mautic7 -o mautic7.sh
+    less mautic7.sh
+    sudo bash mautic7.sh
 
 O passo do `less` não é enfeite. Nunca execute um script da internet sem ler,
 inclusive este.
 
 O arquivo que o `curl` entrega é o
-[`dist/install.sh`](dist/install.sh) deste repositório, exatamente como está
+[`dist/mautic7.sh`](dist/mautic7.sh) deste repositório, exatamente como está
 aqui. Você pode auditar no GitHub antes de baixar, e o cabeçalho do arquivo traz
 o número da versão e a data do build.
 

@@ -180,11 +180,11 @@ mautic_gerar_env() {
 # dois formatos:
 #
 #   - rodando do repositório, copia templates/*.yml;
-#   - rodando do dist/install.sh, usa a função que o build.sh
+#   - rodando do dist/mautic7.sh, usa a função que o build.sh
 #     embutiu, já que na VPS não existe pasta templates/.
 #
 # O template vai embutido como heredoc, e não em base64, para
-# quem der `less install.sh` conseguir ler o compose que vai ser
+# quem der `less mautic7.sh` conseguir ler o compose que vai ser
 # instalado. Um blob opaco no meio do arquivo derrubaria a
 # promessa de auditabilidade que justifica o passo do `less`.
 mautic_gravar_compose() {
@@ -207,7 +207,7 @@ mautic_gravar_compose() {
 		ui_fatal \
 			"Não encontrei o template do compose em ${template}" \
 			"Rodando a partir do repositório, execute na raiz dele." \
-			"Rodando o install.sh publicado, o template deveria estar" \
+			"Rodando o instalador publicado, o template deveria estar" \
 			"embutido — sinal de build quebrado. Baixe de novo."
 	fi
 

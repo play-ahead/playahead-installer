@@ -10,7 +10,7 @@
 # orquestrador depois do parse das flags.
 #
 # Depois do build.sh este arquivo vira um trecho do
-# dist/install.sh e passa a dividir o escopo global com as
+# dist/mautic7.sh e passa a dividir o escopo global com as
 # outras libs. Daí duas regras que valem para o arquivo todo:
 #
 #   1. Todo nome público leva prefixo ui_ ou PA_.
@@ -200,6 +200,8 @@ ui_cabecalho() {
 	ui_vazio
 	ui_linha "${PA_COR_TITULO}============================================================${PA_COR_RESET}"
 	ui_linha "${PA_COR_TITULO}${PA_COR_DESTAQUE} PLAY AHEAD INSTALLER${PA_COR_RESET}"
+	[[ -n "${PA_FERRAMENTA:-}" ]] &&
+		ui_linha "${PA_COR_TITULO} ${PA_FERRAMENTA}${PA_COR_RESET}"
 	ui_linha " https://playahead.com.br"
 	ui_linha " Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08"
 	ui_vazio

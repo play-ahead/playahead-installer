@@ -3,14 +3,14 @@
 #
 # ============================================================
 # build.sh
-# Gera dist/install.sh a partir de lib/*.sh.
+# Gera dist/mautic7.sh a partir de lib/*.sh.
 #
 # O código-fonte é modular, mas o que é publicado é um arquivo
 # único: um script baixado sozinho por curl não consegue dar
 # source em arquivos que não existem na VPS.
 #
 # USO
-#     ./build.sh            gera dist/install.sh
+#     ./build.sh            gera dist/mautic7.sh
 #     ./build.sh --check    só verifica se o dist está em dia
 #                           (para CI e para o hook de commit)
 # ============================================================
@@ -37,7 +37,7 @@ PA_LIBS=(
 	main
 )
 
-PA_SAIDA="dist/install.sh"
+PA_SAIDA="dist/mautic7.sh"
 PA_TEMPLATE="templates/docker-compose-mautic7-playahead.yml"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
@@ -59,33 +59,37 @@ info() {
 }
 
 # ------------------------------------------------------------
-# Versão
+# Leitura do fonte
 #
-# Fonte única: a variável PA_VERSAO em lib/main.sh. O build só
-# propaga, nunca decide. Ter a versão em dois lugares é como não
-# ter versão nenhuma.
+# Fonte única: as variáveis vivem em lib/main.sh e o build só
+# propaga, nunca decide. Ter a versão ou o nome da ferramenta em
+# dois lugares é como não ter nenhum dos dois.
 # ------------------------------------------------------------
 
-ler_versao() {
-	local versao
-	versao="$(
-		awk -F'"' '/^PA_VERSAO=/ {print $2; exit}' lib/main.sh
+# ler_var <nome>
+ler_var() {
+	local nome="$1"
+	local valor
+
+	valor="$(
+		awk -F'"' -v n="^${nome}=" '$0 ~ n {print $2; exit}' lib/main.sh
 	)"
 
-	[[ -n "$versao" ]] || erro "não achei PA_VERSAO em lib/main.sh"
+	[[ -n "$valor" ]] || erro "não achei ${nome} em lib/main.sh"
 
-	printf '%s\n' "$versao"
+	printf '%s\n' "$valor"
 }
 
 # ------------------------------------------------------------
 # Geração
 # ------------------------------------------------------------
 
-# gerar <arquivo_destino> <versao> <build>
+# gerar <arquivo_destino> <versao> <build> <ferramenta>
 gerar() {
 	local destino="$1"
 	local versao="$2"
 	local build="$3"
+	local ferramenta="$4"
 
 	local lib
 	for lib in "${PA_LIBS[@]}"; do
@@ -101,12 +105,13 @@ gerar() {
 	{
 		# O cabeçalho é o mesmo bloco de licença e aviso que o
 		# script imprime na tela, mais os dados de versão. Quem
-		# der `less install.sh` vê isso nas primeiras linhas, o
+		# der `less mautic7.sh` vê isso nas primeiras linhas, o
 		# que é justamente o ponto do passo do `less`.
 		cat <<CABECALHO
 #!/usr/bin/env bash
 # ============================================================
 # PLAY AHEAD INSTALLER
+# ${ferramenta}
 # https://playahead.com.br
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
@@ -246,14 +251,15 @@ corpo() {
 
 modo="${1:-gerar}"
 
-versao="$(ler_versao)"
+versao="$(ler_var PA_VERSAO)"
+ferramenta="$(ler_var PA_FERRAMENTA)"
 build="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 temporario="$(mktemp)"
 # shellcheck disable=SC2064
 # Expandir agora é o que se quer: o caminho não muda mais.
 trap "rm -f '$temporario'" EXIT
 
-gerar "$temporario" "$versao" "$build"
+gerar "$temporario" "$versao" "$build" "$ferramenta"
 validar "$temporario"
 
 case "$modo" in

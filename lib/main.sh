@@ -5,7 +5,7 @@
 # lib/main.sh
 # Orquestrador: flags, ordem das etapas e bloco final.
 #
-# Depende de todas as outras libs. No dist/install.sh gerado
+# Depende de todas as outras libs. No dist/mautic7.sh gerado
 # pelo build.sh, este é o último trecho, e a chamada a
 # `main "$@"` fica no rodapé do arquivo.
 #
@@ -18,7 +18,7 @@
 # ------------------------------------------------------------
 # Versão
 #
-# O build.sh substitui estes dois valores no dist/install.sh.
+# O build.sh substitui estes dois valores no dist/mautic7.sh.
 # Rodando direto do repositório eles ficam como estão, o que é
 # sinal de que não é um artefato publicado.
 # ------------------------------------------------------------
@@ -26,6 +26,13 @@
 PA_VERSAO="0.1.0"
 PA_BUILD="desenvolvimento"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
+
+# Qual ferramenta este instalador instala.
+#
+# Fica aqui, e não em lib/ui.sh, porque ui.sh é genérico e vai
+# ser reaproveitado pelos próximos instaladores do repositório.
+# O build.sh lê esta variável para o cabeçalho do artefato.
+PA_FERRAMENTA="Mautic 7 em Docker"
 
 # ------------------------------------------------------------
 # Respostas e flags
@@ -45,7 +52,7 @@ PA_SEM_CERTRESOLVER=0
 # Cenário detectado: 1, 1.5 ou 2.
 PA_CENARIO=""
 
-# Caminho do template do compose. No dist/install.sh o template
+# Caminho do template do compose. No dist/mautic7.sh o template
 # vai embutido; aqui aponta para o repositório.
 PA_TEMPLATE_MAUTIC="templates/docker-compose-mautic7-playahead.yml"
 
@@ -54,7 +61,7 @@ PA_TEMPLATE_MAUTIC="templates/docker-compose-mautic7-playahead.yml"
 # ------------------------------------------------------------
 
 main_versao() {
-	printf 'Play Ahead Installer\n'
+	printf 'Play Ahead Installer - %s\n' "$PA_FERRAMENTA"
 	printf 'Versão: %s\n' "$PA_VERSAO"
 	printf 'Build:  %s\n' "$PA_BUILD"
 	printf 'Fonte:  %s\n' "$PA_FONTE"
@@ -65,7 +72,7 @@ main_ajuda() {
 Play Ahead Installer - Mautic 7 em Docker
 
 USO
-    sudo bash install.sh [opções]
+    sudo bash mautic7.sh [opções]
 
 Sem nenhuma opção, o script pergunta o que precisa e instala.
 Com as opções abaixo mais --yes, roda sem perguntar nada.
@@ -89,9 +96,9 @@ OPÇÕES
     --version                    mostra a versão e a data do build
 
 EXEMPLOS
-    sudo bash install.sh
+    sudo bash mautic7.sh
 
-    sudo bash install.sh --domain=mautic.exemplo.com.br \
+    sudo bash mautic7.sh --domain=mautic.exemplo.com.br \
         --acme-email=voce@exemplo.com.br --yes
 
 DOCUMENTAÇÃO

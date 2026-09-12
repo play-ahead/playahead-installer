@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================
 # PLAY AHEAD INSTALLER
+# Mautic 7 em Docker
 # https://playahead.com.br
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-12T14:19:31Z
+# Build:  2026-09-12T14:37:51Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -44,7 +45,7 @@ set -euo pipefail
 # orquestrador depois do parse das flags.
 #
 # Depois do build.sh este arquivo vira um trecho do
-# dist/install.sh e passa a dividir o escopo global com as
+# dist/mautic7.sh e passa a dividir o escopo global com as
 # outras libs. Daí duas regras que valem para o arquivo todo:
 #
 #   1. Todo nome público leva prefixo ui_ ou PA_.
@@ -234,6 +235,8 @@ ui_cabecalho() {
 	ui_vazio
 	ui_linha "${PA_COR_TITULO}============================================================${PA_COR_RESET}"
 	ui_linha "${PA_COR_TITULO}${PA_COR_DESTAQUE} PLAY AHEAD INSTALLER${PA_COR_RESET}"
+	[[ -n "${PA_FERRAMENTA:-}" ]] &&
+		ui_linha "${PA_COR_TITULO} ${PA_FERRAMENTA}${PA_COR_RESET}"
 	ui_linha " https://playahead.com.br"
 	ui_linha " Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08"
 	ui_vazio
@@ -570,12 +573,12 @@ PA_ARQS_PROC_TCP=("/proc/net/tcp" "/proc/net/tcp6")
 #
 # O instalador usa nameref (`local -n`), que exige bash 4.3.
 # Ubuntu 22.04 traz o 5.1, então isto só dispara se alguém rodar
-# com `sh install.sh` num sistema onde /bin/sh não é bash.
+# com `sh mautic7.sh` num sistema onde /bin/sh não é bash.
 checks_bash() {
 	if [[ -z "${BASH_VERSION:-}" ]]; then
 		ui_fatal \
 			"Este script precisa do bash." \
-			"Rode com: sudo bash install.sh"
+			"Rode com: sudo bash ${0}"
 	fi
 
 	if [[ "${BASH_VERSINFO[0]}" -lt 4 ]] ||
@@ -604,7 +607,7 @@ checks_root() {
 			"Este script precisa de privilégio de administrador." \
 			"Rode de novo assim:" \
 			"" \
-			"    sudo bash install.sh" \
+			"    sudo bash ${0}" \
 			"" \
 			"Ele não chama sudo sozinho de propósito: um script que" \
 			"pede para ser lido antes de rodar não deveria escalar" \
@@ -2816,11 +2819,11 @@ mautic_gerar_env() {
 # dois formatos:
 #
 #   - rodando do repositório, copia templates/*.yml;
-#   - rodando do dist/install.sh, usa a função que o build.sh
+#   - rodando do dist/mautic7.sh, usa a função que o build.sh
 #     embutiu, já que na VPS não existe pasta templates/.
 #
 # O template vai embutido como heredoc, e não em base64, para
-# quem der `less install.sh` conseguir ler o compose que vai ser
+# quem der `less mautic7.sh` conseguir ler o compose que vai ser
 # instalado. Um blob opaco no meio do arquivo derrubaria a
 # promessa de auditabilidade que justifica o passo do `less`.
 mautic_gravar_compose() {
@@ -2843,7 +2846,7 @@ mautic_gravar_compose() {
 		ui_fatal \
 			"Não encontrei o template do compose em ${template}" \
 			"Rodando a partir do repositório, execute na raiz dele." \
-			"Rodando o install.sh publicado, o template deveria estar" \
+			"Rodando o instalador publicado, o template deveria estar" \
 			"embutido — sinal de build quebrado. Baixe de novo."
 	fi
 
@@ -3135,7 +3138,7 @@ mautic_verificar_roteamento() {
 # lib/main.sh
 # Orquestrador: flags, ordem das etapas e bloco final.
 #
-# Depende de todas as outras libs. No dist/install.sh gerado
+# Depende de todas as outras libs. No dist/mautic7.sh gerado
 # pelo build.sh, este é o último trecho, e a chamada a
 # `main "$@"` fica no rodapé do arquivo.
 #
@@ -3148,14 +3151,21 @@ mautic_verificar_roteamento() {
 # ------------------------------------------------------------
 # Versão
 #
-# O build.sh substitui estes dois valores no dist/install.sh.
+# O build.sh substitui estes dois valores no dist/mautic7.sh.
 # Rodando direto do repositório eles ficam como estão, o que é
 # sinal de que não é um artefato publicado.
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-12T14:19:31Z"
+PA_BUILD="2026-09-12T14:37:51Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
+
+# Qual ferramenta este instalador instala.
+#
+# Fica aqui, e não em lib/ui.sh, porque ui.sh é genérico e vai
+# ser reaproveitado pelos próximos instaladores do repositório.
+# O build.sh lê esta variável para o cabeçalho do artefato.
+PA_FERRAMENTA="Mautic 7 em Docker"
 
 # ------------------------------------------------------------
 # Respostas e flags
@@ -3175,7 +3185,7 @@ PA_SEM_CERTRESOLVER=0
 # Cenário detectado: 1, 1.5 ou 2.
 PA_CENARIO=""
 
-# Caminho do template do compose. No dist/install.sh o template
+# Caminho do template do compose. No dist/mautic7.sh o template
 # vai embutido; aqui aponta para o repositório.
 PA_TEMPLATE_MAUTIC="templates/docker-compose-mautic7-playahead.yml"
 
@@ -3184,7 +3194,7 @@ PA_TEMPLATE_MAUTIC="templates/docker-compose-mautic7-playahead.yml"
 # ------------------------------------------------------------
 
 main_versao() {
-	printf 'Play Ahead Installer\n'
+	printf 'Play Ahead Installer - %s\n' "$PA_FERRAMENTA"
 	printf 'Versão: %s\n' "$PA_VERSAO"
 	printf 'Build:  %s\n' "$PA_BUILD"
 	printf 'Fonte:  %s\n' "$PA_FONTE"
@@ -3195,7 +3205,7 @@ main_ajuda() {
 Play Ahead Installer - Mautic 7 em Docker
 
 USO
-    sudo bash install.sh [opções]
+    sudo bash mautic7.sh [opções]
 
 Sem nenhuma opção, o script pergunta o que precisa e instala.
 Com as opções abaixo mais --yes, roda sem perguntar nada.
@@ -3219,9 +3229,9 @@ OPÇÕES
     --version                    mostra a versão e a data do build
 
 EXEMPLOS
-    sudo bash install.sh
+    sudo bash mautic7.sh
 
-    sudo bash install.sh --domain=mautic.exemplo.com.br \
+    sudo bash mautic7.sh --domain=mautic.exemplo.com.br \
         --acme-email=voce@exemplo.com.br --yes
 
 DOCUMENTAÇÃO

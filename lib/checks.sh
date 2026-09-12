@@ -98,12 +98,12 @@ PA_ARQS_PROC_TCP=("/proc/net/tcp" "/proc/net/tcp6")
 #
 # O instalador usa nameref (`local -n`), que exige bash 4.3.
 # Ubuntu 22.04 traz o 5.1, então isto só dispara se alguém rodar
-# com `sh install.sh` num sistema onde /bin/sh não é bash.
+# com `sh mautic7.sh` num sistema onde /bin/sh não é bash.
 checks_bash() {
 	if [[ -z "${BASH_VERSION:-}" ]]; then
 		ui_fatal \
 			"Este script precisa do bash." \
-			"Rode com: sudo bash install.sh"
+			"Rode com: sudo bash ${0}"
 	fi
 
 	if [[ "${BASH_VERSINFO[0]}" -lt 4 ]] ||
@@ -132,7 +132,7 @@ checks_root() {
 			"Este script precisa de privilégio de administrador." \
 			"Rode de novo assim:" \
 			"" \
-			"    sudo bash install.sh" \
+			"    sudo bash ${0}" \
 			"" \
 			"Ele não chama sudo sozinho de propósito: um script que" \
 			"pede para ser lido antes de rodar não deveria escalar" \
