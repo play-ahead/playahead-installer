@@ -286,8 +286,27 @@ gerar() {
 		# script imprime na tela, mais os dados de versão. Quem dá
 		# `less` vê isso nas primeiras linhas, o que é justamente o
 		# ponto daquele passo do tutorial.
+		#
+		# E, antes de tudo, as instruções do próprio `less`. No
+		# teste de 2026-09-30 a pessoa ficou presa dentro dele sem
+		# saber que estava num paginador nem como sair. O tutorial
+		# manda dar `less` em um arquivo de milhares de linhas, e
+		# quem nunca usou um paginador não tem como adivinhar que
+		# `q` sai. Custa dez linhas e é a primeira coisa que
+		# aparece na tela em todo o fluxo.
 		cat <<CABECALHO
 #!/usr/bin/env bash
+# ============================================================
+# VOCÊ ESTÁ LENDO UM ARQUIVO. NADA FOI INSTALADO AINDA.
+#
+# Se esta tela apareceu depois de um comando \`less\`, é o
+# \`less\` que está mostrando o arquivo para você conferir.
+#
+#   seta para baixo, seta para cima    rolam uma linha
+#   Espaço                             rola uma tela
+#   q                                  sai e volta para o terminal
+#
+# Para instalar, aperte q e rode o próximo comando do tutorial.
 # ============================================================
 # PLAY AHEAD INSTALLER
 # ${ferramenta}

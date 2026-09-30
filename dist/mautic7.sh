@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
 # ============================================================
+# VOCÊ ESTÁ LENDO UM ARQUIVO. NADA FOI INSTALADO AINDA.
+#
+# Se esta tela apareceu depois de um comando `less`, é o
+# `less` que está mostrando o arquivo para você conferir.
+#
+#   seta para baixo, seta para cima    rolam uma linha
+#   Espaço                             rola uma tela
+#   q                                  sai e volta para o terminal
+#
+# Para instalar, aperte q e rode o próximo comando do tutorial.
+# ============================================================
 # PLAY AHEAD INSTALLER
 # Mautic 7 em Docker
 # https://playahead.com.br
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-30T19:45:33Z
+# Build:  2026-09-30T19:46:34Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -2675,7 +2686,7 @@ mautic_verificar_roteamento() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-30T19:45:33Z"
+PA_BUILD="2026-09-30T19:46:34Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
