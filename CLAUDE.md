@@ -92,7 +92,7 @@ link, e conviver com tags antigas apontando para o caminho velho.
 
 `PA_VERSAO` é a versão **deste** instalador, não do repositório: com vários no
 mesmo lugar, cada um versiona por conta própria. Por isso as tags levam o
-prefixo da ferramenta — `mautic7-v0.1.0`. Uma tag `v0.1.0` solta ficaria
+prefixo da ferramenta: `mautic7-v0.1.0`. Uma tag `v0.1.0` solta ficaria
 ambígua no dia em que o segundo instalador entrar, e aí conviveriam dois
 formatos.
 
@@ -135,7 +135,7 @@ pronto na tela e encerra com 1, sem tocar em nada.** Não baixa a base, não a
 executa, e não pergunta se pode.
 
 Motivo: a promessa central do projeto é `less` antes de rodar. Um script que
-busca e executa outro por conta própria quebra isso — a pessoa leu um arquivo e
+busca e executa outro por conta própria quebra isso: a pessoa leu um arquivo e
 dois rodaram. Essa decisão também elimina a necessidade de hash embutido, de
 verificação de assinatura e da pergunta de autorização.
 
@@ -170,7 +170,7 @@ que leva minutos, faria o prazo expirar sempre.
 escolha por número, uma ferramenta por vez.
 
 **O menu contém os instaladores, não os busca.** O `build.sh` embute o
-`base.sh` e o `mautic7.sh` dentro dele como heredoc citado — mesmo mecanismo do
+`base.sh` e o `mautic7.sh` dentro dele como heredoc citado, mesmo mecanismo do
 template do compose. Escolhido o número, o menu grava o instalador no
 diretório atual e passa o terminal para ele com `exec`.
 
@@ -182,7 +182,7 @@ executa outro. O que se ganha:
 - sem colisão de nomes: os instaladores entram como texto, não como código
   concatenado, e cada um mantém o seu `main`, `PA_VERSAO` e `PA_FERRAMENTA`;
 - o `$0` do instalador fica certo, porque ele roda de um arquivo com o nome
-  real em vez de um temporário — verificado, sai `./base.sh`;
+  real em vez de um temporário (verificado, sai `./base.sh`);
 - a pessoa fica com os scripts no disco, para reler e reusar.
 
 O preço é o tamanho: cerca de 7.600 linhas. Como um `less` nisso é pesado, o
@@ -199,19 +199,35 @@ a lista virar um painel.
 Sem terminal, o menu recusa e manda usar os instaladores direto. Isso também
 cobre quem tenta `curl | bash`.
 
+## Escrita: o projeto não usa travessão
+
+Nem na tela, nem em comentário de código, nem neste documento. Onde a frase
+pedir travessão, use dois-pontos, parênteses, vírgula ou ponto.
+
+Vale para comentário porque a promessa central do projeto é `less` antes de
+rodar: os comentários são lidos na tela, junto com o código, e não são
+bastidor.
+
+Motivo prático: o travessão exige atenção de quem lê para descobrir se abre
+aparte, substitui dois-pontos ou liga duas orações, e essa atenção é melhor
+gasta no que a frase diz. Em tabela, onde o travessão servia de "não se
+aplica", use hífen.
+
+Aplicado em 2026-09-30. Antes disso havia 29 em `lib/` e 38 neste arquivo.
+
 ## Requisitos funcionais
 
 Quem decide em qual situação a máquina está é `lib/cenario.sh`, compartilhado
-pelos dois instaladores. Não são dois estados, são cinco — e as duas linhas que
+pelos dois instaladores. Não são dois estados, são cinco, e as duas linhas que
 abortam só interessam a quem vai subir um proxy, ou seja, à base:
 
 | Docker  | Traefik  | Portas 80/443 | Situação        | Ação                                  |
 |---------|----------|---------------|-----------------|---------------------------------------|
-| ausente | —        | livres        | **Cenário 1**   | a base instala Docker, Compose e Traefik |
-| ausente | —        | ocupadas      | bloqueado       | a base **aborta**: há servidor web no host |
+| ausente | -        | livres        | **Cenário 1**   | a base instala Docker, Compose e Traefik |
+| ausente | -        | ocupadas      | bloqueado       | a base **aborta**: há servidor web no host |
 | presente| ausente  | livres        | **Cenário 1.5** | a base pula o Docker e instala o Traefik |
 | presente| ausente  | ocupadas      | ambíguo         | a base **aborta**, mostrando quem ocupa |
-| presente| rodando  | —             | **Cenário 2**   | base pronta; a ferramenta pode instalar |
+| presente| rodando  | -             | **Cenário 2**   | base pronta; a ferramenta pode instalar |
 
 Para o instalador de ferramenta não existem cinco estados, existem dois: a base
 está pronta, ou falta rodar a base. Nos cenários 1 e 1.5 ele diz o que falta e
@@ -302,7 +318,7 @@ tela qual serviço está sendo consultado e por quê: a documentação promete q
 script não envia nada, e consultar um terceiro carregando o IP da VPS merece ser
 anunciado.
 
-A resolução do domínio usa `getent hosts`, não `dig` — `dnsutils` não vem
+A resolução do domínio usa `getent hosts`, e não `dig`: `dnsutils` não vem
 instalado no Ubuntu limpo.
 
 **Cloudflare com proxy ativo dá falso positivo e não é caso raro no nosso
@@ -333,13 +349,13 @@ nenhum, criar um swapfile de 2 GB**, anunciando na tela. `--no-swap`
 desliga.
 
 O limiar é 3800 MB, não 4096. Uma VPS vendida como "4 GB" reporta 3915 MB
-depois do que o kernel reserva — medido na máquina de teste. Comparar com
+depois do que o kernel reserva, medido na máquina de teste. Comparar com
 4096 daria swap a toda máquina de 4 GB, que não precisa. É a mesma correção
 que levou o piso de RAM a ser 1900 e não 2048.
 
 Motivo: 2 GB é o piso do README, e MariaDB mais três containers PHP nesse
 espaço colocam o `cache:warmup` do Symfony em risco de OOM. OOM não deixa
-mensagem clara — o container simplesmente morre. É uma das falhas mais confusas
+mensagem clara: o container simplesmente morre. É uma das falhas mais confusas
 que existem e resolvê-la na origem custa três linhas.
 
 Criar swap é aditivo, não viola a regra de nada destrutivo. Cuidados:
@@ -396,9 +412,9 @@ o que saiu do `mautic7.sh` saiu porque a responsabilidade mudou de dono.
 
 | # | Pergunta | Quando | Default | Flag |
 |---|---|---|---|---|
-| 1 | E-mail para o Let's Encrypt | só se vai instalar o Traefik | — | `--acme-email=` |
-| 2 | Subdomínio do Portainer | só com `--portainer` | — | `--portainer-domain=` |
-| 3 | Continuar em Ubuntu LTS não testado? | só se o SO for LTS mais nova | sim | — |
+| 1 | E-mail para o Let's Encrypt | só se vai instalar o Traefik | - | `--acme-email=` |
+| 2 | Subdomínio do Portainer | só com `--portainer` | - | `--portainer-domain=` |
+| 3 | Continuar em Ubuntu LTS não testado? | só se o SO for LTS mais nova | sim | - |
 
 **mautic7.sh**
 
@@ -407,7 +423,7 @@ o que saiu do `mautic7.sh` saiu porque a responsabilidade mudou de dono.
 | 1 | Domínio do Mautic | bloco único | obrigatória | `--domain=` |
 | 2 | E-mail do admin | bloco único | `admin@dominio` | `--admin-email=` |
 | 3 | Confirmar valores do Traefik | bloco único, sempre | aceitar o detectado | `--traefik-*` |
-| 4 | Continuar em Ubuntu LTS não testado? | só se o SO for LTS mais nova | sim | — |
+| 4 | Continuar em Ubuntu LTS não testado? | só se o SO for LTS mais nova | sim | - |
 
 Duas mudanças com a separação da base: a pergunta do Portainer saiu do
 instalador de ferramenta, porque ele mora na base; e a confirmação do Traefik
@@ -437,10 +453,10 @@ quem é e parar.
 Extração dos valores, em ordem de precedência. Cada valor guarda de onde veio,
 para aparecer na tela na hora da confirmação:
 
-1. `Cmd` / `Args` / `Entrypoint` do `docker inspect` — procurar
+1. `Cmd` / `Args` / `Entrypoint` do `docker inspect`, procurando
    `--entrypoints.<nome>.address=:443` e `--certificatesresolvers.<nome>.acme.*`
 2. variáveis de ambiente do container (`TRAEFIK_ENTRYPOINTS_*`,
-   `TRAEFIK_CERTIFICATESRESOLVERS_*`) — o Traefik aceita configuração por env
+   `TRAEFIK_CERTIFICATESRESOLVERS_*`): o Traefik aceita configuração por env
 3. labels do próprio container do Traefik
 4. **arquivo estático lido de dentro do container** (`traefik.yml`, `.yaml`).
    É o formato que os instaladores populares mais usam, e uma detecção que só
@@ -471,12 +487,12 @@ resolver. Além disso, o mesmo script roda nas instalações do serviço pago, o
 preencher formulário no navegador a cada cliente não escala.
 
 Uma flag `--wizard` pula o `mautic:install` e deixa o assistente web aparecer,
-para quem quiser acompanhar o processo. **É um `if` no final, não um caminho paralelo** — confirmado pelo
+para quem quiser acompanhar o processo. **É um `if` no final, não um caminho paralelo**, confirmado pelo
 teste B14: as variáveis de ambiente configuram só a conexão com o banco, e a
 imagem não conclui a instalação sozinha.
 
 Com `--wizard`, o bloco final precisa imprimir também **as credenciais do
-banco** — host `mariadb`, usuário `mautic` e a senha gerada. Sem isso a pessoa
+banco**: host `mariadb`, usuário `mautic` e a senha gerada. Sem isso a pessoa
 não completa o assistente, porque a senha nasceu dentro do script.
 
 Cuidados obrigatórios:
@@ -487,7 +503,7 @@ Cuidados obrigatórios:
   `mautic:user:create`. Ela não entra no histórico do shell, porque quem
   monta a linha é o script, e não aparece em `docker inspect`, porque não
   é variável de ambiente do container. Aparece num `ps` do host durante os
-  segundos do comando, e isso não tem contorno — ver Resultado do teste B14.
+  segundos do comando, e isso não tem contorno. Ver Resultado do teste B14.
 - Rodar o instalador com `-d date.timezone=UTC` e `-w /var/www/html`.
   Sem o override, toda instalação brasileira falha na checagem de
   requisitos; sem o `-w`, o console nem é encontrado.
@@ -534,8 +550,8 @@ gera erro de autenticação que parece bug do script.
 
 Depois de subir, o script faz `curl` no domínio, de fora, e espera 200 ou 302.
 
-Devolvendo 404, a mensagem é específica — "o Traefik respondeu, mas não roteou
-para o Mautic" — lista os três valores usados, diz que provavelmente estão
+Devolvendo 404, a mensagem é específica ("o Traefik respondeu, mas não roteou
+para o Mautic"), lista os três valores usados, diz que provavelmente estão
 errados e mostra como corrigir editando o `.env` e rodando `up -d`. Não derruba
 nada.
 
@@ -681,7 +697,7 @@ Ajustes do template, aplicados e validados em VPS:
 - **Cabeçalho reescrito.** O anterior mandava completar o assistente de
   instalação, contradizendo o que o script faz. O novo diz que o arquivo é
   gerado pelo instalador, e traz o passo a passo manual para quem usar o
-  template sozinho — incluindo o `-d date.timezone=UTC`, sem o qual a
+  template sozinho, incluindo o `-d date.timezone=UTC`, sem o qual a
   instalação por CLI reprova.
 - **Volume para `docroot/translations`**, nos três serviços do Mautic. Motivo
   na seção abaixo.
@@ -690,7 +706,7 @@ Ajustes do template, aplicados e validados em VPS:
 
 O pacote de idioma pt_BR é instalado em tempo de execução e fica em
 `docroot/translations/`. Esse caminho não estava em volume nenhum, então
-**sumia toda vez que o container fosse recriado** — o que acontece em qualquer
+**sumia toda vez que o container fosse recriado**, o que acontece em qualquer
 `docker compose up -d` depois de mudar o compose, ou ao atualizar a imagem.
 
 Confirmado na VPS de teste: com `pt_BR` instalado, um
@@ -705,7 +721,7 @@ existe `mautic:language:install`. Instalar o idioma é ação de interface.
 **Volume nomeado, e não bind mount.** A imagem traz um `.htaccess` com
 `deny from all` nesse diretório, protegendo os arquivos de acesso pela web.
 Volume nomeado vazio recebe uma cópia do conteúdo da imagem na primeira
-subida, e o `.htaccess` vai junto — verificado. Bind mount não copia nada da
+subida, e o `.htaccess` vai junto, verificado. Bind mount não copia nada da
 imagem: o diretório nasceria vazio, sem a proteção.
 
 Risco conhecido e aceito: volume nomeado sombreia atualizações futuras da
@@ -854,7 +870,7 @@ sempre a partir do estado zero.
 ## Comandos validados em VPS
 
 Validados em 2026-09-01, numa DigitalOcean Ubuntu 24.04.4 LTS, x86_64,
-3915 MB de RAM, sem swap, Docker ausente e portas 80/443 livres —
+3915 MB de RAM, sem swap, Docker ausente e portas 80/443 livres:
 cenário 1 puro. São a base de `lib/docker.sh` e `lib/traefik.sh`.
 
 ### Inventário da imagem virgem
@@ -1050,8 +1066,8 @@ caminho padrão do script falharia em 100% das instalações brasileiras.
 
 ### A senha do admin não pode ir por stdin
 
-O requisito registrado neste documento — "entregar por stdin, nunca em
-`argv`" — **não é atendível** com o Mautic 7.
+O requisito registrado neste documento, "entregar por stdin, nunca em
+`argv`", **não é atendível** com o Mautic 7.
 
 Testado: omitir `--admin_password` e alimentar a senha pelo stdin faz o
 comando chegar ao passo 2 e abortar com `[password] A value is
@@ -1085,7 +1101,7 @@ Confirmado que a imagem substitui as variáveis dentro do `php.ini`:
 Por ser o `php.ini`, vale para CLI e Apache igualmente. Medido no CLI:
 `memory_limit` 1024M, `upload_max_filesize` 512M, `post_max_size` 512M,
 `date.timezone` America/Sao_Paulo. O `max_execution_time` aparece como
-0 no CLI, que é o normal — o valor 300 vale para o SAPI web.
+0 no CLI, que é o normal: o valor 300 vale para o SAPI web.
 
 **`PHP_INI_VALUE_POST_MAX_FILESIZE` confirmado na prática**: alimenta
 `post_max_size`. A armadilha registrada neste documento está certa e
@@ -1103,7 +1119,7 @@ pede:
 A tabela `messenger_messages` existe. O `doctrine://default` sem aspas
 funciona como documentado.
 
-O `mautic_cron` tem espera própria por banco no entrypoint — o log
+O `mautic_cron` tem espera própria por banco no entrypoint: o log
 mostra "MySQL is not ready yet, waiting..." seguido de "MySQL is alive
 and well". Isso reduz, mas não elimina, o motivo da subida em três
 tempos: a espera dele é pelo banco responder, não pelo Mautic estar
@@ -1133,7 +1149,7 @@ lá dentro.
 
 O piso de 10 GB em `PA_DISCO_MINIMO_MB` está validado: sobra folga
 sobre os 4,4 GB de instalação limpa. O de RAM também: 1152 MB ociosos
-significam que uma máquina de 2 GB funciona, mas sem margem — o que
+significam que uma máquina de 2 GB funciona, mas sem margem, o que
 sustenta a decisão do swapfile.
 
 ## Laço de redirecionamento: o proxy confiável
@@ -1208,7 +1224,7 @@ este arquivo não é reescrito por ninguém: nem pelo `mautic:install`, nem pelo
 assistente web, nem pelo "salvar configuração" do painel. Os três reescrevem o
 `local.php` e não conhecem esta chave. Gravada no `local.php`, a correção
 sobreviveria à instalação e morreria no dia em que a pessoa salvasse qualquer
-ajuste na interface — falha adiada, que é a pior de explicar.
+ajuste na interface. Falha adiada, que é a pior de explicar.
 
 `0.0.0.0/0` e não faixa privada nem IP do container: a porta 80 do
 `mautic_web` não é publicada no host, então só o Traefik alcança o Apache. A
@@ -1234,7 +1250,7 @@ primeira coisa que se tenta quando algo dá errado.
 `docker compose exec` entra como **root** por padrão. O Apache roda como
 `www-data`, e `var/cache` **não está em volume**: vive na camada de escrita do
 container, de dono `www-data`. Qualquer console rodado como root deixa arquivo
-de root ali, e a partir daí o Apache não consegue mais escrever — o Mautic
+de root ali, e a partir daí o Apache não consegue mais escrever, e o Mautic
 responde 500.
 
 Medido: um `cache:clear` como root deixou **30.737 arquivos de root** em
@@ -1245,7 +1261,7 @@ com "Permission denied" que não explica a causa.
 **Volume para `var/cache` foi considerado e rejeitado.** Cache é descartável e
 específico da versão: um volume nomeado o preservaria através de atualização de
 imagem, que é exatamente quando ele precisa morrer. Seria o problema do volume
-de `translations` de novo, mas pior — lá o sombreamento custa idioma velho,
+de `translations` de novo, mas pior: lá o sombreamento custa idioma velho,
 aqui custaria aplicação quebrada.
 
 A correção é de dono, não de volume:
@@ -1253,7 +1269,7 @@ A correção é de dono, não de volume:
 - `mautic_console` centraliza todo comando de console e sempre passa
   `-u www-data`. Nenhum caminho do script roda console como root.
 - `mautic_corrigir_dono` devolve `var/` para `www-data`, como root, e roda
-  antes de cada `cache:clear` — cobre cache já sujado numa execução anterior.
+  antes de cada `cache:clear`, e cobre cache já sujado numa execução anterior.
 - O comando correto e a recuperação ficam no `credenciais.txt` e no README.
   Não dá para depender de a pessoa achar a documentação.
 
@@ -1327,7 +1343,7 @@ o Portainer encerra a criação do administrador poucos minutos depois de subir
 e passa a servir a própria página de timeout. A versão 2.45 agrega um **token
 de setup**, impresso só no log do container.
 
-O que fazer com isso é decisão de produto, não correção de bug — está em
+O que fazer com isso é decisão de produto, não correção de bug. Está em
 Pendências.
 
 ## Pendências
@@ -1337,7 +1353,7 @@ fica para depois de as correções deste teste serem revalidadas.
 
 **Decisão de produto em aberto: o Portainer continua neste instalador?**
 
-Os labels estão certos e o módulo funciona — ver Resultado do teste do cenário
+Os labels estão certos e o módulo funciona; ver Resultado do teste do cenário
 1. O problema não é técnico, é de encaixe:
 
 - O primeiro acesso do Portainer é deliberadamente hostil a instalação
@@ -1356,8 +1372,8 @@ repositório, com README próprio explicando o prazo do primeiro acesso. O
 CLAUDE.md já previa que "o Portainer vira conteúdo do próximo vídeo".
 
 Custo de remover daqui: `lib/portainer.sh` sai, as flags `--portainer` e
-`--portainer-domain` saem, e o inventário de perguntas cai de sete para cinco
-— o que simplifica o fluxo que o vídeo tem de explicar.
+`--portainer-domain` saem, e o inventário de perguntas cai de sete para
+cinco, o que simplifica o fluxo que o vídeo tem de explicar.
 
 **Ainda sem decisão:**
 

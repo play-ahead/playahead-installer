@@ -15,8 +15,8 @@
 # subdomínio próprio.
 #
 # Nenhum instalador de ferramenta chama este script. Faltando a
-# base, a ferramenta diz o que falta, mostra o comando e encerra —
-# decisão de projeto: um script que a pessoa acabou de ler não vai
+# base, a ferramenta diz o que falta, mostra o comando e encerra.
+# Decisão de projeto: um script que a pessoa acabou de ler não vai
 # buscar e executar outro por conta própria.
 # ============================================================
 

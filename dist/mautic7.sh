@@ -6,7 +6,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-30T19:38:50Z
+# Build:  2026-09-30T19:45:33Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -91,8 +91,8 @@ PA_RESUMO_COLUNA=20
 # convenção NO_COLOR (https://no-color.org).
 #
 # O modo interativo cai sozinho quando stdin não é terminal.
-# Sem isso, um `curl | bash` — que o tutorial desaconselha mas
-# que alguém vai tentar — leria EOF em cada pergunta e adotaria
+# Sem isso, um `curl | bash` (que o tutorial desaconselha mas
+# que alguém vai tentar) leria EOF em cada pergunta e adotaria
 # todos os defaults em silêncio.
 ui_init() {
 	local nao_interativo="${1:-0}"
@@ -206,7 +206,7 @@ ui_secao() {
 # Nem `${#texto}` nem o `%-16s` do printf servem: os dois contam
 # bytes quando o locale não é UTF-8, e daí todo rótulo acentuado
 # desloca a coluna. Em vez de depender do locale da máquina, conta
-# removendo os bytes de continuação do UTF-8 — os que começam com
+# removendo os bytes de continuação do UTF-8, os que começam com
 # 10xxxxxx, na faixa 0x80 a 0xBF.
 ui_largura() {
 	LC_ALL=C printf '%s' "$1" | LC_ALL=C tr -d '\200-\277' | LC_ALL=C wc -c
@@ -271,7 +271,7 @@ ui_confirmar_resumo() {
 #
 # Nunca chamar dentro de $( ). Numa substituição de comando o
 # exit encerra apenas o subshell e o script segue como se nada
-# tivesse acontecido — é por isso que ui_perguntar devolve o
+# tivesse acontecido. É por isso que ui_perguntar devolve o
 # valor por nameref em vez de imprimir no stdout.
 ui_fatal() {
 	local mensagem="$1"
@@ -342,7 +342,7 @@ ui_cabecalho() {
 # mesma explica o problema na tela; aqui só repetimos a pergunta.
 #
 # Sem interação: adota o padrão. Não havendo padrão, é dado que
-# falta, e o script para — o comportamento prometido para --yes.
+# falta, e o script para: o comportamento prometido para --yes.
 ui_perguntar() {
 	local -n _destino="$1"
 	local texto="$2"
@@ -418,7 +418,7 @@ ui_confirmar() {
 # ui_escolher <var_destino> <texto> <opcao...>
 #
 # Menu numerado. Usado quando a máquina tem mais de um Traefik
-# ou mais de uma rede candidata — casos em que chutar dá 404
+# ou mais de uma rede candidata: casos em que chutar dá 404
 # silencioso, então perguntar é obrigatório.
 ui_escolher() {
 	local -n _escolhido="$1"
@@ -1255,7 +1255,7 @@ PA_TRAEFIK_REDES_IGNORADAS=("bridge" "host" "none")
 
 # Preenchidas pela detecção. Cada valor anda junto com a origem,
 # porque a tela de confirmação precisa dizer de onde tirou cada
-# coisa — "detectado" sem procedência não ajuda a decidir.
+# coisa: "detectado" sem procedência não ajuda a decidir.
 PA_TRAEFIK_CONTAINER=""
 PA_TRAEFIK_ENTRYPOINT=""
 PA_TRAEFIK_ENTRYPOINT_ORIGEM=""
@@ -1281,7 +1281,7 @@ traefik_listar_containers() {
 # traefik_detectar_container
 #
 # Havendo mais de um, pergunta. Havendo zero mas alguém segurando
-# o 443, mostra quem é e para — sem inventar.
+# o 443, mostra quem é e para, sem inventar.
 traefik_detectar_container() {
 	local encontrados=()
 	mapfile -t encontrados < <(traefik_listar_containers)
@@ -1707,8 +1707,8 @@ PA_TEM_TRAEFIK=0
 # O nome do cenário fica na mensagem de tela de cada orquestrador,
 # em palavras, e não numa variável: era só rótulo.
 #
-# As duas linhas que abortam na tabela — portas ocupadas sem
-# proxy — dependem do estado das portas, e quem as trata é o
+# As duas linhas que abortam na tabela (portas ocupadas sem
+# proxy) dependem do estado das portas, e quem as trata é o
 # instalador de base, porque só ele tem motivo para querer as
 # portas livres.
 #
@@ -1994,7 +1994,7 @@ mautic_gravar_compose() {
 			"Não encontrei o template do compose em ${template}" \
 			"Rodando a partir do repositório, execute na raiz dele." \
 			"Rodando o instalador publicado, o template deveria estar" \
-			"embutido — sinal de build quebrado. Baixe de novo."
+			"embutido. Sinal de build quebrado; baixe de novo."
 	fi
 
 	cp "$template" "$PA_MAUTIC_COMPOSE"
@@ -2018,7 +2018,7 @@ mautic_compose() {
 # roda como www-data, e `var/cache` não está em volume: vive na
 # camada de escrita do container, de dono www-data. Qualquer
 # console rodado como root deixa arquivo de root lá dentro, e a
-# partir daí o Apache não consegue mais escrever — o Mautic
+# partir daí o Apache não consegue mais escrever, e o Mautic
 # responde 500.
 #
 # Medido na VPS de teste: um `cache:clear` como root deixou 30.737
@@ -2066,7 +2066,7 @@ mautic_corrigir_dono() {
 # nascer em inglês com o idioma correto salvo.
 mautic_limpar_cache() {
 	# O chown antes é barato e cobre o caso de o cache já ter sido
-	# sujado por root em alguma execução anterior — sem ele, o
+	# sujado por root em alguma execução anterior. Sem ele, o
 	# cache:clear falha com "Permission denied" e não diz por quê.
 	mautic_corrigir_dono
 
@@ -2675,7 +2675,7 @@ mautic_verificar_roteamento() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-30T19:38:50Z"
+PA_BUILD="2026-09-30T19:45:33Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
@@ -2818,7 +2818,7 @@ main_parse_flags() {
 }
 
 # ------------------------------------------------------------
-# Etapa 2 — a base está pronta?
+# Etapa 2: a base está pronta?
 # ------------------------------------------------------------
 
 # mautic_checar_base
@@ -2867,7 +2867,7 @@ mautic_checar_base() {
 }
 
 # ------------------------------------------------------------
-# Etapa 4 — instalação anterior
+# Etapa 4: instalação anterior
 # ------------------------------------------------------------
 
 main_checar_instalacao_anterior() {
@@ -2894,7 +2894,7 @@ main_checar_instalacao_anterior() {
 }
 
 # ------------------------------------------------------------
-# Etapa 5 — bloco único de perguntas
+# Etapa 5: bloco único de perguntas
 # ------------------------------------------------------------
 
 main_perguntar() {
@@ -2964,7 +2964,7 @@ main_confirmar_traefik() {
 }
 
 # ------------------------------------------------------------
-# Etapa 6 — validação
+# Etapa 6: validação
 # ------------------------------------------------------------
 
 main_validar() {
@@ -3015,7 +3015,7 @@ main_confirmar() {
 }
 
 # ------------------------------------------------------------
-# Etapas 7 e 8 — instalação
+# Etapas 7 e 8: instalação
 # ------------------------------------------------------------
 
 main_instalar() {
@@ -3061,7 +3061,7 @@ main_instalar() {
 }
 
 # ------------------------------------------------------------
-# Etapa 11 — bloco final
+# Etapa 11: bloco final
 # ------------------------------------------------------------
 
 main_bloco_final() {

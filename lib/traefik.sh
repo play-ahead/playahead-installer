@@ -31,7 +31,7 @@ PA_TRAEFIK_REDES_IGNORADAS=("bridge" "host" "none")
 
 # Preenchidas pela detecção. Cada valor anda junto com a origem,
 # porque a tela de confirmação precisa dizer de onde tirou cada
-# coisa — "detectado" sem procedência não ajuda a decidir.
+# coisa: "detectado" sem procedência não ajuda a decidir.
 PA_TRAEFIK_CONTAINER=""
 PA_TRAEFIK_ENTRYPOINT=""
 PA_TRAEFIK_ENTRYPOINT_ORIGEM=""
@@ -57,7 +57,7 @@ traefik_listar_containers() {
 # traefik_detectar_container
 #
 # Havendo mais de um, pergunta. Havendo zero mas alguém segurando
-# o 443, mostra quem é e para — sem inventar.
+# o 443, mostra quem é e para, sem inventar.
 traefik_detectar_container() {
 	local encontrados=()
 	mapfile -t encontrados < <(traefik_listar_containers)

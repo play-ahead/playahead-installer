@@ -56,8 +56,8 @@ PA_RESUMO_COLUNA=20
 # convenção NO_COLOR (https://no-color.org).
 #
 # O modo interativo cai sozinho quando stdin não é terminal.
-# Sem isso, um `curl | bash` — que o tutorial desaconselha mas
-# que alguém vai tentar — leria EOF em cada pergunta e adotaria
+# Sem isso, um `curl | bash` (que o tutorial desaconselha mas
+# que alguém vai tentar) leria EOF em cada pergunta e adotaria
 # todos os defaults em silêncio.
 ui_init() {
 	local nao_interativo="${1:-0}"
@@ -171,7 +171,7 @@ ui_secao() {
 # Nem `${#texto}` nem o `%-16s` do printf servem: os dois contam
 # bytes quando o locale não é UTF-8, e daí todo rótulo acentuado
 # desloca a coluna. Em vez de depender do locale da máquina, conta
-# removendo os bytes de continuação do UTF-8 — os que começam com
+# removendo os bytes de continuação do UTF-8, os que começam com
 # 10xxxxxx, na faixa 0x80 a 0xBF.
 ui_largura() {
 	LC_ALL=C printf '%s' "$1" | LC_ALL=C tr -d '\200-\277' | LC_ALL=C wc -c
@@ -236,7 +236,7 @@ ui_confirmar_resumo() {
 #
 # Nunca chamar dentro de $( ). Numa substituição de comando o
 # exit encerra apenas o subshell e o script segue como se nada
-# tivesse acontecido — é por isso que ui_perguntar devolve o
+# tivesse acontecido. É por isso que ui_perguntar devolve o
 # valor por nameref em vez de imprimir no stdout.
 ui_fatal() {
 	local mensagem="$1"
@@ -307,7 +307,7 @@ ui_cabecalho() {
 # mesma explica o problema na tela; aqui só repetimos a pergunta.
 #
 # Sem interação: adota o padrão. Não havendo padrão, é dado que
-# falta, e o script para — o comportamento prometido para --yes.
+# falta, e o script para: o comportamento prometido para --yes.
 ui_perguntar() {
 	local -n _destino="$1"
 	local texto="$2"
@@ -383,7 +383,7 @@ ui_confirmar() {
 # ui_escolher <var_destino> <texto> <opcao...>
 #
 # Menu numerado. Usado quando a máquina tem mais de um Traefik
-# ou mais de uma rede candidata — casos em que chutar dá 404
+# ou mais de uma rede candidata: casos em que chutar dá 404
 # silencioso, então perguntar é obrigatório.
 ui_escolher() {
 	local -n _escolhido="$1"

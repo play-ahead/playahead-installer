@@ -6,7 +6,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-12T19:47:59Z
+# Build:  2026-09-30T19:45:33Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -91,8 +91,8 @@ PA_RESUMO_COLUNA=20
 # convenção NO_COLOR (https://no-color.org).
 #
 # O modo interativo cai sozinho quando stdin não é terminal.
-# Sem isso, um `curl | bash` — que o tutorial desaconselha mas
-# que alguém vai tentar — leria EOF em cada pergunta e adotaria
+# Sem isso, um `curl | bash` (que o tutorial desaconselha mas
+# que alguém vai tentar) leria EOF em cada pergunta e adotaria
 # todos os defaults em silêncio.
 ui_init() {
 	local nao_interativo="${1:-0}"
@@ -206,7 +206,7 @@ ui_secao() {
 # Nem `${#texto}` nem o `%-16s` do printf servem: os dois contam
 # bytes quando o locale não é UTF-8, e daí todo rótulo acentuado
 # desloca a coluna. Em vez de depender do locale da máquina, conta
-# removendo os bytes de continuação do UTF-8 — os que começam com
+# removendo os bytes de continuação do UTF-8, os que começam com
 # 10xxxxxx, na faixa 0x80 a 0xBF.
 ui_largura() {
 	LC_ALL=C printf '%s' "$1" | LC_ALL=C tr -d '\200-\277' | LC_ALL=C wc -c
@@ -271,7 +271,7 @@ ui_confirmar_resumo() {
 #
 # Nunca chamar dentro de $( ). Numa substituição de comando o
 # exit encerra apenas o subshell e o script segue como se nada
-# tivesse acontecido — é por isso que ui_perguntar devolve o
+# tivesse acontecido. É por isso que ui_perguntar devolve o
 # valor por nameref em vez de imprimir no stdout.
 ui_fatal() {
 	local mensagem="$1"
@@ -342,7 +342,7 @@ ui_cabecalho() {
 # mesma explica o problema na tela; aqui só repetimos a pergunta.
 #
 # Sem interação: adota o padrão. Não havendo padrão, é dado que
-# falta, e o script para — o comportamento prometido para --yes.
+# falta, e o script para: o comportamento prometido para --yes.
 ui_perguntar() {
 	local -n _destino="$1"
 	local texto="$2"
@@ -418,7 +418,7 @@ ui_confirmar() {
 # ui_escolher <var_destino> <texto> <opcao...>
 #
 # Menu numerado. Usado quando a máquina tem mais de um Traefik
-# ou mais de uma rede candidata — casos em que chutar dá 404
+# ou mais de uma rede candidata: casos em que chutar dá 404
 # silencioso, então perguntar é obrigatório.
 ui_escolher() {
 	local -n _escolhido="$1"
@@ -1277,7 +1277,7 @@ portas_quem_ocupa() {
 # Exceção à regra de que este módulo não altera a máquina.
 #
 # Só é chamada quando não existe ss, nem netstat, nem
-# /proc/net/tcp legível — combinação que praticamente não
+# /proc/net/tcp legível, combinação que praticamente não
 # acontece num Linux. Fica aqui porque a alternativa seria pular
 # a checagem de portas, e subir o Traefik contra uma porta
 # ocupada é exatamente o tipo de falha silenciosa que este
@@ -1373,8 +1373,8 @@ portas_livres() {
 # Existe para separar duas coisas que estavam se misturando:
 # checks.sh lê e decide, docker.sh e traefik.sh cuidam de
 # containers, e o swap não é nem um nem outro. Conforme este
-# arquivo receber outras rotinas de máquina — fuso, limites de
-# arquivo, ajuste de kernel — elas vêm para cá.
+# arquivo receber outras rotinas de máquina (fuso, limites de
+# arquivo, ajuste de kernel), elas vêm para cá.
 # ============================================================
 
 # ------------------------------------------------------------
@@ -1451,7 +1451,7 @@ sistema_precisa_swap() {
 #
 # Motivo: 2 GB é o piso do README, e MariaDB mais três containers
 # PHP nesse espaço colocam o cache warmup do Symfony em risco de
-# OOM. OOM não deixa mensagem clara — o container simplesmente
+# OOM. OOM não deixa mensagem clara: o container simplesmente
 # morre, e essa é uma das falhas mais confusas que existem.
 #
 # Criar swap é aditivo, não viola a regra de nada destrutivo.
@@ -1528,7 +1528,7 @@ sistema_criar_swap() {
 # sistema_alocar_swapfile
 #
 # fallocate é instantâneo, mas não funciona em todo sistema de
-# arquivos — em alguns tipos ele cria um arquivo esparso que o
+# arquivos: em alguns tipos ele cria um arquivo esparso que o
 # mkswap recusa. O dd é lento e sempre funciona, então fica de
 # reserva.
 sistema_alocar_swapfile() {
@@ -1803,7 +1803,7 @@ docker_instalar() {
 # estiver tudo lá, não mexe em nada e diz o que encontrou.
 #
 # Cobre também o cenário 1.5, em que o Docker existe mas o plugin
-# do Compose não — caso de quem instalou pelo pacote da
+# do Compose não: caso de quem instalou pelo pacote da
 # distribuição em vez do repositório oficial.
 docker_garantir() {
 	if docker_presente && docker_compose_presente; then
@@ -1899,7 +1899,7 @@ PA_TRAEFIK_REDES_IGNORADAS=("bridge" "host" "none")
 
 # Preenchidas pela detecção. Cada valor anda junto com a origem,
 # porque a tela de confirmação precisa dizer de onde tirou cada
-# coisa — "detectado" sem procedência não ajuda a decidir.
+# coisa: "detectado" sem procedência não ajuda a decidir.
 PA_TRAEFIK_CONTAINER=""
 PA_TRAEFIK_ENTRYPOINT=""
 PA_TRAEFIK_ENTRYPOINT_ORIGEM=""
@@ -1925,7 +1925,7 @@ traefik_listar_containers() {
 # traefik_detectar_container
 #
 # Havendo mais de um, pergunta. Havendo zero mas alguém segurando
-# o 443, mostra quem é e para — sem inventar.
+# o 443, mostra quem é e para, sem inventar.
 traefik_detectar_container() {
 	local encontrados=()
 	mapfile -t encontrados < <(traefik_listar_containers)
@@ -2520,8 +2520,8 @@ PA_TEM_TRAEFIK=0
 # O nome do cenário fica na mensagem de tela de cada orquestrador,
 # em palavras, e não numa variável: era só rótulo.
 #
-# As duas linhas que abortam na tabela — portas ocupadas sem
-# proxy — dependem do estado das portas, e quem as trata é o
+# As duas linhas que abortam na tabela (portas ocupadas sem
+# proxy) dependem do estado das portas, e quem as trata é o
 # instalador de base, porque só ele tem motivo para querer as
 # portas livres.
 #
@@ -2589,7 +2589,7 @@ cenario_faltando() {
 # REGRA QUE VALE PARA O ARQUIVO TODO: nenhuma função aqui chama
 # ui_fatal. O Portainer roda depois de o Mautic estar de pé, e a
 # decisão de projeto é que uma falha aqui seja aviso, não
-# desastre — a pessoa termina com o Mautic funcionando de
+# desastre: a pessoa termina com o Mautic funcionando de
 # qualquer jeito. Toda função devolve status; quem decide o que
 # fazer é o main.sh.
 #
@@ -2906,8 +2906,8 @@ portainer_aviso_primeira_visita() {
 # subdomínio próprio.
 #
 # Nenhum instalador de ferramenta chama este script. Faltando a
-# base, a ferramenta diz o que falta, mostra o comando e encerra —
-# decisão de projeto: um script que a pessoa acabou de ler não vai
+# base, a ferramenta diz o que falta, mostra o comando e encerra.
+# Decisão de projeto: um script que a pessoa acabou de ler não vai
 # buscar e executar outro por conta própria.
 # ============================================================
 
@@ -2919,7 +2919,7 @@ portainer_aviso_primeira_visita() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-12T19:47:59Z"
+PA_BUILD="2026-09-30T19:45:33Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 

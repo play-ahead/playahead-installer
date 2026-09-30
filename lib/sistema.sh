@@ -10,8 +10,8 @@
 # Existe para separar duas coisas que estavam se misturando:
 # checks.sh lê e decide, docker.sh e traefik.sh cuidam de
 # containers, e o swap não é nem um nem outro. Conforme este
-# arquivo receber outras rotinas de máquina — fuso, limites de
-# arquivo, ajuste de kernel — elas vêm para cá.
+# arquivo receber outras rotinas de máquina (fuso, limites de
+# arquivo, ajuste de kernel), elas vêm para cá.
 # ============================================================
 
 # ------------------------------------------------------------
@@ -88,7 +88,7 @@ sistema_precisa_swap() {
 #
 # Motivo: 2 GB é o piso do README, e MariaDB mais três containers
 # PHP nesse espaço colocam o cache warmup do Symfony em risco de
-# OOM. OOM não deixa mensagem clara — o container simplesmente
+# OOM. OOM não deixa mensagem clara: o container simplesmente
 # morre, e essa é uma das falhas mais confusas que existem.
 #
 # Criar swap é aditivo, não viola a regra de nada destrutivo.
@@ -165,7 +165,7 @@ sistema_criar_swap() {
 # sistema_alocar_swapfile
 #
 # fallocate é instantâneo, mas não funciona em todo sistema de
-# arquivos — em alguns tipos ele cria um arquivo esparso que o
+# arquivos: em alguns tipos ele cria um arquivo esparso que o
 # mkswap recusa. O dd é lento e sempre funciona, então fica de
 # reserva.
 sistema_alocar_swapfile() {

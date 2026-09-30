@@ -12,7 +12,7 @@
 # Essa é a decisão que faz o menu conviver com a regra de que um
 # instalador não baixa nem executa outro. O build.sh embute o
 # dist/base.sh e o dist/mautic7.sh aqui dentro, como heredoc
-# citado — mesmo mecanismo já validado para o template do compose.
+# citado, mesmo mecanismo já validado para o template do compose.
 # Escolhido o número, o menu grava o instalador no diretório atual
 # e o executa.
 #
@@ -59,7 +59,7 @@ PA_VERSAO_MAUTIC7="desenvolvimento"
 
 PA_MENU_ARQUIVO=(base.sh mautic7.sh)
 PA_MENU_NOME=(
-	"Base — Docker, Traefik e Portainer"
+	"Base (Docker, Traefik e Portainer)"
 	"Mautic 7"
 )
 PA_MENU_EXTRATOR=(menu_conteudo_base menu_conteudo_mautic7)

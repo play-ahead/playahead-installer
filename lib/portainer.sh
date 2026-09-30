@@ -11,7 +11,7 @@
 # REGRA QUE VALE PARA O ARQUIVO TODO: nenhuma função aqui chama
 # ui_fatal. O Portainer roda depois de o Mautic estar de pé, e a
 # decisão de projeto é que uma falha aqui seja aviso, não
-# desastre — a pessoa termina com o Mautic funcionando de
+# desastre: a pessoa termina com o Mautic funcionando de
 # qualquer jeito. Toda função devolve status; quem decide o que
 # fazer é o main.sh.
 #

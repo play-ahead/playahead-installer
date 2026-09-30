@@ -45,8 +45,8 @@ PA_TEM_TRAEFIK=0
 # O nome do cenário fica na mensagem de tela de cada orquestrador,
 # em palavras, e não numa variável: era só rótulo.
 #
-# As duas linhas que abortam na tabela — portas ocupadas sem
-# proxy — dependem do estado das portas, e quem as trata é o
+# As duas linhas que abortam na tabela (portas ocupadas sem
+# proxy) dependem do estado das portas, e quem as trata é o
 # instalador de base, porque só ele tem motivo para querer as
 # portas livres.
 #

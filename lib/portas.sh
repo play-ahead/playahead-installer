@@ -148,7 +148,7 @@ portas_quem_ocupa() {
 # Exceção à regra de que este módulo não altera a máquina.
 #
 # Só é chamada quando não existe ss, nem netstat, nem
-# /proc/net/tcp legível — combinação que praticamente não
+# /proc/net/tcp legível, combinação que praticamente não
 # acontece num Linux. Fica aqui porque a alternativa seria pular
 # a checagem de portas, e subir o Traefik contra uma porta
 # ocupada é exatamente o tipo de falha silenciosa que este

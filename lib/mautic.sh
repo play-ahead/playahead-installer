@@ -229,7 +229,7 @@ mautic_gravar_compose() {
 			"Não encontrei o template do compose em ${template}" \
 			"Rodando a partir do repositório, execute na raiz dele." \
 			"Rodando o instalador publicado, o template deveria estar" \
-			"embutido — sinal de build quebrado. Baixe de novo."
+			"embutido. Sinal de build quebrado; baixe de novo."
 	fi
 
 	cp "$template" "$PA_MAUTIC_COMPOSE"
@@ -253,7 +253,7 @@ mautic_compose() {
 # roda como www-data, e `var/cache` não está em volume: vive na
 # camada de escrita do container, de dono www-data. Qualquer
 # console rodado como root deixa arquivo de root lá dentro, e a
-# partir daí o Apache não consegue mais escrever — o Mautic
+# partir daí o Apache não consegue mais escrever, e o Mautic
 # responde 500.
 #
 # Medido na VPS de teste: um `cache:clear` como root deixou 30.737
@@ -301,7 +301,7 @@ mautic_corrigir_dono() {
 # nascer em inglês com o idioma correto salvo.
 mautic_limpar_cache() {
 	# O chown antes é barato e cobre o caso de o cache já ter sido
-	# sujado por root em alguma execução anterior — sem ele, o
+	# sujado por root em alguma execução anterior. Sem ele, o
 	# cache:clear falha com "Permission denied" e não diz por quê.
 	mautic_corrigir_dono
 

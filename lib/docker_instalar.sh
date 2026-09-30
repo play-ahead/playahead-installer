@@ -121,7 +121,7 @@ docker_instalar() {
 # estiver tudo lá, não mexe em nada e diz o que encontrou.
 #
 # Cobre também o cenário 1.5, em que o Docker existe mas o plugin
-# do Compose não — caso de quem instalou pelo pacote da
+# do Compose não: caso de quem instalou pelo pacote da
 # distribuição em vez do repositório oficial.
 docker_garantir() {
 	if docker_presente && docker_compose_presente; then
