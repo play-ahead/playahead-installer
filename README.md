@@ -6,8 +6,8 @@ Instaladores em Docker para VPS, mantidos pela
 São dois tipos de instalador, e a ordem importa:
 
 **A base**, que roda uma vez por VPS e entrega o que todas as ferramentas
-compartilham: swap, Docker, Docker Compose, a rede do proxy e o Traefik com
-certificado SSL automático. O Portainer é opcional.
+compartilham: swap, Docker, Docker Compose, a rede do proxy, o Traefik com
+certificado SSL automático e o Portainer.
 
 **Os instaladores de ferramenta**, que reaproveitam essa base em vez de
 recriá-la. Hoje só o do Mautic 7 existe; Chatwoot, Typebot e Evolution API
@@ -131,8 +131,8 @@ ele prefere explicar e sair.
 Da base:
 
     --acme-email=EMAIL           e-mail usado no Let's Encrypt
-    --portainer                  instala o Portainer também
     --portainer-domain=DOMINIO   subdomínio do Portainer
+    --sem-portainer              não instala o Portainer
     --skip-dns-check             pula a validação de DNS
     --no-swap                    não cria arquivo de swap
     --yes                        não interativo, sem nenhuma pergunta
@@ -160,16 +160,23 @@ nada.
 
 ## Portainer
 
-O Portainer é instalado pela base, com `--portainer`, e precisa de um subdomínio
-próprio apontando para a VPS:
+O Portainer é um painel para ver e mexer nos containers da VPS pelo navegador.
+Ele faz parte da base e é instalado junto, sem flag nenhuma. O que ele pede é um
+subdomínio próprio, apontando para a VPS, e a base pergunta isso no mesmo bloco
+de perguntas do resto.
 
-    sudo bash base.sh --portainer --portainer-domain=painel.exemplo.com.br
+Não quer o Portainer? Aperte Enter na pergunta do subdomínio, ou rode a base com
+`--sem-portainer`.
 
 **Abra o endereço e defina a senha logo depois de instalar.** O Portainer
 encerra a criação do administrador poucos minutos depois de subir, e passando
 desse prazo ele só volta a aceitar com um restart:
 
     cd /opt/playahead/portainer && docker compose restart
+
+É por isso que ele fica na base, e não no instalador da ferramenta: a base
+termina em menos de um minuto, com você na frente do terminal. No meio de uma
+instalação de Mautic, que leva vários minutos, o prazo expiraria sempre.
 
 Quem entra no Portainer controla todos os containers da máquina. Use uma senha
 forte.

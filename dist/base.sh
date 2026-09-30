@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-30T19:46:34Z
+# Build:  2026-09-30T19:54:20Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -391,6 +391,42 @@ ui_perguntar() {
 		fi
 
 		_destino="$resposta"
+		return 0
+	done
+}
+
+# ui_perguntar_opcional <var_destino> <texto> [funcao_validadora]
+#
+# Como ui_perguntar, mas Enter tambem e resposta: devolve 1 e
+# deixa a variavel vazia. Serve para dado que o script sabe
+# dispensar, como o subdominio do Portainer.
+#
+# Nao trata o modo automatico, de proposito. La o vazio nao seria
+# escolha de ninguem, e deixar esta funcao decidir espalharia a
+# regra do --yes por dentro do ui.sh. Quem chama confere
+# ui_interativo antes e diz, com o nome da flag na tela, o que
+# falta.
+ui_perguntar_opcional() {
+	local -n _destino_opcional="$1"
+	local texto="$2"
+	local validadora="${3:-}"
+
+	local resposta
+	while true; do
+		printf '  %s %s[Enter pula]%s: ' \
+			"$texto" "$PA_COR_FRACA" "$PA_COR_RESET"
+		IFS= read -r resposta || resposta=""
+
+		if [[ -z "$resposta" ]]; then
+			_destino_opcional=""
+			return 1
+		fi
+
+		if [[ -n "$validadora" ]] && ! "$validadora" "$resposta"; then
+			continue
+		fi
+
+		_destino_opcional="$resposta"
 		return 0
 	done
 }
@@ -2912,9 +2948,25 @@ portainer_aviso_primeira_visita() {
 # no rodapé do arquivo.
 #
 # A base entrega a infraestrutura que os instaladores de
-# ferramenta compartilham: swap, Docker, Compose, a rede do proxy
-# e o Traefik. O Portainer entra atrás de flag, porque exige
-# subdomínio próprio.
+# ferramenta compartilham: swap, Docker, Compose, a rede do proxy,
+# o Traefik e o Portainer.
+#
+# O Portainer está no fluxo normal, e não atrás de flag. Ficar
+# atrás de flag era resquício do desenho em que um instalador
+# chamava o outro: ali o Portainer podia subir no meio de uma
+# instalação de Mautic, que leva minutos, e o prazo de criação do
+# administrador expirava sozinho. Com os instaladores separados a
+# base sempre roda antes das ferramentas e termina com a pessoa na
+# frente do terminal, então o prazo deixou de ser problema e a
+# flag deixou de ter motivo.
+#
+# Além disso, o menu anuncia a opção 1 como "Base (Docker, Traefik
+# e Portainer)". Prometer na lista e entregar atrás de uma flag
+# que a lista não menciona foi exatamente o que confundiu no teste
+# de 2026-09-30.
+#
+# Quem não quer o Portainer usa --sem-portainer, ou aperta Enter
+# na pergunta do subdomínio.
 #
 # Nenhum instalador de ferramenta chama este script. Faltando a
 # base, a ferramenta diz o que falta, mostra o comando e encerra.
@@ -2930,7 +2982,7 @@ portainer_aviso_primeira_visita() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-30T19:46:34Z"
+PA_BUILD="2026-09-30T19:54:20Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
@@ -2939,7 +2991,9 @@ PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 # ------------------------------------------------------------
 
 PA_EMAIL_ACME=""
-PA_PORTAINER=0
+# Portainer ligado por padrão, porque está no fluxo normal.
+# --sem-portainer desliga, e Enter na pergunta também.
+PA_PORTAINER=1
 PA_PORTAINER_DOMINIO=""
 PA_SKIP_DNS=0
 PA_NO_SWAP=0
@@ -2962,7 +3016,7 @@ Play Ahead Installer - Base
 
 Instala a infraestrutura que os instaladores de ferramenta da Play
 Ahead compartilham: swap, Docker, Docker Compose, a rede do proxy e
-o Traefik com certificado SSL automático. O Portainer é opcional.
+o Traefik com certificado SSL automático, e o Portainer.
 
 Rode isto uma vez por VPS. Depois, cada ferramenta (Mautic 7,
 Chatwoot, Typebot) tem o seu próprio instalador e reaproveita esta
@@ -2973,8 +3027,8 @@ USO
 
 OPÇÕES
     --acme-email=EMAIL           e-mail usado no Let's Encrypt
-    --portainer                  instala o Portainer também
     --portainer-domain=DOMINIO   subdomínio do Portainer
+    --sem-portainer              não instala o Portainer
     --skip-dns-check             pula a validação de DNS
     --no-swap                    não cria arquivo de swap
     --yes                        não interativo, sem nenhuma pergunta
@@ -2984,9 +3038,10 @@ OPÇÕES
 EXEMPLOS
     sudo bash base.sh
 
-    sudo bash base.sh --acme-email=voce@exemplo.com.br --yes
+    sudo bash base.sh --sem-portainer
 
-    sudo bash base.sh --portainer \
+    sudo bash base.sh --yes \
+        --acme-email=voce@exemplo.com.br \
         --portainer-domain=painel.exemplo.com.br
 
 DOCUMENTAÇÃO
@@ -3004,11 +3059,11 @@ main_parse_flags() {
 	for arg in "$@"; do
 		case "$arg" in
 			--acme-email=*) PA_EMAIL_ACME="${arg#*=}" ;;
-			--portainer) PA_PORTAINER=1 ;;
 			--portainer-domain=*)
 				PA_PORTAINER_DOMINIO="${arg#*=}"
 				PA_PORTAINER=1
 				;;
+			--sem-portainer) PA_PORTAINER=0 ;;
 			--skip-dns-check) PA_SKIP_DNS=1 ;;
 			--no-swap) PA_NO_SWAP=1 ;;
 			--yes | -y) PA_NAO_INTERATIVO=1 ;;
@@ -3085,6 +3140,21 @@ base_perguntar() {
 	[[ "$PA_PORTAINER" -eq 1 ]] && [[ -z "$PA_PORTAINER_DOMINIO" ]] &&
 		pergunta_portainer=1
 
+	# O Portainer entrou no fluxo normal, então no modo automático
+	# o subdomínio passou a ser dado que falta, e não opção que
+	# ninguém pediu. A regra do --yes é falhar dizendo o que falta,
+	# em vez de escolher em silêncio: instalar sem DNS deixaria um
+	# painel inacessível de pé, e pular calado contraria o que o
+	# menu anuncia na opção 1.
+	if [[ "$pergunta_portainer" -eq 1 ]] && ! ui_interativo; then
+		ui_fatal \
+			"Falta o subdomínio do Portainer." \
+			"No modo automático, escolha uma das duas:" \
+			"" \
+			"    --portainer-domain=painel.exemplo.com.br" \
+			"    --sem-portainer"
+	fi
+
 	if [[ "$pergunta_acme" -eq 0 ]] && [[ "$pergunta_portainer" -eq 0 ]]; then
 		return 0
 	fi
@@ -3104,11 +3174,18 @@ base_perguntar() {
 
 	if [[ "$pergunta_portainer" -eq 1 ]]; then
 		ui_vazio
-		ui_info "O Portainer precisa de um subdomínio próprio, com DNS"
-		ui_info "apontando para esta VPS."
-		ui_perguntar PA_PORTAINER_DOMINIO \
+		ui_info "O Portainer é um painel para ver e mexer nos containers"
+		ui_info "desta VPS pelo navegador. Ele precisa de um subdomínio"
+		ui_info "próprio, com DNS apontando para cá."
+		ui_detalhe "Aperte Enter para não instalar."
+
+		if ! ui_perguntar_opcional PA_PORTAINER_DOMINIO \
 			"Subdomínio do Portainer (ex: painel.suaempresa.com.br)" \
-			"" checks_validar_dominio
+			checks_validar_dominio; then
+
+			PA_PORTAINER=0
+			ui_info "Portainer não será instalado."
+		fi
 	fi
 }
 
@@ -3206,7 +3283,7 @@ base_confirmar() {
 	if [[ "$PA_PORTAINER" -eq 1 ]]; then
 		itens+=("Portainer" "https://${PA_PORTAINER_DOMINIO}")
 	else
-		itens+=("Portainer" "não instalar (use --portainer)")
+		itens+=("Portainer" "não instalar")
 	fi
 
 	ui_resumo "Confira antes de começar" "${itens[@]}"

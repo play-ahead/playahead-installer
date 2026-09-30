@@ -159,10 +159,30 @@ Por isso a confirmação dos valores do Traefik deixou de ser exclusiva do cená
 
 ### Onde o Portainer ficou
 
-Na base, atrás de `--portainer`. Isso resolve de graça o prazo de criação do
-administrador: rodando na base, o container sobe e o script termina ali, com a
-pessoa na frente do terminal. Instalá-lo no meio de uma instalação de Mautic,
-que leva minutos, faria o prazo expirar sempre.
+Na base, e no **fluxo normal dela**, sem flag de opt-in. O subdomínio é
+perguntado no mesmo bloco de perguntas do e-mail do ACME.
+
+Estar na base é o que resolve o prazo de criação do administrador: o container
+sobe, o script termina ali, e a pessoa está na frente do terminal. Instalá-lo no
+meio de uma instalação de Mautic, que leva minutos, faria o prazo expirar
+sempre.
+
+**Estar atrás de `--portainer` era resquício do desenho em que um instalador
+chamava o outro**, e caiu em 2026-09-30. Naquele desenho a base podia ser
+chamada pelo instalador de ferramenta, então o Portainer precisava ser opcional
+para não subir no meio de uma instalação longa. Com "nunca baixar, só instruir",
+a base sempre roda sozinha e antes das ferramentas, e a razão da flag deixou de
+existir.
+
+O que a flag causava na prática, medido no teste de 2026-09-30: o menu anuncia a
+opção 1 como "Base (Docker, Traefik e Portainer)", a pessoa escolheu, e a base
+instalou Docker e Traefik sem nunca mencionar o Portainer. Prometer na lista e
+entregar atrás de uma flag que a lista não menciona.
+
+Para pular: `--sem-portainer`, ou Enter na pergunta do subdomínio. No modo
+`--yes` o subdomínio passou a ser dado obrigatório, e faltando ele o script para
+e pede `--portainer-domain=` ou `--sem-portainer`, em vez de escolher em
+silêncio.
 
 ### O menu
 
@@ -258,10 +278,10 @@ fim sem input. Cada instalador é dono da própria conversa.
 2. Classificação do estado. Swarm ativo para aqui. Havendo proxy, mostra o que
    detectou; não havendo, exige as portas 80 e 443 livres.
 3. Perguntas: e-mail do ACME, se vai instalar o Traefik; subdomínio do
-   Portainer, se pedido.
+   Portainer, sempre, com Enter pulando.
 4. Validação do DNS do Portainer, que **avisa em vez de abortar**.
 5. Swap, Docker, Compose, rede do proxy, Traefik.
-6. Portainer, se pedido, com o aviso do prazo do primeiro acesso.
+6. Portainer, com o aviso do prazo do primeiro acesso.
 7. Bloco final, com os nomes que os instaladores de ferramenta vão detectar.
 
 **mautic7.sh**
@@ -380,8 +400,8 @@ o que saiu do `mautic7.sh` saiu porque a responsabilidade mudou de dono.
 | Flag | Efeito |
 |---|---|
 | `--acme-email=` | e-mail do Let's Encrypt |
-| `--portainer` | instala o Portainer também |
 | `--portainer-domain=` | subdomínio do Portainer |
+| `--sem-portainer` | não instala o Portainer |
 | `--skip-dns-check` | pula a validação de DNS |
 | `--no-swap` | não cria swapfile |
 | `--yes` | não interativo: nenhuma pergunta, falha se faltar dado |
@@ -413,7 +433,7 @@ o que saiu do `mautic7.sh` saiu porque a responsabilidade mudou de dono.
 | # | Pergunta | Quando | Default | Flag |
 |---|---|---|---|---|
 | 1 | E-mail para o Let's Encrypt | só se vai instalar o Traefik | - | `--acme-email=` |
-| 2 | Subdomínio do Portainer | só com `--portainer` | - | `--portainer-domain=` |
+| 2 | Subdomínio do Portainer | sempre; Enter pula | - | `--portainer-domain=` |
 | 3 | Continuar em Ubuntu LTS não testado? | só se o SO for LTS mais nova | sim | - |
 
 **mautic7.sh**
@@ -430,12 +450,20 @@ instalador de ferramenta, porque ele mora na base; e a confirmação do Traefik
 passou a acontecer **sempre**, e não só no cenário 2, porque a ferramenta trata
 todo Traefik como sendo de outro script.
 
+Uma terceira em 2026-09-30: a pergunta do Portainer deixou de depender de
+`--portainer` e passou a aparecer sempre, porque o Portainer entrou no fluxo
+normal da base. É a única pergunta do bloco que aceita Enter como resposta.
+
 Nenhuma exige digitar "concordo". Com `--yes` mais as flags, nenhuma aparece.
 
-A pergunta 7 é a única fora do bloco único, e é de confirmação, não de
-dado: ela nasce da regra de não bloquear LTS mais nova, e só existe quando
-essa regra dispara. Não fere o princípio de perguntar antes de mexer na
-máquina, porque a etapa 1 acontece antes de qualquer alteração.
+A pergunta do Ubuntu LTS não testado é a única fora do bloco único nos dois
+instaladores, e é de confirmação, não de dado: ela nasce da regra de não
+bloquear LTS mais nova, e só existe quando essa regra dispara. Não fere o
+princípio de perguntar antes de mexer na máquina, porque a etapa 1 acontece
+antes de qualquer alteração.
+
+(A numeração antiga, "pergunta 7", era do tempo em que havia um instalador só.
+Com dois, cada um numera as suas.)
 
 No modo `--yes` ela adota o padrão e segue, em silêncio. É o comportamento
 certo para o serviço pago, onde a VPS é escolhida pela agência; para quem
@@ -829,22 +857,18 @@ Docker Engine 29.x observada em Swarm não se aplica aqui. Ainda assim, validar 
 VPS descartável antes de publicar. A sintaxe dos labels no compose já é
 compatível com v2 e v3.
 
-**Portainer: opcional, e depois do Mautic.** Não entra no fluxo principal. Fica
-atrás da flag `--portainer` e de uma pergunta ao final da execução.
+**Portainer: no fluxo normal da base, e por último dentro dela.** Ver "Onde o
+Portainer ficou" para o histórico da flag que saiu.
 
-A flag `--portainer` antecipa apenas a **pergunta do subdomínio**, que passa para
-o bloco único de perguntas. A **instalação** continua sendo a última etapa, em
-qualquer caso.
+A ordem dentro da base importa mais que a escolha de instalar. O Portainer exige
+subdomínio próprio e certificado próprio, ou seja, mais um apontamento de DNS que
+pode falhar. Rodando por último, uma falha dele é aviso e não desastre: a pessoa
+termina com Docker, Traefik e a rede do proxy funcionando de qualquer jeito, e
+pode instalar as ferramentas. Se ele rodasse antes, uma falha de DNS dele
+derrubaria a base inteira.
 
-A ordem importa mais que a escolha. O Portainer exige subdomínio próprio e
-certificado próprio, ou seja, mais um apontamento de DNS que pode falhar. Se ele
-rodasse antes, uma falha de DNS dele derrubaria a instalação inteira. Instalando
-depois que o Mautic já está de pé e funcionando, uma falha ali é um aviso, não um
-desastre, e a pessoa termina com o Mautic funcionando de qualquer jeito.
-
-Para o vídeo, isso também abre um gancho natural: o Mautic sobe, funciona, e o
-Portainer vira conteúdo do próximo vídeo em vez de mais três minutos de DNS no
-meio deste.
+Por isso a validação de DNS dele **avisa em vez de abortar**, diferente da do
+domínio do Mautic.
 
 ## Swarm
 
@@ -1351,29 +1375,21 @@ Pendências.
 **Cenário 1 validado de ponta a ponta** em 2026-09-12. A tag `mautic7-v0.1.0`
 fica para depois de as correções deste teste serem revalidadas.
 
-**Decisão de produto em aberto: o Portainer continua neste instalador?**
+**Resolvida em 2026-09-30: o Portainer fica, e no fluxo normal da base.**
 
-Os labels estão certos e o módulo funciona; ver Resultado do teste do cenário
-1. O problema não é técnico, é de encaixe:
+A pergunta era se ele continuava aqui ou virava `dist/portainer.sh`. O que
+decidiu foi a separação da base: as três objeções que existiam eram todas sobre
+ele rodar dentro de uma instalação de ferramenta.
 
-- O primeiro acesso do Portainer é deliberadamente hostil a instalação
-  desatendida. A janela de poucos minutos e o token de setup existem para
-  impedir que um terceiro crie o administrador. Automatizar em volta disso
-  significa desligar a postura de segurança dele dentro de um script que
-  promete não fazer nada surpreendente.
-- É a única peça que não consegue honrar a promessa central do projeto,
-  "entrega o painel pronto para login".
-- É também a única cujo sucesso depende de a pessoa agir em minutos, e a única
-  que exige um segundo apontamento de DNS. Os dois maiores geradores de
-  comentário "não funcionou" do projeto.
+- O prazo de poucos minutos do primeiro acesso deixou de ser problema, porque a
+  base termina em menos de um minuto com a pessoa na frente do terminal. Não é
+  preciso automatizar em volta da postura de segurança dele.
+- A promessa "entrega o painel pronto para login" é do instalador de ferramenta.
+  A base entrega infraestrutura, e o Portainer é infraestrutura.
+- O segundo apontamento de DNS continua sendo um risco, e é por isso que ele roda
+  por último dentro da base e a validação de DNS dele avisa em vez de abortar.
 
-Alternativa: `dist/portainer.sh` como instalador próprio, no mesmo
-repositório, com README próprio explicando o prazo do primeiro acesso. O
-CLAUDE.md já previa que "o Portainer vira conteúdo do próximo vídeo".
-
-Custo de remover daqui: `lib/portainer.sh` sai, as flags `--portainer` e
-`--portainer-domain` saem, e o inventário de perguntas cai de sete para
-cinco, o que simplifica o fluxo que o vídeo tem de explicar.
+Ver "Onde o Portainer ficou".
 
 **Ainda sem decisão:**
 

@@ -349,6 +349,42 @@ ui_perguntar() {
 	done
 }
 
+# ui_perguntar_opcional <var_destino> <texto> [funcao_validadora]
+#
+# Como ui_perguntar, mas Enter tambem e resposta: devolve 1 e
+# deixa a variavel vazia. Serve para dado que o script sabe
+# dispensar, como o subdominio do Portainer.
+#
+# Nao trata o modo automatico, de proposito. La o vazio nao seria
+# escolha de ninguem, e deixar esta funcao decidir espalharia a
+# regra do --yes por dentro do ui.sh. Quem chama confere
+# ui_interativo antes e diz, com o nome da flag na tela, o que
+# falta.
+ui_perguntar_opcional() {
+	local -n _destino_opcional="$1"
+	local texto="$2"
+	local validadora="${3:-}"
+
+	local resposta
+	while true; do
+		printf '  %s %s[Enter pula]%s: ' \
+			"$texto" "$PA_COR_FRACA" "$PA_COR_RESET"
+		IFS= read -r resposta || resposta=""
+
+		if [[ -z "$resposta" ]]; then
+			_destino_opcional=""
+			return 1
+		fi
+
+		if [[ -n "$validadora" ]] && ! "$validadora" "$resposta"; then
+			continue
+		fi
+
+		_destino_opcional="$resposta"
+		return 0
+	done
+}
+
 # ui_confirmar <texto> [padrao_sim]
 #
 # Devolve 0 para sim. Sem interação, adota o padrão em silêncio:
