@@ -254,6 +254,44 @@ main_checar_instalacao_anterior() {
 # Etapa 5: bloco único de perguntas
 # ------------------------------------------------------------
 
+# main_validar_email_admin <email>
+#
+# O validador do e-mail do bloco de perguntas, com uma guarda a
+# mais: a parte antes do arroba nao pode conter o dominio que
+# acabou de ser respondido.
+#
+# Defesa contra o erro de 2026-09-30, em que uma colagem deixou
+# sobra na fila do terminal e a pergunta seguinte leu o dominio
+# grudado no e-mail, gravando
+# "testemautic.exemplo.comfabioroger7@yahoo.com.br".
+#
+# Vale registrar por que nenhuma validacao generica de e-mail
+# pega esse valor: ele e sintaticamente valido, com 45
+# caracteres antes do arroba e um dominio real. So quem sabe o
+# que foi respondido na pergunta anterior consegue saber que
+# esta errado.
+#
+# O ui_descartar_entrada ja evita a causa. Esta guarda fica
+# porque custa uma comparacao de string e o erro custou uma
+# instalacao inteira.
+main_validar_email_admin() {
+	local email="$1"
+
+	checks_validar_email "$email" || return 1
+
+	local parte_local="${email%@*}"
+
+	if [[ -n "$PA_DOMINIO" ]] && [[ "$parte_local" == *"$PA_DOMINIO"* ]]; then
+		ui_aviso "Este e-mail tem o domínio grudado antes do arroba."
+		ui_detalhe "domínio respondido: ${PA_DOMINIO}"
+		ui_detalhe "antes do arroba:   ${parte_local}"
+		ui_detalhe "Costuma ser sobra de colagem. Digite só o e-mail."
+		return 1
+	fi
+
+	return 0
+}
+
 main_perguntar() {
 	ui_secao "Algumas perguntas antes de começar"
 	ui_info "Depois daqui a instalação corre sozinha até o fim."
@@ -273,7 +311,9 @@ main_perguntar() {
 	if [[ -z "$PA_EMAIL_ADMIN" ]]; then
 		local sugestao="admin@${PA_DOMINIO}"
 		ui_vazio
-		ui_perguntar PA_EMAIL_ADMIN 			"E-mail para entrar no Mautic" 			"$sugestao" checks_validar_email
+		ui_perguntar PA_EMAIL_ADMIN \
+			"E-mail para entrar no Mautic" \
+			"$sugestao" main_validar_email_admin
 	fi
 
 	# 3. confirmação dos valores do Traefik

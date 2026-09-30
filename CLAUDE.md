@@ -1176,6 +1176,58 @@ sobre os 4,4 GB de instalação limpa. O de RAM também: 1152 MB ociosos
 significam que uma máquina de 2 GB funciona, mas sem margem, o que
 sustenta a decisão do swapfile.
 
+## Entrada colada: por que `read -t 0` não basta
+
+Diagnosticado em 2026-09-30. Colar texto numa pergunta gravou o e-mail do admin
+como `testemautic.exemplo.comfabioroger7@yahoo.com.br`: o domínio respondido
+grudado no e-mail digitado depois.
+
+O que acontece: a colagem começa com quebra de linha, que é lida como resposta
+vazia; o resto da colagem fica no buffer do terminal sem quebra de linha no fim;
+a leitura seguinte junta essa sobra com o que a pessoa digita.
+
+**Descartar a entrada pendente antes de cada pergunta com `read -t 0` não
+resolve, e isso foi medido num pty.** Em modo canônico, que é o normal do
+terminal, a linha só fica disponível para leitura depois do Enter. Uma sobra
+parcial fica parada na disciplina de linha, onde `read -t 0` não a vê, e o
+descarte não descarta nada. Com a primeira versão da correção, a sobra
+continuava grudando.
+
+O que funciona é passar o terminal para modo não canônico durante o descarte:
+
+    modo="$(stty -g)"
+    stty -icanon min 0 time 0
+    while read -r -t 0; do read -r -n 4096 -t 0.2; done
+    stty "$modo"
+
+Com `-icanon` cada caractere fica disponível na hora, e a sobra parcial aparece.
+
+Cuidados que vêm com mexer no terminal:
+
+- **`echo` fica ligado.** Morrendo entre os dois `stty`, um terminal sem
+  `icanon` ainda mostra o que a pessoa digita; sem `echo` ela digitaria no
+  escuro sem saber por quê.
+- **`ui_init` guarda o modo e registra `trap ui_restaurar_terminal EXIT`**, para
+  cobrir a morte dentro da janela de milissegundos. O trap não imprime nada: no
+  caminho de erro a mensagem útil já saiu no `ui_fatal`.
+- O descarte é pulado quando não há terminal. Num cano, `read -t 0` consumiria
+  a entrada legítima.
+
+**Custo aceito: colar as várias respostas de uma vez deixa de funcionar.** É
+desejado, porque era exatamente isso que produzia a resposta errada em silêncio.
+
+Nenhuma validação genérica de e-mail pega o valor do erro, e vale registrar por
+quê: `testemautic.exemplo.comfabioroger7@yahoo.com.br` é sintaticamente válido,
+com 45 caracteres antes do arroba e um domínio real. O mesmo vale para o lado do
+domínio: `testemautic.colado.comexemplo.com` é um domínio válido. A guarda que
+funciona é específica e mora em `main_validar_email_admin`: a parte antes do
+arroba não pode conter o domínio que acabou de ser respondido.
+
+Também entrou `ui_limpar_resposta`, que tira retorno de carro, tabulação e
+espaço das pontas. Retorno de carro vem em toda colagem feita a partir do
+Windows, não é `[[:space:]]` em todo locale, e chegaria ao label do Traefik
+dentro do `Host()`, produzindo 404 sem nada no log.
+
 ## Laço de redirecionamento: o proxy confiável
 
 Diagnosticado em 2026-09-30, na VPS 142.93.201.114. O site não abria:

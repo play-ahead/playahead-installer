@@ -552,8 +552,31 @@ checks_validar_dominio() {
 checks_validar_email() {
 	local email="$1"
 
-	if [[ ! "$email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; then
+	if [[ ! "$email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[a-zA-Z]{2,}$ ]]; then
 		ui_aviso "\"${email}\" não parece um e-mail válido."
+		ui_detalhe "Exemplo: voce@suaempresa.com.br"
+		return 1
+	fi
+
+	local parte_local="${email%@*}"
+	local dominio="${email##*@}"
+
+	# Limites do RFC 5321. Não são decoração: um valor mais longo
+	# que isso quase sempre é duas coisas grudadas, que é o modo
+	# como esta função falha na prática.
+	if [[ "${#email}" -gt 254 ]] || [[ "${#parte_local}" -gt 64 ]]; then
+		ui_aviso "Este e-mail é longo demais para ser válido."
+		ui_detalhe "${#parte_local} caracteres antes do arroba, ${#email} no total."
+		ui_detalhe "O limite é 64 e 254. Confira se não colou duas coisas."
+		return 1
+	fi
+
+	# Ponto no começo, no fim ou dobrado. Nenhum é válido, e os
+	# três aparecem quando dois valores se juntam sem separador.
+	if [[ "$parte_local" == .* ]] || [[ "$parte_local" == *. ]] ||
+		[[ "$email" == *..* ]] || [[ "$dominio" == .* ]]; then
+		ui_aviso "\"${email}\" tem ponto fora de lugar."
+		ui_detalhe "Ponto solto no começo, no fim ou dobrado não vale."
 		return 1
 	fi
 

@@ -40,6 +40,9 @@ PA_COR_DESTAQUE=""
 # 1 quando dá para perguntar: --yes ausente e stdin é terminal.
 PA_INTERATIVO=0
 
+# Modo do terminal, guardado pelo ui_init e devolvido no EXIT.
+PA_TERMINAL_MODO=""
+
 # Largura dos blocos e separadores.
 PA_LARGURA=64
 
@@ -79,6 +82,30 @@ ui_init() {
 	else
 		PA_INTERATIVO=0
 	fi
+
+	# Guarda o modo do terminal e promete devolve-lo.
+	#
+	# O ui_descartar_entrada troca o modo por alguns
+	# milissegundos e devolve em seguida. O trap cobre a morte
+	# dentro dessa janela: um Ctrl-C ali deixaria o terminal sem
+	# edicao de linha depois de o script sair, e a pessoa nao
+	# teria como saber por que o Backspace parou de funcionar.
+	if ui_interativo; then
+		PA_TERMINAL_MODO="$(stty -g 2>/dev/null || true)"
+		[[ -n "$PA_TERMINAL_MODO" ]] &&
+			trap ui_restaurar_terminal EXIT
+	fi
+}
+
+# ui_restaurar_terminal
+#
+# Devolve o modo salvo pelo ui_init. Roda no EXIT, e por isso
+# nao imprime nada: no caminho de erro a mensagem util ja foi
+# impressa pelo ui_fatal, e ruido depois dela atrapalha.
+ui_restaurar_terminal() {
+	[[ -n "${PA_TERMINAL_MODO:-}" ]] || return 0
+	stty "$PA_TERMINAL_MODO" 2>/dev/null || true
+	return 0
 }
 
 # ui_interativo
@@ -301,6 +328,92 @@ ui_cabecalho() {
 # script de verdade quando falta dado no modo --yes.
 # ------------------------------------------------------------
 
+# ui_descartar_entrada
+#
+# Joga fora o que estiver esperando no stdin.
+#
+# Existe por causa de colagem. No teste de 2026-09-30 a pessoa
+# colou texto numa pergunta, a quebra de linha do comeco da
+# colagem foi lida como resposta vazia, e a sobra ficou na fila
+# do terminal esperando a proxima leitura. Resultado: a resposta
+# seguinte nasceu grudada na sobra, e o e-mail do admin foi
+# gravado como o dominio mais o e-mail, numa string so.
+#
+# Descartar antes de cada pergunta e a unica defesa que funciona
+# aqui, porque quem digita nao ve o que ficou na fila. O custo e
+# que colar as varias respostas de uma vez deixa de funcionar, e
+# esse custo e desejado: era exatamente o que produzia a resposta
+# errada em silencio.
+#
+# Precisa passar o terminal para modo nao canonico, e isso nao e
+# preciosismo: foi medido. Em modo canonico, que e o normal, a
+# linha so fica disponivel para leitura depois do Enter. Uma
+# sobra de colagem sem Enter no fim fica parada no buffer do
+# terminal, onde `read -t 0` nao a ve, e o descarte nao descarta
+# nada. Testado num pty: com `read -t 0` sozinho, a sobra
+# "testemautic.colado.com" continuou grudando na resposta
+# seguinte, exatamente como no teste de 2026-09-30.
+#
+# Com -icanon cada caractere fica disponivel na hora, e a sobra
+# parcial aparece para o descarte.
+#
+# O echo fica ligado de proposito. Se o script morrer entre o
+# stty de ida e o de volta, um terminal sem icanon ainda mostra o
+# que a pessoa digita; sem echo ela digitaria no escuro. O
+# ui_init tambem registra um trap de EXIT que devolve o modo
+# original, para o caso de a morte acontecer aqui dentro.
+#
+# O contador existe para o laco nunca ser infinito.
+ui_descartar_entrada() {
+	ui_interativo || return 0
+
+	local modo
+	modo="$(stty -g 2>/dev/null)" || return 0
+
+	stty -icanon min 0 time 0 2>/dev/null || {
+		stty "$modo" 2>/dev/null
+		return 0
+	}
+
+	local voltas=0
+
+	# Sem nome de variavel: o que for lido cai em REPLY e morre
+	# ali. Nomear uma variavel so para descartar renderia um
+	# aviso de valor nao usado, com razao. (E comentario nao pode
+	# comecar com a palavra shellcheck: vira diretiva e quebra o
+	# build.)
+	while [[ "$voltas" -lt 200 ]] && read -r -t 0 2>/dev/null; do
+		read -r -n 4096 -t 0.2 2>/dev/null
+		voltas=$((voltas + 1))
+	done
+
+	stty "$modo" 2>/dev/null
+	return 0
+}
+
+# ui_limpar_resposta <var>
+#
+# Tira da resposta o que nao e conteudo: retorno de carro, que
+# vem em toda colagem feita a partir do Windows, tabulacao, e
+# espaco nas duas pontas.
+#
+# Um dominio colado com retorno de carro no fim carrega o
+# caractere invisivel junto. Ele passa pelo validador, porque nem
+# todo locale o considera espaco, e chega ao label do Traefik. O
+# roteador sobe com um Host que nunca casa, e o dominio devolve
+# 404 sem nada no log.
+ui_limpar_resposta() {
+	local -n _bruta="$1"
+
+	_bruta="${_bruta//$'\r'/}"
+	_bruta="${_bruta//$'\t'/}"
+	_bruta="${_bruta//$'\n'/}"
+
+	# Espaco das duas pontas, sem sed e sem subshell.
+	_bruta="${_bruta#"${_bruta%%[![:space:]]*}"}"
+	_bruta="${_bruta%"${_bruta##*[![:space:]]}"}"
+}
+
 # ui_perguntar <var_destino> <texto> [padrao] [funcao_validadora]
 #
 # A validadora recebe a resposta e devolve 0 quando aceita. Ela
@@ -330,8 +443,10 @@ ui_perguntar() {
 
 	local resposta
 	while true; do
+		ui_descartar_entrada
 		printf '  %s: ' "$rotulo"
 		IFS= read -r resposta || resposta=""
+		ui_limpar_resposta resposta
 
 		[[ -z "$resposta" ]] && resposta="$padrao"
 
@@ -367,9 +482,11 @@ ui_perguntar_opcional() {
 
 	local resposta
 	while true; do
+		ui_descartar_entrada
 		printf '  %s %s[Enter pula]%s: ' \
 			"$texto" "$PA_COR_FRACA" "$PA_COR_RESET"
 		IFS= read -r resposta || resposta=""
+		ui_limpar_resposta resposta
 
 		if [[ -z "$resposta" ]]; then
 			_destino_opcional=""
@@ -403,9 +520,11 @@ ui_confirmar() {
 
 	local resposta
 	while true; do
+		ui_descartar_entrada
 		printf '  %s %s[%s]%s: ' \
 			"$texto" "$PA_COR_FRACA" "$dica" "$PA_COR_RESET"
 		IFS= read -r resposta || resposta=""
+		ui_limpar_resposta resposta
 
 		case "${resposta,,}" in
 			s | sim | y | yes) return 0 ;;
@@ -454,9 +573,11 @@ ui_escolher() {
 
 	local resposta
 	while true; do
+		ui_descartar_entrada
 		printf '  Número da opção %s[1]%s: ' \
 			"$PA_COR_FRACA" "$PA_COR_RESET"
 		IFS= read -r resposta || resposta=""
+		ui_limpar_resposta resposta
 		[[ -z "$resposta" ]] && resposta=1
 
 		if [[ "$resposta" =~ ^[0-9]+$ ]] &&
