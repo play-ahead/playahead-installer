@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-30T20:07:31Z
+# Build:  2026-09-30T20:14:01Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -169,12 +169,22 @@ ui_interativo() {
 #
 # Único ponto de escrita do módulo.
 #
-# Só erro vai para stderr. Aviso fica no stdout junto com o resto:
-# ui_aviso quase sempre vem seguido de ui_detalhe explicando o
-# aviso, e separar os dois fluxos faz as linhas trocarem de ordem
-# assim que a saída é redirecionada para um arquivo. Descoberto
-# testando a tabela de detecção do Traefik, onde o aviso aparecia
-# depois dos próprios detalhes.
+# Só o ui_fatal vai para stderr. Todo o resto fica no stdout,
+# inclusive ui_aviso e ui_erro.
+#
+# A razão é ordem. Aviso e erro quase sempre vêm seguidos de
+# ui_info e ui_detalhe explicando o que aconteceu, e separar os
+# dois fluxos faz as linhas trocarem de lugar assim que a saída é
+# redirecionada para um arquivo: a linha mais importante aparece
+# no meio da explicação dela mesma.
+#
+# Visto duas vezes. Primeiro na tabela de detecção do Traefik,
+# onde o aviso aparecia depois dos próprios detalhes, o que moveu
+# ui_aviso para o stdout. Depois na verificação de roteamento, com
+# ui_erro, o que fechou a regra.
+#
+# O ui_fatal é a exceção porque o bloco dele é inteiro no stderr,
+# cabeçalho e ajuda juntos, então não se parte.
 ui_linha() {
 	printf '%s\n' "$*"
 }
@@ -203,8 +213,21 @@ ui_aviso() {
 	ui_linha "  ${PA_COR_AVISO}!${PA_COR_RESET} $*"
 }
 
+# ui_erro <texto...>
+#
+# Diagnostico que NAO encerra o script, e por isso vai no stdout,
+# junto com as linhas de ui_info e ui_detalhe que o explicam.
+#
+# Isso corrige um defeito de ordem: com a mensagem no stderr e a
+# explicacao no stdout, quem redireciona a saida para arquivo
+# recebe os dois blocos embaralhados, e a linha mais importante
+# aparece no meio da explicacao dela mesma. Foi visto ao testar a
+# verificacao de roteamento.
+#
+# A regra passou a ser simples: so o ui_fatal escreve no stderr,
+# porque so ele encerra o script.
 ui_erro() {
-	ui_linha_erro "  ${PA_COR_ERRO}✗${PA_COR_RESET} $*"
+	ui_linha "  ${PA_COR_ERRO}✗${PA_COR_RESET} $*"
 }
 
 # ui_detalhe <texto...>
@@ -359,15 +382,18 @@ ui_fatal() {
 	local mensagem="$1"
 	shift
 
-	ui_vazio
-	ui_erro "$mensagem"
+	# Tudo no stderr, inclusive o cabecalho: aqui o bloco inteiro
+	# e o erro final, e parti-lo entre dois fluxos embaralha a
+	# mensagem com a ajuda dela.
+	ui_linha_erro ""
+	ui_linha_erro "  ${PA_COR_ERRO}✗${PA_COR_RESET} ${mensagem}"
 
 	local ajuda
 	for ajuda in "$@"; do
 		ui_linha_erro "    ${PA_COR_FRACA}${ajuda}${PA_COR_RESET}"
 	done
 
-	ui_vazio
+	ui_linha_erro ""
 	exit 1
 }
 
@@ -797,7 +823,7 @@ ui_mascarar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-30T20:07:31Z"
+PA_BUILD="2026-09-30T20:14:01Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Menu de instaladores"
 
@@ -1185,7 +1211,7 @@ menu_conteudo_base() {
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-30T20:07:31Z
+# Build:  2026-09-30T20:14:01Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -1337,12 +1363,22 @@ ui_interativo() {
 #
 # Único ponto de escrita do módulo.
 #
-# Só erro vai para stderr. Aviso fica no stdout junto com o resto:
-# ui_aviso quase sempre vem seguido de ui_detalhe explicando o
-# aviso, e separar os dois fluxos faz as linhas trocarem de ordem
-# assim que a saída é redirecionada para um arquivo. Descoberto
-# testando a tabela de detecção do Traefik, onde o aviso aparecia
-# depois dos próprios detalhes.
+# Só o ui_fatal vai para stderr. Todo o resto fica no stdout,
+# inclusive ui_aviso e ui_erro.
+#
+# A razão é ordem. Aviso e erro quase sempre vêm seguidos de
+# ui_info e ui_detalhe explicando o que aconteceu, e separar os
+# dois fluxos faz as linhas trocarem de lugar assim que a saída é
+# redirecionada para um arquivo: a linha mais importante aparece
+# no meio da explicação dela mesma.
+#
+# Visto duas vezes. Primeiro na tabela de detecção do Traefik,
+# onde o aviso aparecia depois dos próprios detalhes, o que moveu
+# ui_aviso para o stdout. Depois na verificação de roteamento, com
+# ui_erro, o que fechou a regra.
+#
+# O ui_fatal é a exceção porque o bloco dele é inteiro no stderr,
+# cabeçalho e ajuda juntos, então não se parte.
 ui_linha() {
 	printf '%s\n' "$*"
 }
@@ -1371,8 +1407,21 @@ ui_aviso() {
 	ui_linha "  ${PA_COR_AVISO}!${PA_COR_RESET} $*"
 }
 
+# ui_erro <texto...>
+#
+# Diagnostico que NAO encerra o script, e por isso vai no stdout,
+# junto com as linhas de ui_info e ui_detalhe que o explicam.
+#
+# Isso corrige um defeito de ordem: com a mensagem no stderr e a
+# explicacao no stdout, quem redireciona a saida para arquivo
+# recebe os dois blocos embaralhados, e a linha mais importante
+# aparece no meio da explicacao dela mesma. Foi visto ao testar a
+# verificacao de roteamento.
+#
+# A regra passou a ser simples: so o ui_fatal escreve no stderr,
+# porque so ele encerra o script.
 ui_erro() {
-	ui_linha_erro "  ${PA_COR_ERRO}✗${PA_COR_RESET} $*"
+	ui_linha "  ${PA_COR_ERRO}✗${PA_COR_RESET} $*"
 }
 
 # ui_detalhe <texto...>
@@ -1527,15 +1576,18 @@ ui_fatal() {
 	local mensagem="$1"
 	shift
 
-	ui_vazio
-	ui_erro "$mensagem"
+	# Tudo no stderr, inclusive o cabecalho: aqui o bloco inteiro
+	# e o erro final, e parti-lo entre dois fluxos embaralha a
+	# mensagem com a ajuda dela.
+	ui_linha_erro ""
+	ui_linha_erro "  ${PA_COR_ERRO}✗${PA_COR_RESET} ${mensagem}"
 
 	local ajuda
 	for ajuda in "$@"; do
 		ui_linha_erro "    ${PA_COR_FRACA}${ajuda}${PA_COR_RESET}"
 	done
 
-	ui_vazio
+	ui_linha_erro ""
 	exit 1
 }
 
@@ -4338,7 +4390,7 @@ portainer_aviso_primeira_visita() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-30T20:07:31Z"
+PA_BUILD="2026-09-30T20:14:01Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
@@ -4761,7 +4813,7 @@ menu_conteudo_mautic7() {
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-30T20:07:31Z
+# Build:  2026-09-30T20:14:01Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -4913,12 +4965,22 @@ ui_interativo() {
 #
 # Único ponto de escrita do módulo.
 #
-# Só erro vai para stderr. Aviso fica no stdout junto com o resto:
-# ui_aviso quase sempre vem seguido de ui_detalhe explicando o
-# aviso, e separar os dois fluxos faz as linhas trocarem de ordem
-# assim que a saída é redirecionada para um arquivo. Descoberto
-# testando a tabela de detecção do Traefik, onde o aviso aparecia
-# depois dos próprios detalhes.
+# Só o ui_fatal vai para stderr. Todo o resto fica no stdout,
+# inclusive ui_aviso e ui_erro.
+#
+# A razão é ordem. Aviso e erro quase sempre vêm seguidos de
+# ui_info e ui_detalhe explicando o que aconteceu, e separar os
+# dois fluxos faz as linhas trocarem de lugar assim que a saída é
+# redirecionada para um arquivo: a linha mais importante aparece
+# no meio da explicação dela mesma.
+#
+# Visto duas vezes. Primeiro na tabela de detecção do Traefik,
+# onde o aviso aparecia depois dos próprios detalhes, o que moveu
+# ui_aviso para o stdout. Depois na verificação de roteamento, com
+# ui_erro, o que fechou a regra.
+#
+# O ui_fatal é a exceção porque o bloco dele é inteiro no stderr,
+# cabeçalho e ajuda juntos, então não se parte.
 ui_linha() {
 	printf '%s\n' "$*"
 }
@@ -4947,8 +5009,21 @@ ui_aviso() {
 	ui_linha "  ${PA_COR_AVISO}!${PA_COR_RESET} $*"
 }
 
+# ui_erro <texto...>
+#
+# Diagnostico que NAO encerra o script, e por isso vai no stdout,
+# junto com as linhas de ui_info e ui_detalhe que o explicam.
+#
+# Isso corrige um defeito de ordem: com a mensagem no stderr e a
+# explicacao no stdout, quem redireciona a saida para arquivo
+# recebe os dois blocos embaralhados, e a linha mais importante
+# aparece no meio da explicacao dela mesma. Foi visto ao testar a
+# verificacao de roteamento.
+#
+# A regra passou a ser simples: so o ui_fatal escreve no stderr,
+# porque so ele encerra o script.
 ui_erro() {
-	ui_linha_erro "  ${PA_COR_ERRO}✗${PA_COR_RESET} $*"
+	ui_linha "  ${PA_COR_ERRO}✗${PA_COR_RESET} $*"
 }
 
 # ui_detalhe <texto...>
@@ -5103,15 +5178,18 @@ ui_fatal() {
 	local mensagem="$1"
 	shift
 
-	ui_vazio
-	ui_erro "$mensagem"
+	# Tudo no stderr, inclusive o cabecalho: aqui o bloco inteiro
+	# e o erro final, e parti-lo entre dois fluxos embaralha a
+	# mensagem com a ajuda dela.
+	ui_linha_erro ""
+	ui_linha_erro "  ${PA_COR_ERRO}✗${PA_COR_RESET} ${mensagem}"
 
 	local ajuda
 	for ajuda in "$@"; do
 		ui_linha_erro "    ${PA_COR_FRACA}${ajuda}${PA_COR_RESET}"
 	done
 
-	ui_vazio
+	ui_linha_erro ""
 	exit 1
 }
 
@@ -7560,32 +7638,108 @@ mautic_gravar_credenciais() {
 # mautic_verificar_roteamento <dominio>
 #
 # Sem este passo o modo de falha mais caro do projeto continua
-# silencioso: o container sobe, o Mautic funciona, e o domínio
-# devolve 404 porque os nomes do Traefik estão errados.
+# silencioso: o container sobe, o Mautic funciona, e o domínio não
+# serve o Mautic.
+#
+# SEGUE OS REDIRECIONAMENTOS ATÉ O FIM, e só aceita 200 numa
+# página que é reconhecidamente do Mautic.
+#
+# A versão anterior aceitava 301 e 302 como "roteamento correto", e
+# isso custou caro em 2026-09-30: o domínio estava em laço de
+# redirecionamento, o site não abria em navegador nenhum, e o
+# script declarou sucesso. Um 301 não diz que deu certo, diz só
+# que alguém respondeu. Para onde ele aponta é que importa, e o
+# destino pode ser o mesmo endereço.
 #
 # Não derruba nada em caso de falha. Imprime o estado e como
 # corrigir, conforme a regra de não haver rollback.
 mautic_verificar_roteamento() {
 	local dominio="$1"
 
-	ui_passo "Conferindo se o domínio chega no Mautic"
+	ui_passo "Conferindo se o domínio abre o Mautic"
 
-	local codigo=""
+	local corpo
+	corpo="$(mktemp)" || corpo="/tmp/playahead_verificacao.$$"
+
+	local codigo="" url_final="" saltos="" medida=""
+	local rc=0
+	local lacos=0
 	local _tentativa
-	for _tentativa in $(seq 1 20); do
-		codigo="$(curl -sk -o /dev/null -w '%{http_code}' \
-			--max-time 15 "https://${dominio}/" 2>/dev/null || true)"
 
-		case "$codigo" in
-			200 | 302 | 301)
-				ui_ok "O domínio responde ${codigo}: roteamento correto"
-				return 0
-				;;
-		esac
+	for _tentativa in $(seq 1 20); do
+		rc=0
+
+		# -L segue os redirecionamentos. O --max-redirs 10 é o que
+		# transforma um laço infinito em resposta: o curl para e
+		# sai com 47, e é assim que o laço fica detectável.
+		medida="$(
+			curl -skL --max-redirs 10 --max-time 20 \
+				-o "$corpo" \
+				-w '%{http_code}|%{url_effective}|%{num_redirects}' \
+				"https://${dominio}/" 2>/dev/null
+		)" || rc="$?"
+
+		codigo="${medida%%|*}"
+		saltos="${medida##*|}"
+		url_final="${medida#*|}"
+		url_final="${url_final%|*}"
+
+		# 47 é "Maximum (10) redirects followed". Laço não se
+		# resolve com o tempo, então duas medidas bastam: a
+		# primeira pode pegar a aplicação ainda subindo.
+		if [[ "$rc" -eq 47 ]]; then
+			lacos=$((lacos + 1))
+			[[ "$lacos" -ge 2 ]] && break
+			sleep 6
+			continue
+		fi
+
+		if [[ "$codigo" == "200" ]] &&
+			mautic_pagina_do_mautic "$url_final" "$corpo"; then
+
+			rm -f "$corpo"
+			ui_ok "O domínio abre o Mautic"
+			ui_detalhe "terminou em ${url_final}, com 200"
+			[[ "${saltos:-0}" -gt 0 ]] &&
+				ui_detalhe "depois de ${saltos} redirecionamento(s)"
+			return 0
+		fi
 
 		sleep 6
 	done
 
+	local trecho=""
+	if [[ -s "$corpo" ]]; then
+		trecho="$(tr -d '\000-\037' <"$corpo" | head -c 60)"
+	fi
+	rm -f "$corpo"
+
+	# ----- laço de redirecionamento -----
+	if [[ "$lacos" -ge 2 ]]; then
+		ui_erro "O domínio entra em laço de redirecionamento."
+		ui_vazio
+		ui_info "No navegador isso aparece como ERR_TOO_MANY_REDIRECTS."
+		ui_info "O Traefik roteou certo; quem redireciona é o Mautic."
+		ui_vazio
+		ui_info "Quase sempre é o proxy confiável: o Mautic não sabe"
+		ui_info "que a conexão era HTTPS, compara com o site_url e"
+		ui_info "manda de volta para HTTPS, sem fim."
+		ui_vazio
+		ui_info "Confira se o arquivo tem a chave:"
+		ui_detalhe "cd ${PA_MAUTIC_DIR}"
+		ui_detalhe "docker compose exec -u www-data mautic_web \\"
+		ui_detalhe "  cat config/parameters_local.php"
+		ui_vazio
+		ui_info "Ele precisa conter:"
+		ui_detalhe "'trusted_proxies' => array('${PA_MAUTIC_PROXY_CONFIAVEL}'),"
+		ui_vazio
+		ui_info "Faltando, rode este instalador de novo: ele grava a"
+		ui_info "chave e não reinstala nada por cima."
+		ui_vazio
+		return 1
+	fi
+
+	# ----- 404: o Traefik atendeu e não achou o roteador -----
 	if [[ "$codigo" == "404" ]]; then
 		ui_erro "O Traefik respondeu, mas não roteou para o Mautic."
 		ui_vazio
@@ -7607,12 +7761,64 @@ mautic_verificar_roteamento() {
 		return 1
 	fi
 
+	# ----- 200, mas a página não é do Mautic -----
+	if [[ "$codigo" == "200" ]]; then
+		ui_aviso "O domínio respondeu 200, mas a página não é do Mautic."
+		ui_detalhe "terminou em: ${url_final}"
+		[[ -n "$trecho" ]] && ui_detalhe "começa com: ${trecho}"
+		ui_vazio
+		ui_info "Costuma ser outro site respondendo por este domínio, ou"
+		ui_info "o DNS apontando para outro servidor. O Mautic em si"
+		ui_info "está no ar dentro da máquina."
+		ui_vazio
+		return 1
+	fi
+
+	# ----- qualquer outra coisa -----
 	ui_aviso "O domínio respondeu ${codigo:-nada} em vez de 200."
+	[[ -n "$url_final" ]] && ui_detalhe "terminou em: ${url_final}"
 	ui_detalhe "O Mautic está no ar dentro da máquina."
 	ui_detalhe "Pode ser propagação de DNS ou emissão de certificado,"
 	ui_detalhe "que às vezes levam alguns minutos. Tente abrir no"
 	ui_detalhe "navegador daqui a pouco: https://${dominio}"
 	ui_vazio
+
+	return 1
+}
+
+# mautic_pagina_do_mautic <url_final> <arquivo_do_corpo>
+#
+# Um 200 sozinho não prova nada. O Traefik pode estar servindo
+# outro site no mesmo domínio, e um DNS apontado para o servidor
+# errado também devolve 200 de outra coisa. Por isso o teste olha
+# onde a navegação parou e o que veio no corpo.
+#
+# São dois destinos legítimos:
+#
+#   /s/login      instalação concluída, sem sessão. Medido na VPS:
+#                 a raiz devolve 302 para /s/dashboard, que devolve
+#                 302 para /s/login, que devolve 200.
+#   installer     caminho do --wizard, em que a instalação fica
+#                 deliberadamente pela metade.
+#
+# O marcador do corpo é o campo de usuário do formulário de login.
+# Procurar a palavra "Mautic" não serviria: ela aparece em
+# qualquer página de erro da aplicação, inclusive na de 500.
+mautic_pagina_do_mautic() {
+	local url="$1"
+	local corpo="$2"
+
+	case "$url" in
+		*installer*) return 0 ;;
+	esac
+
+	[[ -s "$corpo" ]] || return 1
+
+	case "$url" in
+		*/s/*)
+			grep -q '_username' "$corpo" 2>/dev/null && return 0
+			;;
+	esac
 
 	return 1
 }
@@ -7654,7 +7860,7 @@ mautic_verificar_roteamento() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-30T20:07:31Z"
+PA_BUILD="2026-09-30T20:14:01Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.

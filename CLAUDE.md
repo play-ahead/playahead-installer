@@ -603,17 +603,43 @@ Rodar de novo não pode destruir banco nem sobrescrever `.env`. Três estados:
 Só o estado parcial aborta. É o caso perigoso: senha nova contra banco antigo
 gera erro de autenticação que parece bug do script.
 
-### Verificação anti-404
+### Verificação final: segue os redirecionamentos
 
-Depois de subir, o script faz `curl` no domínio, de fora, e espera 200 ou 302.
+Depois de subir, o script faz `curl` no domínio, de fora, **segue os
+redirecionamentos até o fim** e só aceita sucesso quando chega numa página que é
+reconhecidamente do Mautic, com 200.
 
-Devolvendo 404, a mensagem é específica ("o Traefik respondeu, mas não roteou
-para o Mautic"), lista os três valores usados, diz que provavelmente estão
-errados e mostra como corrigir editando o `.env` e rodando `up -d`. Não derruba
-nada.
+**Aceitar 301 ou 302 como "roteamento correto" foi um erro, e ele custou o
+teste de 2026-09-30.** O domínio estava em laço de redirecionamento, o site não
+abria em navegador nenhum, e o script declarou sucesso. Um 301 não diz que deu
+certo, diz só que alguém respondeu; para onde ele aponta é que importa, e o
+destino pode ser o mesmo endereço.
 
-Sem este passo o modo de falha descrito nos Requisitos funcionais continua
-silencioso, que é exatamente o que o projeto tenta evitar.
+O que conta como sucesso, medido na VPS:
+
+- `/s/login` com 200 e `_username` no corpo. A raiz devolve 302 para
+  `/s/dashboard`, que devolve 302 para `/s/login`, que devolve 200. São dois
+  saltos, e são esperados.
+- qualquer URL final contendo `installer`, que é o caminho do `--wizard`.
+
+O marcador do corpo é o campo de usuário do formulário. Procurar a palavra
+"Mautic" não serviria: ela aparece em qualquer página de erro da aplicação,
+inclusive na de 500.
+
+Quatro vereditos, todos validados na VPS:
+
+| Situação | Como é detectada | Mensagem |
+|---|---|---|
+| Funciona | 200 em `/s/login` com `_username` | sucesso, dizendo onde terminou |
+| Laço de redirecionamento | `curl` sai com 47, "Maximum (10) redirects followed" | aponta o proxy confiável e o `parameters_local.php` |
+| Traefik sem roteador | 404 | lista os três valores do Traefik e como corrigir |
+| Outro site no domínio | 200 em página sem marcador | mostra a URL final e os primeiros 60 caracteres |
+
+O laço não se resolve com o tempo, então duas medidas bastam antes de declarar:
+a primeira pode pegar a aplicação ainda subindo. As outras situações usam as 20
+tentativas, porque DNS e emissão de certificado levam minutos.
+
+Não derruba nada em nenhum caso, conforme a regra de não haver rollback.
 
 ### Nada destrutivo
 

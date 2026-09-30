@@ -123,12 +123,22 @@ ui_interativo() {
 #
 # Único ponto de escrita do módulo.
 #
-# Só erro vai para stderr. Aviso fica no stdout junto com o resto:
-# ui_aviso quase sempre vem seguido de ui_detalhe explicando o
-# aviso, e separar os dois fluxos faz as linhas trocarem de ordem
-# assim que a saída é redirecionada para um arquivo. Descoberto
-# testando a tabela de detecção do Traefik, onde o aviso aparecia
-# depois dos próprios detalhes.
+# Só o ui_fatal vai para stderr. Todo o resto fica no stdout,
+# inclusive ui_aviso e ui_erro.
+#
+# A razão é ordem. Aviso e erro quase sempre vêm seguidos de
+# ui_info e ui_detalhe explicando o que aconteceu, e separar os
+# dois fluxos faz as linhas trocarem de lugar assim que a saída é
+# redirecionada para um arquivo: a linha mais importante aparece
+# no meio da explicação dela mesma.
+#
+# Visto duas vezes. Primeiro na tabela de detecção do Traefik,
+# onde o aviso aparecia depois dos próprios detalhes, o que moveu
+# ui_aviso para o stdout. Depois na verificação de roteamento, com
+# ui_erro, o que fechou a regra.
+#
+# O ui_fatal é a exceção porque o bloco dele é inteiro no stderr,
+# cabeçalho e ajuda juntos, então não se parte.
 ui_linha() {
 	printf '%s\n' "$*"
 }
@@ -157,8 +167,21 @@ ui_aviso() {
 	ui_linha "  ${PA_COR_AVISO}!${PA_COR_RESET} $*"
 }
 
+# ui_erro <texto...>
+#
+# Diagnostico que NAO encerra o script, e por isso vai no stdout,
+# junto com as linhas de ui_info e ui_detalhe que o explicam.
+#
+# Isso corrige um defeito de ordem: com a mensagem no stderr e a
+# explicacao no stdout, quem redireciona a saida para arquivo
+# recebe os dois blocos embaralhados, e a linha mais importante
+# aparece no meio da explicacao dela mesma. Foi visto ao testar a
+# verificacao de roteamento.
+#
+# A regra passou a ser simples: so o ui_fatal escreve no stderr,
+# porque so ele encerra o script.
 ui_erro() {
-	ui_linha_erro "  ${PA_COR_ERRO}✗${PA_COR_RESET} $*"
+	ui_linha "  ${PA_COR_ERRO}✗${PA_COR_RESET} $*"
 }
 
 # ui_detalhe <texto...>
@@ -313,15 +336,18 @@ ui_fatal() {
 	local mensagem="$1"
 	shift
 
-	ui_vazio
-	ui_erro "$mensagem"
+	# Tudo no stderr, inclusive o cabecalho: aqui o bloco inteiro
+	# e o erro final, e parti-lo entre dois fluxos embaralha a
+	# mensagem com a ajuda dela.
+	ui_linha_erro ""
+	ui_linha_erro "  ${PA_COR_ERRO}✗${PA_COR_RESET} ${mensagem}"
 
 	local ajuda
 	for ajuda in "$@"; do
 		ui_linha_erro "    ${PA_COR_FRACA}${ajuda}${PA_COR_RESET}"
 	done
 
-	ui_vazio
+	ui_linha_erro ""
 	exit 1
 }
 
