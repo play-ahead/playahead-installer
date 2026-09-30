@@ -49,6 +49,20 @@ PA_MAUTIC_ADMIN_SOBRENOME="Play Ahead"
 PA_MAUTIC_LANG_MANIFEST="https://language-packs.mautic.com/manifest.json"
 PA_MAUTIC_LANG_BASE="https://language-packs.mautic.com/"
 
+# Faixa de proxy confiável, gravada em config/parameters_local.php.
+#
+# 0.0.0.0/0 confia em qualquer origem, e aqui isso é seguro: a
+# porta 80 do mautic_web não é publicada no host, então ninguém
+# fora da rede do Docker consegue abrir conexão com ela. Quem
+# alcança o Apache é o Traefik e mais nada.
+#
+# A alternativa, gravar as faixas privadas ou o IP do container
+# do Traefik, é mais restrita no papel e mais frágil na prática:
+# a faixa varia por máquina, no cenário 2 pode ser qualquer uma,
+# e o IP muda quando o proxy é recriado. Errar isso traz o laço
+# de redirecionamento de volta, e sem nenhuma mensagem de erro.
+PA_MAUTIC_PROXY_CONFIAVEL="0.0.0.0/0"
+
 # Estado, preenchido durante a instalação e lido pelo bloco final.
 PA_MAUTIC_SENHA_ADMIN=""
 PA_MAUTIC_SENHA_BANCO=""
@@ -390,6 +404,106 @@ mautic_subir_resto() {
 # O teste B14 mostrou o sinal confiável: instalação concluída
 # grava site_url no local.php. Antes disso o arquivo existe, mas
 # só com parâmetros de banco.
+# ------------------------------------------------------------
+# Proxy confiável
+# ------------------------------------------------------------
+
+# mautic_gravar_proxies
+#
+# Sem este passo o site não abre: laço de redirecionamento.
+#
+# O Traefik termina o TLS e conversa com o Apache em HTTP,
+# avisando por X-Forwarded-Proto que a conexão original era
+# HTTPS. Para o Symfony acreditar nesse cabeçalho, alguém precisa
+# ter chamado Request::setTrustedProxies(). Quem chama é o
+# docroot/app/middlewares/TrustMiddleware.php, e ele lê a
+# configuração pelo ConfigAwareTrait, que faz include de
+# config/local.php e de config/parameters_local.php. E nada mais:
+# não lê variável de ambiente nenhuma.
+#
+# Por isso o MAUTIC_TRUSTED_PROXIES do compose não resolve. Ele
+# chega no container de injeção de dependência do Symfony, como
+# json:resolve:MAUTIC_TRUSTED_PROXIES, mas esse parâmetro não é
+# o que configura o HttpFoundation. Medido na VPS: com a variável
+# no ambiente e o JSON válido, o ParameterLoader ainda devolvia
+# trusted_proxies como array vazio.
+#
+# O resultado é o pior tipo de falha. O Mautic vê http, compara
+# com o site_url https e devolve 301 para https; o navegador
+# volta por https, o Traefik encaminha por http outra vez, e o
+# laço nunca fecha. O log do Traefik fica limpo, porque o Traefik
+# roteou certo.
+#
+# Gravar em parameters_local.php, e não em local.php, é
+# deliberado. O ConfigAwareTrait mescla o parameters_local por
+# cima do local, e este arquivo não é reescrito por ninguém: nem
+# pelo mautic:install, nem pelo assistente web, nem pelo "salvar
+# configuração" do painel, que reescrevem o local.php e não
+# conhecem esta chave. Em local.php a correção sobreviveria à
+# instalação e morreria no dia em que a pessoa salvasse qualquer
+# ajuste na interface.
+#
+# Roda antes da instalação de propósito, para valer também no
+# caminho do --wizard, onde o site_url só é gravado no fim.
+# Verificado que não precisa de cache limpo: o middleware lê o
+# arquivo a cada requisição.
+mautic_gravar_proxies() {
+	ui_passo "Autorizando o Traefik como proxy confiável"
+
+	if ! mautic_php_stdin <<PHP
+<?php
+\$arquivo = 'config/parameters_local.php';
+\$chave = "\t'trusted_proxies' => array('${PA_MAUTIC_PROXY_CONFIAVEL}'),\n";
+
+if (!file_exists(\$arquivo)) {
+    \$conteudo = '<?php' . "\n\n" . '\$parameters = array(' . "\n"
+        . \$chave . ');' . "\n";
+
+    exit(file_put_contents(\$arquivo, \$conteudo) === false ? 1 : 0);
+}
+
+\$texto = file_get_contents(\$arquivo);
+if (\$texto === false) {
+    exit(1);
+}
+
+if (preg_match("/'trusted_proxies'\s*=>/", \$texto)) {
+    exit(0);
+}
+
+\$novo = preg_replace(
+    '/\n\);\s*\$/',
+    "\n" . \$chave . ");\n",
+    \$texto,
+    1,
+    \$trocas
+);
+
+exit((\$trocas === 0 || file_put_contents(\$arquivo, \$novo) === false) ? 1 : 0);
+PHP
+	then
+		ui_erro "Não consegui autorizar o Traefik como proxy confiável."
+		ui_vazio
+		ui_info "Sem isso o domínio entra em laço de redirecionamento, e"
+		ui_info "o navegador mostra ERR_TOO_MANY_REDIRECTS."
+		ui_vazio
+		ui_info "Para fazer à mão, crie o arquivo dentro do container:"
+		ui_detalhe "cd ${PA_MAUTIC_DIR}"
+		ui_detalhe "docker compose exec -u www-data mautic_web \\"
+		ui_detalhe "  nano config/parameters_local.php"
+		ui_vazio
+		ui_info "com este conteúdo:"
+		ui_detalhe "<?php"
+		ui_detalhe "\$parameters = array("
+		ui_detalhe "  'trusted_proxies' => array('${PA_MAUTIC_PROXY_CONFIAVEL}'),"
+		ui_detalhe ");"
+		ui_vazio
+		return 1
+	fi
+
+	ui_ok "Proxy confiável gravado em config/parameters_local.php"
+}
+
 mautic_ja_instalado() {
 	mautic_compose exec -T -w "$PA_MAUTIC_WORKDIR" mautic_web \
 		grep -q "site_url" config/local.php 2>/dev/null

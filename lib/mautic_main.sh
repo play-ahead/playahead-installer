@@ -384,6 +384,12 @@ main_instalar() {
 	mautic_subir_banco
 	mautic_subir_web
 
+	# Antes da instalação, e fora do if, porque vale para os três
+	# caminhos: linha de comando, --wizard e reexecução sobre uma
+	# instalação que já existe. É o passo que evita o laço de
+	# redirecionamento, e é idempotente.
+	mautic_gravar_proxies || true
+
 	if [[ "$PA_WIZARD" -eq 1 ]]; then
 		ui_ok "Instalação por linha de comando pulada por --wizard"
 		ui_detalhe "Conclua pelo navegador; as credenciais do banco estão"

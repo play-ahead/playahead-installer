@@ -748,9 +748,12 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
   e-mail acontece de forma síncrona. O valor não pode ter aspas no compose, senão
   as aspas entram na variável e a aplicação erra com "No transport supports the
   given Messenger DSN".
-- **Trusted proxies.** `MAUTIC_TRUSTED_PROXIES` é lido como JSON pelo Symfony.
-  Precisa ser um array JSON válido, por exemplo `["0.0.0.0/0"]`. String solta
-  quebra a aplicação na inicialização.
+- **Trusted proxies: a variável de ambiente NÃO basta.** Esta entrada estava
+  errada até 2026-09-30 e mandava procurar no lugar errado. Detalhes na seção
+  "Laço de redirecionamento". Em uma linha: quem chama `setTrustedProxies()` é
+  um middleware que lê `config/local.php` e `config/parameters_local.php`, e
+  variável de ambiente nenhuma. O instalador grava a chave em
+  `parameters_local.php`.
 - **`PHP_INI_VALUE_POST_MAX_FILESIZE` é o nome correto.** Está assim no README
   oficial da imagem, com default 512M, mesmo parecendo errado em relação à
   diretiva `post_max_size` do PHP. Não "corrigir".
@@ -1132,6 +1135,90 @@ O piso de 10 GB em `PA_DISCO_MINIMO_MB` está validado: sobra folga
 sobre os 4,4 GB de instalação limpa. O de RAM também: 1152 MB ociosos
 significam que uma máquina de 2 GB funciona, mas sem margem — o que
 sustenta a decisão do swapfile.
+
+## Laço de redirecionamento: o proxy confiável
+
+Diagnosticado em 2026-09-30, na VPS 142.93.201.114. O site não abria:
+`ERR_TOO_MANY_REDIRECTS`, e `curl -sIL` devolvia `301` com `location` para o
+próprio endereço, sem fim.
+
+**É bug latente, não regressão.** O template carrega
+`MAUTIC_TRUSTED_PROXIES` desde que foi escrito, e a variável nunca funcionou.
+Verificado que o laço acontece com ou sem a etapa de idioma e fuso, e
+`git diff 25b266d..HEAD -- lib/mautic.sh templates/` é vazio. O que mudou foi
+a chance de alguém perceber, não o comportamento.
+
+### Quem emite o 301
+
+O Mautic, servido pelo Apache. Não o Traefik. Três medições idênticas:
+
+| Teste | Resposta |
+|---|---|
+| `curl` no Apache dentro do container, sem Traefik no caminho | `301` para `https://<dominio>/` |
+| O mesmo, com `X-Forwarded-Proto: https` | `301` para o mesmo endereço |
+| Externo, via Traefik | `301` para o mesmo endereço |
+
+Nas três, `Server: Apache/2.4.67 (Debian)` e os cabeçalhos
+`Expires`/`Cache-Control: max-age=0, must-revalidate, private`, que são
+assinatura do Symfony. O log do Traefik não tem uma linha de erro ou aviso, e
+os labels estão corretos. **Quando o roteamento está certo e a resposta ainda
+é 301, não procure no proxy.**
+
+### Por quê
+
+O Mautic nunca fica sabendo que a conexão era HTTPS:
+
+    param trusted_proxies = array (
+    )
+
+Isso com `MAUTIC_TRUSTED_PROXIES=["0.0.0.0/0"]` no ambiente do container e o
+`json_decode` dele funcionando.
+
+Quem chama `Request::setTrustedProxies()` é
+`docroot/app/middlewares/TrustMiddleware.php`, e ele lê a configuração pelo
+`ConfigAwareTrait`, que faz `include` de `config/local.php` e de
+`config/parameters_local.php`. **Não lê variável de ambiente nenhuma.** A
+`MAUTIC_TRUSTED_PROXIES` chega ao container de injeção de dependência do
+Symfony, como `json:resolve:MAUTIC_TRUSTED_PROXIES`, e esse parâmetro não é o
+que configura o `HttpFoundation`.
+
+A cadeia completa:
+
+1. `mautic:install` grava `site_url => https://...` no `local.php`.
+2. Nem esse `local.php` nem o `/templates/local.php` da imagem trazem
+   `trusted_proxies`; o da imagem só tem as chaves de banco.
+3. `setTrustedProxies` nunca é chamado, então o Symfony ignora o
+   `X-Forwarded-Proto`.
+4. O Traefik termina o TLS e fala HTTP com o Apache na porta 80, o que é
+   correto. O Mautic vê `http`, compara com `site_url` `https` e devolve `301`.
+5. O navegador volta por https, o Traefik encaminha por http outra vez. Laço.
+
+### Onde a correção mora, e por que não no local.php
+
+`config/parameters_local.php`, gravado por `mautic_gravar_proxies`:
+
+    <?php
+
+    $parameters = array(
+    	'trusted_proxies' => array('0.0.0.0/0'),
+    );
+
+O `ConfigAwareTrait` mescla o `parameters_local` **por cima** do `local`, e
+este arquivo não é reescrito por ninguém: nem pelo `mautic:install`, nem pelo
+assistente web, nem pelo "salvar configuração" do painel. Os três reescrevem o
+`local.php` e não conhecem esta chave. Gravada no `local.php`, a correção
+sobreviveria à instalação e morreria no dia em que a pessoa salvasse qualquer
+ajuste na interface — falha adiada, que é a pior de explicar.
+
+`0.0.0.0/0` e não faixa privada nem IP do container: a porta 80 do
+`mautic_web` não é publicada no host, então só o Traefik alcança o Apache. A
+opção restrita é mais frágil, porque a faixa varia por máquina, no cenário 2
+pode ser qualquer uma, e o IP muda quando o proxy é recriado.
+
+Roda **antes** da instalação, fora do `if` do `--wizard`, e é idempotente.
+Verificado que não precisa de cache limpo: o middleware lê o arquivo a cada
+requisição. Isso é o que faz o `--wizard` também ficar coberto, já que lá o
+`site_url` só aparece no fim.
 
 ## Resultado do teste do cenário 1
 

@@ -37,7 +37,24 @@
 #
 # 2) docker compose up -d mariadb   # espere ficar healthy
 # 3) docker compose up -d mautic_web
-# 4) Conclua a instalação. Duas opções:
+#
+# 4) Autorize o Traefik como proxy confiável. Este passo NÃO é
+#    opcional: sem ele o domínio entra em laço de
+#    redirecionamento e o navegador mostra
+#    ERR_TOO_MANY_REDIRECTS. A variável MAUTIC_TRUSTED_PROXIES
+#    abaixo não resolve sozinha; veja o comentário dela.
+#
+#      docker compose exec -u www-data -w /var/www/html \
+#        mautic_web nano config/parameters_local.php
+#
+#    com este conteúdo:
+#
+#      <?php
+#      $parameters = array(
+#        'trusted_proxies' => array('0.0.0.0/0'),
+#      );
+#
+# 5) Conclua a instalação. Duas opções:
 #    a) por linha de comando, que é o que o instalador faz:
 #         docker compose exec -w /var/www/html mautic_web \
 #           php -d date.timezone=UTC bin/console mautic:install \
@@ -47,7 +64,7 @@
 #       brasileiro o instalador reprova na checagem de requisitos.
 #    b) pelo assistente web, acessando o domínio no navegador
 #       (host do banco: mariadb)
-# 5) docker compose up -d            # sobe cron e worker
+# 6) docker compose up -d            # sobe cron e worker
 # ============================================================
 
 services:
@@ -121,8 +138,37 @@ services:
 
       # ----------------------------------------------------------
       # PROXY REVERSO
-      # Sem isso o Mautic registra o IP do Traefik como IP do contato.
-      # O valor é lido como JSON pelo Symfony -> precisa ser array JSON.
+      #
+      # ATENCAO: esta variavel NAO basta, e sozinha ela nao evita
+      # o laco de redirecionamento.
+      #
+      # Quem chama Request::setTrustedProxies() e o middleware
+      # docroot/app/middlewares/TrustMiddleware.php, e ele le a
+      # configuracao de config/local.php e de
+      # config/parameters_local.php. Nao le variavel de ambiente
+      # nenhuma. Esta variavel chega ao container de injecao de
+      # dependencia do Symfony, como parametro
+      # mautic.trusted_proxies, e ali nao configura o
+      # HttpFoundation.
+      #
+      # Medido em VPS: com a variavel abaixo definida e o JSON
+      # valido, o ParameterLoader devolvia trusted_proxies como
+      # array vazio, o Mautic via a requisicao como http, comparava
+      # com o site_url https e devolvia 301 para https num laco
+      # infinito. O log do Traefik ficava limpo.
+      #
+      # O instalador grava a chave em config/parameters_local.php,
+      # na funcao mautic_gravar_proxies. Se voce usa este template
+      # sozinho, crie o arquivo dentro do container, como
+      # www-data:
+      #
+      #     <?php
+      #     $parameters = array(
+      #       'trusted_proxies' => array('0.0.0.0/0'),
+      #     );
+      #
+      # A variavel fica aqui porque alimenta o parametro do Symfony
+      # e tirar nao ganha nada. So nao confie nela para isto.
       # ----------------------------------------------------------
 
       MAUTIC_TRUSTED_PROXIES: '["0.0.0.0/0"]'
