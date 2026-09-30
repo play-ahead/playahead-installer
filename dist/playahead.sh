@@ -6,7 +6,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-30T19:41:29Z
+# Build:  2026-09-30T19:42:40Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -585,7 +585,7 @@ ui_mascarar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-30T19:41:29Z"
+PA_BUILD="2026-09-30T19:42:40Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Menu de instaladores"
 
@@ -733,21 +733,47 @@ menu_gravar() {
 			"    https://get.playahead.com.br/${arquivo%.sh}"
 	fi
 
-	# A mensagem precisa dizer que o que existe é o ARQUIVO do
-	# instalador, e não a ferramenta instalada. No teste de
-	# 2026-09-30 a versão anterior, "mautic7.sh já existe neste
-	# diretório", foi lida como "o Mautic já está instalado" — e é
-	# uma leitura razoável, porque quem está no meio de uma
-	# instalação pensa na ferramenta, não em arquivo.
+	# Arquivo já na pasta: comparar antes de perguntar.
+	#
+	# Perguntar sempre tinha um efeito ruim e silencioso. Quem
+	# respondia "não" mandava o menu rodar uma cópia que podia ser
+	# de outra versão, e o menu não tinha como saber nem avisar. O
+	# resultado seria um instalador antigo rodando enquanto a tela
+	# anunciou a versão do menu.
+	#
+	# Comparar resolve os dois casos sem pergunta desnecessária:
+	# igual ao embutido, não há o que decidir; diferente, é
+	# informação que muda a resposta e precisa aparecer.
+	#
+	# A comparação é byte a byte. Comparar versão declarada no
+	# cabeçalho não serviria: uma cópia editada à mão mantém o
+	# número e muda o código.
 	if [[ -e "$arquivo" ]]; then
-		ui_aviso "O arquivo ${arquivo} já está nesta pasta."
+		if "$extrator" | cmp -s - "$arquivo"; then
+			ui_ok "${arquivo} já está aqui, e é igual ao deste menu"
+			return 0
+		fi
+
+		# A mensagem precisa dizer que o que existe é o ARQUIVO do
+		# instalador, e não a ferramenta instalada. No teste de
+		# 2026-09-30 a versão anterior, "mautic7.sh já existe neste
+		# diretório", foi lida como "o Mautic já está instalado", e
+		# é uma leitura razoável: quem está no meio de uma
+		# instalação pensa na ferramenta, não em arquivo.
+		ui_aviso "O arquivo ${arquivo} já está nesta pasta, e é DIFERENTE"
+		ui_aviso "da cópia que vem dentro deste menu."
 		ui_detalhe "É o instalador em si, gravado ou baixado antes."
 		ui_detalhe "Isso não diz nada sobre a ferramenta estar"
 		ui_detalhe "instalada nesta máquina: quem verifica isso é o"
 		ui_detalhe "próprio instalador, quando rodar."
+		ui_vazio
+		ui_detalhe "Pode ser de outra versão, ou ter sido editado."
+		ui_detalhe "Substituir é o padrão, porque é o único conteúdo"
+		ui_detalhe "que este menu conhece e acabou de anunciar."
 
 		if ! ui_confirmar "Substituir pela cópia que vem neste menu?" 1; then
-			ui_info "Arquivo mantido. Vou rodar o que já estava aqui."
+			ui_aviso "Arquivo mantido. Vou rodar o que já estava aqui,"
+			ui_aviso "que não é o que este menu carrega."
 			return 0
 		fi
 	fi
