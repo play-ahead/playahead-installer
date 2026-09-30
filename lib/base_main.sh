@@ -333,19 +333,25 @@ base_confirmar() {
 	[[ "$PA_TEM_TRAEFIK" -eq 1 ]] &&
 		acao_traefik="reaproveitar o que já está no ar"
 
+	# Cada linha leva a origem do valor. Swap, Docker e Traefik
+	# saem de leitura da máquina; e-mail do SSL e subdomínio do
+	# Portainer saem da pessoa, e são os dois que um erro de
+	# digitação estraga em silêncio: e-mail errado no ACME e
+	# subdomínio errado no Portainer só aparecem depois, quando o
+	# certificado falha.
 	local -a itens=(
-		"Swap" "$acao_swap"
-		"Docker e Compose" "$acao_docker"
-		"Traefik" "$acao_traefik"
+		"Swap" "$acao_swap" detectado
+		"Docker e Compose" "$acao_docker" detectado
+		"Traefik" "$acao_traefik" detectado
 	)
 
 	[[ "$PA_TEM_TRAEFIK" -eq 0 ]] &&
-		itens+=("E-mail do SSL" "$PA_EMAIL_ACME")
+		itens+=("E-mail do SSL" "$PA_EMAIL_ACME" informado)
 
 	if [[ "$PA_PORTAINER" -eq 1 ]]; then
-		itens+=("Portainer" "https://${PA_PORTAINER_DOMINIO}")
+		itens+=("Portainer" "https://${PA_PORTAINER_DOMINIO}" informado)
 	else
-		itens+=("Portainer" "não instalar")
+		itens+=("Portainer" "não instalar" informado)
 	fi
 
 	ui_resumo "Confira antes de começar" "${itens[@]}"

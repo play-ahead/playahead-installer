@@ -58,8 +58,14 @@ PA_SEM_CERTRESOLVER=0
 # O Mautic nasce em inglês e, por causa do contorno do fuso no
 # instalador, com fuso UTC. Os dois são corrigidos depois da
 # instalação, em mautic_regionalizar.
-PA_IDIOMA="pt_BR"
-PA_FUSO="America/Sao_Paulo"
+# Os padrões ficam em constante própria porque o resumo compara
+# o valor atual com eles para saber se a pessoa escolheu ou se o
+# script trouxe de fábrica.
+PA_IDIOMA_PADRAO="pt_BR"
+PA_FUSO_PADRAO="America/Sao_Paulo"
+
+PA_IDIOMA="$PA_IDIOMA_PADRAO"
+PA_FUSO="$PA_FUSO_PADRAO"
 
 # Caminho do template do compose. No dist/mautic7.sh o template
 # vai embutido; aqui aponta para o repositório.
@@ -393,20 +399,38 @@ main_confirmar() {
 	local certresolver="${PA_TRAEFIK_CERTRESOLVER:-omitido}"
 
 	local conclusao="concluir pela linha de comando"
-	[[ "$PA_WIZARD" -eq 1 ]] &&
+	local origem_conclusao="padrao"
+	if [[ "$PA_WIZARD" -eq 1 ]]; then
 		conclusao="deixar o assistente web (--wizard)"
+		origem_conclusao="informado"
+	fi
 
+	# Idioma e fuso: comparar com o padrão distingue "a pessoa
+	# escolheu" de "o script trouxe de fábrica" sem precisar
+	# guardar mais estado no parse. Quem passar --idioma=pt_BR
+	# explicitamente aparece como padrão, e isso não incomoda
+	# ninguém.
+	local origem_idioma="padrao"
+	local origem_fuso="padrao"
+	[[ "$PA_IDIOMA" != "$PA_IDIOMA_PADRAO" ]] && origem_idioma="informado"
+	[[ "$PA_FUSO" != "$PA_FUSO_PADRAO" ]] && origem_fuso="informado"
+
+	# Os três valores do Traefik entram como detectado mesmo
+	# quando vieram de flag: a tela anterior, a do
+	# main_confirmar_traefik, já mostrou a origem de cada um numa
+	# tabela própria, e repetir aqui só tiraria peso da marca de
+	# "veio de você" nas duas linhas que importam.
 	ui_resumo "Confira antes de começar" \
-		"Domínio" "https://${PA_DOMINIO}" \
-		"E-mail do admin" "$PA_EMAIL_ADMIN" \
-		"DNS" "$PA_DNS_RESULTADO" \
-		"Rede do Traefik" "${PA_TRAEFIK_NETWORK:-traefik_public}" \
-		"Entrypoint" "${PA_TRAEFIK_ENTRYPOINT:-websecure}" \
-		"Certresolver" "$certresolver" \
-		"Idioma" "$PA_IDIOMA" \
-		"Fuso horário" "$PA_FUSO" \
-		"Pasta" "$PA_MAUTIC_DIR" \
-		"Conclusão" "$conclusao"
+		"Domínio" "https://${PA_DOMINIO}" informado \
+		"E-mail do admin" "$PA_EMAIL_ADMIN" informado \
+		"DNS" "$PA_DNS_RESULTADO" detectado \
+		"Rede do Traefik" "${PA_TRAEFIK_NETWORK:-traefik_public}" detectado \
+		"Entrypoint" "${PA_TRAEFIK_ENTRYPOINT:-websecure}" detectado \
+		"Certresolver" "$certresolver" detectado \
+		"Idioma" "$PA_IDIOMA" "$origem_idioma" \
+		"Fuso horário" "$PA_FUSO" "$origem_fuso" \
+		"Pasta" "$PA_MAUTIC_DIR" padrao \
+		"Conclusão" "$conclusao" "$origem_conclusao"
 
 	ui_confirmar_resumo
 }

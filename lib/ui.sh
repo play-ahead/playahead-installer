@@ -204,30 +204,74 @@ ui_largura() {
 	LC_ALL=C printf '%s' "$1" | LC_ALL=C tr -d '\200-\277' | LC_ALL=C wc -c
 }
 
-# ui_resumo <titulo> [<rótulo> <valor>]...
+# ui_resumo <titulo> [<rotulo> <valor> <origem>]...
 #
-# A tela de confirmação antes de começar. Existe por dois motivos,
-# e os dois são de gente, não de código: pegar domínio digitado
-# errado antes de o Let's Encrypt falhar, e dar um momento de
-# narrar, no vídeo, o que vai acontecer.
+# A tela de confirmacao antes de comecar. Existe por dois
+# motivos, e os dois sao de gente, nao de codigo: pegar dominio
+# digitado errado antes de o Let's Encrypt falhar, e dar um
+# momento de narrar, no video, o que vai acontecer.
+#
+# A <origem> de cada linha e uma destas tres:
+#
+#   informado   veio da pessoa, digitado ou por flag
+#   detectado   lido desta maquina
+#   padrao      valor que o script traz de fabrica
+#
+# So o "informado" recebe marca na tela, e a razao vem do teste
+# de 2026-09-30: o resumo mostrou um e-mail errado, fruto de
+# colagem, e passou batido no meio de dez linhas todas com o
+# mesmo peso visual. Detectado e padrao a pessoa nao tem como
+# conferir; informado e o unico grupo em que ela e a fonte, e
+# portanto o unico em que ela pode achar o erro.
+#
+# A marca e um caractere, e nao so cor, porque cor nao existe com
+# NO_COLOR nem quando a saida vai para arquivo.
 ui_resumo() {
 	local titulo="$1"
 	shift
 
 	ui_secao "$titulo"
 
-	local rotulo valor preenchimento
-	while [[ "$#" -ge 2 ]]; do
+	local rotulo valor origem preenchimento marca cor reset
+	local tem_informado=0
+
+	while [[ "$#" -ge 3 ]]; do
 		rotulo="$1"
 		valor="$2"
-		shift 2
+		origem="$3"
+		shift 3
 
 		preenchimento=$((PA_RESUMO_COLUNA - $(ui_largura "$rotulo")))
 		[[ "$preenchimento" -lt 1 ]] && preenchimento=1
 
-		printf '  %s%*s%s\n' \
-			"$rotulo" "$preenchimento" "" "$valor"
+		if [[ "$origem" == "informado" ]]; then
+			marca="> "
+			cor="$PA_COR_DESTAQUE"
+			reset="$PA_COR_RESET"
+			tem_informado=1
+		else
+			marca="  "
+			cor=""
+			reset=""
+		fi
+
+		printf '  %s%s%*s%s%s%s\n' \
+			"$marca" "$rotulo" "$preenchimento" "" \
+			"$cor" "$valor" "$reset"
 	done
+
+	# Sobra de argumento e erro de programacao, nao de quem roda:
+	# alguem passou um par onde o formato pede trio. Falhar alto
+	# aqui e melhor que imprimir um resumo incompleto na tela em
+	# que a pessoa vai confiar para decidir.
+	if [[ "$#" -ne 0 ]]; then
+		ui_fatal "ui_resumo recebeu $# argumento(s) sobrando (erro interno)."
+	fi
+
+	if [[ "$tem_informado" -eq 1 ]]; then
+		ui_vazio
+		ui_detalhe "> veio de você. Confira estes com atenção."
+	fi
 
 	ui_vazio
 }

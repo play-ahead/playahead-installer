@@ -472,6 +472,35 @@ está seguindo o vídeo, a pergunta aparece normalmente.
 O admin do Mautic precisa de nome e sobrenome; usar `Admin` / `Play Ahead` sem
 perguntar. Não é dado que valha uma pergunta.
 
+### A tela de confirmação marca o que veio de você
+
+`ui_resumo` recebe, por linha, a origem do valor: `informado` (veio da pessoa,
+digitado ou por flag), `detectado` (lido desta máquina) ou `padrao` (o script
+trouxe de fábrica). Só `informado` recebe marca na tela:
+
+      > Domínio             https://mautic.exemplo.com.br
+      > E-mail do admin     admin@exemplo.com.br
+        DNS                 aponta para esta VPS
+        Rede do Traefik     traefik_public
+
+      > veio de você. Confira estes com atenção.
+
+A razão vem do teste de 2026-09-30: o resumo mostrou um e-mail errado, fruto de
+colagem, e passou batido no meio de dez linhas com o mesmo peso visual.
+Detectado e padrão a pessoa não tem como conferir; informado é o único grupo em
+que ela é a fonte, e portanto o único em que ela pode achar o erro.
+
+A marca é um caractere, e não só cor, porque cor não existe com `NO_COLOR` nem
+quando a saída vai para arquivo.
+
+Os três valores do Traefik entram como `detectado` mesmo quando vieram de flag:
+a tela anterior já mostrou a origem de cada um numa tabela própria, e repetir
+aqui tiraria peso das duas linhas que importam.
+
+Argumento sobrando é `ui_fatal`. Alguém passou um par onde o formato pede trio,
+e imprimir um resumo incompleto numa tela em que a pessoa vai confiar para
+decidir é pior que falhar alto.
+
 ## Detecção do Traefik no cenário 2
 
 Identificação: container em execução cuja imagem casa com `traefik`. Havendo

@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-30T20:03:03Z
+# Build:  2026-09-30T20:07:31Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -250,30 +250,74 @@ ui_largura() {
 	LC_ALL=C printf '%s' "$1" | LC_ALL=C tr -d '\200-\277' | LC_ALL=C wc -c
 }
 
-# ui_resumo <titulo> [<rótulo> <valor>]...
+# ui_resumo <titulo> [<rotulo> <valor> <origem>]...
 #
-# A tela de confirmação antes de começar. Existe por dois motivos,
-# e os dois são de gente, não de código: pegar domínio digitado
-# errado antes de o Let's Encrypt falhar, e dar um momento de
-# narrar, no vídeo, o que vai acontecer.
+# A tela de confirmacao antes de comecar. Existe por dois
+# motivos, e os dois sao de gente, nao de codigo: pegar dominio
+# digitado errado antes de o Let's Encrypt falhar, e dar um
+# momento de narrar, no video, o que vai acontecer.
+#
+# A <origem> de cada linha e uma destas tres:
+#
+#   informado   veio da pessoa, digitado ou por flag
+#   detectado   lido desta maquina
+#   padrao      valor que o script traz de fabrica
+#
+# So o "informado" recebe marca na tela, e a razao vem do teste
+# de 2026-09-30: o resumo mostrou um e-mail errado, fruto de
+# colagem, e passou batido no meio de dez linhas todas com o
+# mesmo peso visual. Detectado e padrao a pessoa nao tem como
+# conferir; informado e o unico grupo em que ela e a fonte, e
+# portanto o unico em que ela pode achar o erro.
+#
+# A marca e um caractere, e nao so cor, porque cor nao existe com
+# NO_COLOR nem quando a saida vai para arquivo.
 ui_resumo() {
 	local titulo="$1"
 	shift
 
 	ui_secao "$titulo"
 
-	local rotulo valor preenchimento
-	while [[ "$#" -ge 2 ]]; do
+	local rotulo valor origem preenchimento marca cor reset
+	local tem_informado=0
+
+	while [[ "$#" -ge 3 ]]; do
 		rotulo="$1"
 		valor="$2"
-		shift 2
+		origem="$3"
+		shift 3
 
 		preenchimento=$((PA_RESUMO_COLUNA - $(ui_largura "$rotulo")))
 		[[ "$preenchimento" -lt 1 ]] && preenchimento=1
 
-		printf '  %s%*s%s\n' \
-			"$rotulo" "$preenchimento" "" "$valor"
+		if [[ "$origem" == "informado" ]]; then
+			marca="> "
+			cor="$PA_COR_DESTAQUE"
+			reset="$PA_COR_RESET"
+			tem_informado=1
+		else
+			marca="  "
+			cor=""
+			reset=""
+		fi
+
+		printf '  %s%s%*s%s%s%s\n' \
+			"$marca" "$rotulo" "$preenchimento" "" \
+			"$cor" "$valor" "$reset"
 	done
+
+	# Sobra de argumento e erro de programacao, nao de quem roda:
+	# alguem passou um par onde o formato pede trio. Falhar alto
+	# aqui e melhor que imprimir um resumo incompleto na tela em
+	# que a pessoa vai confiar para decidir.
+	if [[ "$#" -ne 0 ]]; then
+		ui_fatal "ui_resumo recebeu $# argumento(s) sobrando (erro interno)."
+	fi
+
+	if [[ "$tem_informado" -eq 1 ]]; then
+		ui_vazio
+		ui_detalhe "> veio de você. Confira estes com atenção."
+	fi
 
 	ui_vazio
 }
@@ -2866,7 +2910,7 @@ mautic_verificar_roteamento() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-30T20:03:03Z"
+PA_BUILD="2026-09-30T20:07:31Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
@@ -2892,8 +2936,14 @@ PA_SEM_CERTRESOLVER=0
 # O Mautic nasce em inglês e, por causa do contorno do fuso no
 # instalador, com fuso UTC. Os dois são corrigidos depois da
 # instalação, em mautic_regionalizar.
-PA_IDIOMA="pt_BR"
-PA_FUSO="America/Sao_Paulo"
+# Os padrões ficam em constante própria porque o resumo compara
+# o valor atual com eles para saber se a pessoa escolheu ou se o
+# script trouxe de fábrica.
+PA_IDIOMA_PADRAO="pt_BR"
+PA_FUSO_PADRAO="America/Sao_Paulo"
+
+PA_IDIOMA="$PA_IDIOMA_PADRAO"
+PA_FUSO="$PA_FUSO_PADRAO"
 
 # Caminho do template do compose. No dist/mautic7.sh o template
 # vai embutido; aqui aponta para o repositório.
@@ -3227,20 +3277,38 @@ main_confirmar() {
 	local certresolver="${PA_TRAEFIK_CERTRESOLVER:-omitido}"
 
 	local conclusao="concluir pela linha de comando"
-	[[ "$PA_WIZARD" -eq 1 ]] &&
+	local origem_conclusao="padrao"
+	if [[ "$PA_WIZARD" -eq 1 ]]; then
 		conclusao="deixar o assistente web (--wizard)"
+		origem_conclusao="informado"
+	fi
 
+	# Idioma e fuso: comparar com o padrão distingue "a pessoa
+	# escolheu" de "o script trouxe de fábrica" sem precisar
+	# guardar mais estado no parse. Quem passar --idioma=pt_BR
+	# explicitamente aparece como padrão, e isso não incomoda
+	# ninguém.
+	local origem_idioma="padrao"
+	local origem_fuso="padrao"
+	[[ "$PA_IDIOMA" != "$PA_IDIOMA_PADRAO" ]] && origem_idioma="informado"
+	[[ "$PA_FUSO" != "$PA_FUSO_PADRAO" ]] && origem_fuso="informado"
+
+	# Os três valores do Traefik entram como detectado mesmo
+	# quando vieram de flag: a tela anterior, a do
+	# main_confirmar_traefik, já mostrou a origem de cada um numa
+	# tabela própria, e repetir aqui só tiraria peso da marca de
+	# "veio de você" nas duas linhas que importam.
 	ui_resumo "Confira antes de começar" \
-		"Domínio" "https://${PA_DOMINIO}" \
-		"E-mail do admin" "$PA_EMAIL_ADMIN" \
-		"DNS" "$PA_DNS_RESULTADO" \
-		"Rede do Traefik" "${PA_TRAEFIK_NETWORK:-traefik_public}" \
-		"Entrypoint" "${PA_TRAEFIK_ENTRYPOINT:-websecure}" \
-		"Certresolver" "$certresolver" \
-		"Idioma" "$PA_IDIOMA" \
-		"Fuso horário" "$PA_FUSO" \
-		"Pasta" "$PA_MAUTIC_DIR" \
-		"Conclusão" "$conclusao"
+		"Domínio" "https://${PA_DOMINIO}" informado \
+		"E-mail do admin" "$PA_EMAIL_ADMIN" informado \
+		"DNS" "$PA_DNS_RESULTADO" detectado \
+		"Rede do Traefik" "${PA_TRAEFIK_NETWORK:-traefik_public}" detectado \
+		"Entrypoint" "${PA_TRAEFIK_ENTRYPOINT:-websecure}" detectado \
+		"Certresolver" "$certresolver" detectado \
+		"Idioma" "$PA_IDIOMA" "$origem_idioma" \
+		"Fuso horário" "$PA_FUSO" "$origem_fuso" \
+		"Pasta" "$PA_MAUTIC_DIR" padrao \
+		"Conclusão" "$conclusao" "$origem_conclusao"
 
 	ui_confirmar_resumo
 }
