@@ -6,7 +6,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-30T19:38:50Z
+# Build:  2026-09-30T19:41:29Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -585,7 +585,7 @@ ui_mascarar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-30T19:38:50Z"
+PA_BUILD="2026-09-30T19:41:29Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Menu de instaladores"
 
@@ -733,11 +733,21 @@ menu_gravar() {
 			"    https://get.playahead.com.br/${arquivo%.sh}"
 	fi
 
+	# A mensagem precisa dizer que o que existe é o ARQUIVO do
+	# instalador, e não a ferramenta instalada. No teste de
+	# 2026-09-30 a versão anterior, "mautic7.sh já existe neste
+	# diretório", foi lida como "o Mautic já está instalado" — e é
+	# uma leitura razoável, porque quem está no meio de uma
+	# instalação pensa na ferramenta, não em arquivo.
 	if [[ -e "$arquivo" ]]; then
-		ui_aviso "${arquivo} já existe neste diretório."
+		ui_aviso "O arquivo ${arquivo} já está nesta pasta."
+		ui_detalhe "É o instalador em si, gravado ou baixado antes."
+		ui_detalhe "Isso não diz nada sobre a ferramenta estar"
+		ui_detalhe "instalada nesta máquina: quem verifica isso é o"
+		ui_detalhe "próprio instalador, quando rodar."
 
-		if ! ui_confirmar "Sobrescrever?" 1; then
-			ui_info "Mantido como está. Rodando o que já estava aqui."
+		if ! ui_confirmar "Substituir pela cópia que vem neste menu?" 1; then
+			ui_info "Arquivo mantido. Vou rodar o que já estava aqui."
 			return 0
 		fi
 	fi
