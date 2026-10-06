@@ -45,8 +45,10 @@ o que você leu é o que pode rodar. Como o arquivo é grande, ele imprime na te
 em que linha cada instalador começa, e `--extrair` grava os dois em arquivos
 separados se você preferir ler um por um.
 
-Escolhido o número, o menu grava o instalador no diretório atual e passa o
-terminal para ele.
+Escolhido o número, o menu grava o instalador no diretório atual e roda. Quando
+ele termina, a lista volta, para você escolher a próxima: instalou a base,
+escolha o Mautic em seguida. O `0` sai. Um Ctrl-C no meio de um instalador
+interrompe só ele, e o menu volta.
 
 ### Ou direto, por instalador
 

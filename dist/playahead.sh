@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-06T14:41:38Z
+# Build:  2026-10-06T14:44:46Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -794,8 +794,8 @@ ui_mascarar() {
 # instalador não baixa nem executa outro. O build.sh embute o
 # dist/base.sh e o dist/mautic7.sh aqui dentro, como heredoc
 # citado, mesmo mecanismo já validado para o template do compose.
-# Escolhido o número, o menu grava o instalador no diretório atual
-# e o executa.
+# Escolhido o número, o menu grava o instalador no diretório atual,
+# roda, e volta para a lista quando ele termina.
 #
 # O que se ganha com isso:
 #
@@ -823,7 +823,7 @@ ui_mascarar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-06T14:41:38Z"
+PA_BUILD="2026-10-06T14:44:46Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Menu de instaladores"
 
@@ -1028,12 +1028,30 @@ menu_gravar() {
 
 # menu_executar <indice>
 #
-# Passa o terminal para o instalador e não volta.
+# Roda o instalador como processo filho e volta.
 #
-# `exec` de propósito: o instalador vira dono da sessão, o código
-# de saída dele é o do menu, e não existe estado de "voltei ao
-# menu depois de instalar" para ninguém raciocinar sobre. Uma
-# ferramenta por vez, como decidido.
+# Até 2026-10-06 era `exec`: o instalador virava dono da sessão e
+# o menu sumia. Depois de instalar a base a pessoa tinha de rodar
+# o menu de novo para chegar no Mautic, que é o passo seguinte de
+# todo mundo. Agora o menu espera o instalador terminar e mostra
+# a lista outra vez.
+#
+# Continua sendo uma ferramenta por vez, e cada instalador
+# continua dono da própria conversa: ele roda num bash próprio,
+# com o seu main, as suas variáveis e o seu exit. O menu não lê
+# nada do que ele fez, só o código de saída.
+#
+# PA_PELO_MENU=1 vai no ambiente do filho para ele trocar duas
+# mensagens que mandariam baixar por `curl` um instalador que o
+# menu já tem. Rodando o instalador direto, a variável não existe
+# e nada muda.
+#
+# Ctrl-C: o menu instala um tratador vazio enquanto o filho roda.
+# Tratador, e não `trap '' INT`: sinal IGNORADO é herdado pelo
+# filho, e o bash não deixa um script desfazer isso, então o
+# Ctrl-C pararia de funcionar dentro do instalador. Com tratador,
+# o filho recebe o sinal normalmente e morre, e o menu sobrevive
+# para mostrar a lista.
 menu_executar() {
 	local i="$1"
 	local arquivo="${PA_MENU_ARQUIVO[i]}"
@@ -1043,7 +1061,28 @@ menu_executar() {
 	ui_separador
 	ui_vazio
 
-	exec bash "./${arquivo}"
+	local codigo=0
+	trap ':' INT
+	PA_PELO_MENU=1 bash "./${arquivo}" || codigo="$?"
+	trap - INT
+
+	ui_vazio
+	ui_separador
+
+	case "$codigo" in
+		0)
+			ui_ok "${arquivo} terminou."
+			;;
+		130)
+			ui_aviso "${arquivo} foi interrompido (Ctrl-C)."
+			ui_detalhe "O que já tinha sido feito continua feito; o instalador"
+			ui_detalhe "não desfaz nada. Rodar de novo retoma de onde dá."
+			;;
+		*)
+			ui_aviso "${arquivo} terminou com erro (código ${codigo})."
+			ui_detalhe "A explicação está logo acima, na saída dele."
+			;;
+	esac
 }
 
 # ------------------------------------------------------------
@@ -1094,8 +1133,14 @@ menu_escolher() {
 	local resposta
 
 	while true; do
+		# Mesma higiene das perguntas dos instaladores. Aqui ela
+		# importa ainda mais: o menu reaparece logo depois de um
+		# instalador terminar, e qualquer Enter apertado durante a
+		# instalação estaria esperando na fila.
+		ui_descartar_entrada
 		printf '  Número da opção: '
 		IFS= read -r resposta || resposta=""
+		ui_limpar_resposta resposta
 
 		if [[ "$resposta" == "0" ]]; then
 			ui_vazio
@@ -1176,13 +1221,18 @@ main() {
 		exit 0
 	fi
 
-	menu_listar
+	# Volta para a lista depois de cada instalador. Sai só pelo 0,
+	# que o menu_escolher trata, ou por Ctrl-C fora de instalador.
+	local escolhido
+	while true; do
+		menu_listar
 
-	local escolhido=""
-	menu_escolher escolhido
+		escolhido=""
+		menu_escolher escolhido
 
-	menu_gravar "$escolhido"
-	menu_executar "$escolhido"
+		menu_gravar "$escolhido"
+		menu_executar "$escolhido"
+	done
 }
 
 # ============================================================
@@ -1211,7 +1261,7 @@ menu_conteudo_base() {
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-06T14:41:38Z
+# Build:  2026-10-06T14:44:46Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -4515,7 +4565,7 @@ portainer_bloco_final() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-06T14:41:38Z"
+PA_BUILD="2026-10-06T14:44:46Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
@@ -4872,9 +4922,17 @@ base_bloco_final() {
 	portainer_bloco_final
 
 	ui_vazio
-	ui_info "Agora instale as ferramentas que quiser. Cada uma tem o"
-	ui_info "seu próprio instalador e reaproveita esta base:"
-	ui_detalhe "Mautic 7:  https://get.playahead.com.br/mautic7"
+	if [[ "${PA_PELO_MENU:-0}" == "1" ]]; then
+		# Rodando pelo menu, a lista volta assim que isto termina:
+		# mandar baixar o mautic7.sh por curl seria apontar para
+		# fora de algo que a pessoa já tem na tela.
+		ui_info "Agora instale as ferramentas que quiser. O menu volta"
+		ui_info "em seguida: escolha a próxima por lá."
+	else
+		ui_info "Agora instale as ferramentas que quiser. Cada uma tem o"
+		ui_info "seu próprio instalador e reaproveita esta base:"
+		ui_detalhe "Mautic 7:  https://get.playahead.com.br/mautic7"
+	fi
 	ui_vazio
 	ui_separador
 	ui_info "Quer receber avisos de novas versões, correções e conteúdos"
@@ -4938,7 +4996,7 @@ menu_conteudo_mautic7() {
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-30T20:14:01Z
+# Build:  2026-10-06T14:44:46Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -7985,7 +8043,7 @@ mautic_pagina_do_mautic() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-30T20:14:01Z"
+PA_BUILD="2026-10-06T14:44:46Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
@@ -8166,15 +8224,22 @@ mautic_checar_base() {
 	ui_info "Traefik já no ar. Quem instala isso é o instalador de base,"
 	ui_info "que roda uma vez por VPS e serve a todas as ferramentas."
 	ui_vazio
-	ui_info "Baixe, leia e rode a base:"
-	ui_vazio
-	ui_linha "    curl -sL https://get.playahead.com.br/base -o base.sh"
-	ui_linha "    less base.sh"
-	ui_linha "    sudo bash base.sh"
-	ui_vazio
-	ui_info "Terminada a base, rode este instalador de novo:"
-	ui_vazio
-	ui_linha "    sudo bash ${0}"
+	if [[ "${PA_PELO_MENU:-0}" == "1" ]]; then
+		# Pelo menu, a base é a opção 1 da lista que volta em
+		# seguida. Mandar baixar por curl seria apontar para fora.
+		ui_info "O menu volta em seguida. Escolha a opção 1, a base, e"
+		ui_info "depois esta de novo."
+	else
+		ui_info "Baixe, leia e rode a base:"
+		ui_vazio
+		ui_linha "    curl -sL https://get.playahead.com.br/base -o base.sh"
+		ui_linha "    less base.sh"
+		ui_linha "    sudo bash base.sh"
+		ui_vazio
+		ui_info "Terminada a base, rode este instalador de novo:"
+		ui_vazio
+		ui_linha "    sudo bash ${0}"
+	fi
 	ui_vazio
 	ui_info "Nada foi alterado nesta máquina."
 	ui_vazio

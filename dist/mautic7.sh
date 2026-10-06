@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-09-30T20:14:01Z
+# Build:  2026-10-06T14:44:46Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -3064,7 +3064,7 @@ mautic_pagina_do_mautic() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-09-30T20:14:01Z"
+PA_BUILD="2026-10-06T14:44:46Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
@@ -3245,15 +3245,22 @@ mautic_checar_base() {
 	ui_info "Traefik já no ar. Quem instala isso é o instalador de base,"
 	ui_info "que roda uma vez por VPS e serve a todas as ferramentas."
 	ui_vazio
-	ui_info "Baixe, leia e rode a base:"
-	ui_vazio
-	ui_linha "    curl -sL https://get.playahead.com.br/base -o base.sh"
-	ui_linha "    less base.sh"
-	ui_linha "    sudo bash base.sh"
-	ui_vazio
-	ui_info "Terminada a base, rode este instalador de novo:"
-	ui_vazio
-	ui_linha "    sudo bash ${0}"
+	if [[ "${PA_PELO_MENU:-0}" == "1" ]]; then
+		# Pelo menu, a base é a opção 1 da lista que volta em
+		# seguida. Mandar baixar por curl seria apontar para fora.
+		ui_info "O menu volta em seguida. Escolha a opção 1, a base, e"
+		ui_info "depois esta de novo."
+	else
+		ui_info "Baixe, leia e rode a base:"
+		ui_vazio
+		ui_linha "    curl -sL https://get.playahead.com.br/base -o base.sh"
+		ui_linha "    less base.sh"
+		ui_linha "    sudo bash base.sh"
+		ui_vazio
+		ui_info "Terminada a base, rode este instalador de novo:"
+		ui_vazio
+		ui_linha "    sudo bash ${0}"
+	fi
 	ui_vazio
 	ui_info "Nada foi alterado nesta máquina."
 	ui_vazio

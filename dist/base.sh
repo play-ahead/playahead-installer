@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-06T14:41:38Z
+# Build:  2026-10-06T14:44:46Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -3321,7 +3321,7 @@ portainer_bloco_final() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-06T14:41:38Z"
+PA_BUILD="2026-10-06T14:44:46Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
@@ -3678,9 +3678,17 @@ base_bloco_final() {
 	portainer_bloco_final
 
 	ui_vazio
-	ui_info "Agora instale as ferramentas que quiser. Cada uma tem o"
-	ui_info "seu próprio instalador e reaproveita esta base:"
-	ui_detalhe "Mautic 7:  https://get.playahead.com.br/mautic7"
+	if [[ "${PA_PELO_MENU:-0}" == "1" ]]; then
+		# Rodando pelo menu, a lista volta assim que isto termina:
+		# mandar baixar o mautic7.sh por curl seria apontar para
+		# fora de algo que a pessoa já tem na tela.
+		ui_info "Agora instale as ferramentas que quiser. O menu volta"
+		ui_info "em seguida: escolha a próxima por lá."
+	else
+		ui_info "Agora instale as ferramentas que quiser. Cada uma tem o"
+		ui_info "seu próprio instalador e reaproveita esta base:"
+		ui_detalhe "Mautic 7:  https://get.playahead.com.br/mautic7"
+	fi
 	ui_vazio
 	ui_separador
 	ui_info "Quer receber avisos de novas versões, correções e conteúdos"

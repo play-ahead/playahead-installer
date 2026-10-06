@@ -13,8 +13,8 @@
 # instalador não baixa nem executa outro. O build.sh embute o
 # dist/base.sh e o dist/mautic7.sh aqui dentro, como heredoc
 # citado, mesmo mecanismo já validado para o template do compose.
-# Escolhido o número, o menu grava o instalador no diretório atual
-# e o executa.
+# Escolhido o número, o menu grava o instalador no diretório atual,
+# roda, e volta para a lista quando ele termina.
 #
 # O que se ganha com isso:
 #
@@ -247,12 +247,30 @@ menu_gravar() {
 
 # menu_executar <indice>
 #
-# Passa o terminal para o instalador e não volta.
+# Roda o instalador como processo filho e volta.
 #
-# `exec` de propósito: o instalador vira dono da sessão, o código
-# de saída dele é o do menu, e não existe estado de "voltei ao
-# menu depois de instalar" para ninguém raciocinar sobre. Uma
-# ferramenta por vez, como decidido.
+# Até 2026-10-06 era `exec`: o instalador virava dono da sessão e
+# o menu sumia. Depois de instalar a base a pessoa tinha de rodar
+# o menu de novo para chegar no Mautic, que é o passo seguinte de
+# todo mundo. Agora o menu espera o instalador terminar e mostra
+# a lista outra vez.
+#
+# Continua sendo uma ferramenta por vez, e cada instalador
+# continua dono da própria conversa: ele roda num bash próprio,
+# com o seu main, as suas variáveis e o seu exit. O menu não lê
+# nada do que ele fez, só o código de saída.
+#
+# PA_PELO_MENU=1 vai no ambiente do filho para ele trocar duas
+# mensagens que mandariam baixar por `curl` um instalador que o
+# menu já tem. Rodando o instalador direto, a variável não existe
+# e nada muda.
+#
+# Ctrl-C: o menu instala um tratador vazio enquanto o filho roda.
+# Tratador, e não `trap '' INT`: sinal IGNORADO é herdado pelo
+# filho, e o bash não deixa um script desfazer isso, então o
+# Ctrl-C pararia de funcionar dentro do instalador. Com tratador,
+# o filho recebe o sinal normalmente e morre, e o menu sobrevive
+# para mostrar a lista.
 menu_executar() {
 	local i="$1"
 	local arquivo="${PA_MENU_ARQUIVO[i]}"
@@ -262,7 +280,28 @@ menu_executar() {
 	ui_separador
 	ui_vazio
 
-	exec bash "./${arquivo}"
+	local codigo=0
+	trap ':' INT
+	PA_PELO_MENU=1 bash "./${arquivo}" || codigo="$?"
+	trap - INT
+
+	ui_vazio
+	ui_separador
+
+	case "$codigo" in
+		0)
+			ui_ok "${arquivo} terminou."
+			;;
+		130)
+			ui_aviso "${arquivo} foi interrompido (Ctrl-C)."
+			ui_detalhe "O que já tinha sido feito continua feito; o instalador"
+			ui_detalhe "não desfaz nada. Rodar de novo retoma de onde dá."
+			;;
+		*)
+			ui_aviso "${arquivo} terminou com erro (código ${codigo})."
+			ui_detalhe "A explicação está logo acima, na saída dele."
+			;;
+	esac
 }
 
 # ------------------------------------------------------------
@@ -313,8 +352,14 @@ menu_escolher() {
 	local resposta
 
 	while true; do
+		# Mesma higiene das perguntas dos instaladores. Aqui ela
+		# importa ainda mais: o menu reaparece logo depois de um
+		# instalador terminar, e qualquer Enter apertado durante a
+		# instalação estaria esperando na fila.
+		ui_descartar_entrada
 		printf '  Número da opção: '
 		IFS= read -r resposta || resposta=""
+		ui_limpar_resposta resposta
 
 		if [[ "$resposta" == "0" ]]; then
 			ui_vazio
@@ -395,11 +440,16 @@ main() {
 		exit 0
 	fi
 
-	menu_listar
+	# Volta para a lista depois de cada instalador. Sai só pelo 0,
+	# que o menu_escolher trata, ou por Ctrl-C fora de instalador.
+	local escolhido
+	while true; do
+		menu_listar
 
-	local escolhido=""
-	menu_escolher escolhido
+		escolhido=""
+		menu_escolher escolhido
 
-	menu_gravar "$escolhido"
-	menu_executar "$escolhido"
+		menu_gravar "$escolhido"
+		menu_executar "$escolhido"
+	done
 }

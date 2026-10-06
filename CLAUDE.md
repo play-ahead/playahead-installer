@@ -192,7 +192,35 @@ escolha por número, uma ferramenta por vez.
 **O menu contém os instaladores, não os busca.** O `build.sh` embute o
 `base.sh` e o `mautic7.sh` dentro dele como heredoc citado, mesmo mecanismo do
 template do compose. Escolhido o número, o menu grava o instalador no
-diretório atual e passa o terminal para ele com `exec`.
+diretório atual, roda como processo filho e **volta para a lista** quando ele
+termina.
+
+Até 2026-10-06 era `exec`, e o menu sumia depois do primeiro instalador. A
+pessoa que acabava de instalar a base tinha de rodar o menu de novo para chegar
+no Mautic, que é o passo seguinte de todo mundo. O que segue valendo do desenho
+anterior:
+
+- uma ferramenta por vez, e cada instalador dono da própria conversa: roda num
+  bash próprio, com o seu `main`, as suas variáveis e o seu `exit`. O menu só lê
+  o código de saída, e diz se terminou, se terminou com erro ou se foi
+  interrompido;
+- rodando o instalador direto, sem menu, nada muda.
+
+Dois detalhes que não são óbvios:
+
+- **`PA_PELO_MENU=1` vai no ambiente do filho.** O bloco final da base e a
+  mensagem de "falta a base" do `mautic7.sh` mandavam baixar por `curl` um
+  instalador que o menu já tem na tela. Com a variável, os dois dizem para
+  escolher na lista. Sem ela, o texto é o de sempre.
+- **Ctrl-C usa tratador vazio, não `trap '' INT`.** Sinal ignorado é herdado
+  pelo filho, e o bash não deixa um script desfazer isso: o Ctrl-C pararia de
+  funcionar dentro do instalador. Com tratador, o filho morre com 130 e o menu
+  sobrevive para mostrar a lista. O terminal volta com `icanon` e `echo`
+  ligados, conferido depois do teste.
+
+Validado num pty na VPS, numa sessão só: Mautic abortando no DNS (código 1),
+base recusada em "Posso começar?" (código 0), Mautic interrompido por Ctrl-C
+(130), e saída pelo `0`. Nas três vezes a lista voltou.
 
 É o que faz o menu conviver com a regra de que um instalador não baixa nem
 executa outro. O que se ganha:
@@ -205,7 +233,7 @@ executa outro. O que se ganha:
   real em vez de um temporário (verificado, sai `./base.sh`);
 - a pessoa fica com os scripts no disco, para reler e reusar.
 
-O preço é o tamanho: cerca de 7.600 linhas. Como um `less` nisso é pesado, o
+O preço é o tamanho: cerca de 9.000 linhas. Como um `less` nisso é pesado, o
 cabeçalho impresso na tela diz **em que linha cada instalador começa**, lendo o
 próprio arquivo em tempo de execução em vez de confiar num número gravado no
 build. E `--extrair` grava os dois em arquivos separados, sem instalar nada,
