@@ -162,10 +162,10 @@ Por isso a confirmação dos valores do Traefik deixou de ser exclusiva do cená
 Na base, e no **fluxo normal dela**, sem flag de opt-in. O subdomínio é
 perguntado no mesmo bloco de perguntas do e-mail do ACME.
 
-Estar na base é o que resolve o prazo de criação do administrador: o container
-sobe, o script termina ali, e a pessoa está na frente do terminal. Instalá-lo no
-meio de uma instalação de Mautic, que leva minutos, faria o prazo expirar
-sempre.
+Desde 2026-10-06 não existe mais prazo de criação do administrador: a base
+gera a senha e a entrega por `--admin-password-file`. Ver "Portainer: senha
+pré-definida". Antes disso, estar na base era o que tornava o prazo
+administrável.
 
 **Estar atrás de `--portainer` era resquício do desenho em que um instalador
 chamava o outro**, e caiu em 2026-09-30. Naquele desenho a base podia ser
@@ -281,7 +281,7 @@ fim sem input. Cada instalador é dono da própria conversa.
    Portainer, sempre, com Enter pulando.
 4. Validação do DNS do Portainer, que **avisa em vez de abortar**.
 5. Swap, Docker, Compose, rede do proxy, Traefik.
-6. Portainer, com o aviso do prazo do primeiro acesso.
+6. Portainer, com a senha do admin gerada pelo script.
 7. Bloco final, com os nomes que os instaladores de ferramenta vão detectar.
 
 **mautic7.sh**
@@ -1231,6 +1231,67 @@ sobre os 4,4 GB de instalação limpa. O de RAM também: 1152 MB ociosos
 significam que uma máquina de 2 GB funciona, mas sem margem, o que
 sustenta a decisão do swapfile.
 
+## Portainer: senha pré-definida
+
+Implementado em 2026-10-06, depois do teste da base pelo menu.
+
+Desde a 2.43, um Portainer novo exige um **setup token**, impresso só no log do
+container, para criar o administrador, e fecha a criação depois de 5 minutos.
+Medido na VPS de teste: o log tinha `setup_token=...` e, minutos depois, "the
+Portainer instance timed out for security purposes". Para o público do vídeo é
+uma parede: um campo pedindo um token que não está em lugar nenhum da tela.
+
+A FAQ oficial (`docs.portainer.io/faqs/installing/setup-token`) lista três
+saídas e recomenda `--admin-password` / `--admin-password-file` para instalação
+gerenciada. As outras duas foram descartadas: `--no-setup-token` desliga a
+proteção, e `--setup-token` só troca um segredo por outro que a pessoa ainda
+teria de copiar.
+
+**O formato foi conferido na referência de CLI** (`docs.portainer.io/advanced/cli`),
+não presumido:
+
+| Flag | Espera |
+|---|---|
+| `--admin-password` | hash **bcrypt** |
+| `--admin-password-file` | caminho de arquivo com a senha em **texto puro** |
+
+Usamos o arquivo. Gerar bcrypt exigiria `htpasswd` (apache2-utils, ausente no
+Ubuntu limpo) ou um container extra, e o hash iria parar na linha de comando do
+container, visível em `docker inspect`.
+
+Como ficou:
+
+- `openssl rand`, 28 caracteres, mesmo alfabeto da senha do Mautic.
+- Gravada com `printf '%s'`, **sem quebra de linha no fim**: a documentação usa
+  `echo -n`, e uma quebra entraria na senha.
+- `/opt/playahead/portainer/admin_password`, chmod 600, montado `:ro` em
+  `/run/playahead/admin_password`. Fica no disco porque o compose aponta para
+  ele; sem o arquivo, recriar o container falharia.
+- Usuário `admin`, que é o que o Portainer cria.
+- `/opt/playahead/portainer/credenciais.txt`, chmod 600, arquivo próprio e não
+  anexado ao do Mautic: quando a base roda, não existe Mautic.
+- Reexecução reaproveita a senha existente. O Portainer só lê o arquivo na
+  primeira subida; gerar outra deixaria o `credenciais.txt` mostrando uma senha
+  que o Portainer nunca conheceu.
+- Saíram o aviso do prazo e o comando de restart, que deixaram de fazer
+  sentido.
+
+A verificação de roteamento do Portainer passou a seguir redirecionamentos e
+exigir 200, como a do Mautic. Ela aceitava 307, e o 307 era exatamente o sintoma
+do problema: o redirecionamento para `/timeout.html`.
+
+Validado na VPS 142.93.201.114, recriando só o Portainer (container, volume de
+dados e compose):
+
+| Conferência | Resultado |
+|---|---|
+| `setup_token` ou "timed out" no log | 0 ocorrências |
+| `GET /api/users/admin/check` | 204, admin existe desde a primeira subida |
+| `POST /api/auth` com a senha gerada | devolve `jwt` |
+| `POST /api/auth` com senha errada | 422 |
+| `admin_password` e `credenciais.txt` | 600, root; senha sem quebra de linha |
+| `docker compose restart` | sobe de novo, login continua, log limpo |
+
 ## Entrada colada: por que `read -t 0` não basta
 
 Diagnosticado em 2026-09-30. Colar texto numa pergunta gravou o e-mail do admin
@@ -1474,8 +1535,8 @@ o Portainer encerra a criação do administrador poucos minutos depois de subir
 e passa a servir a própria página de timeout. A versão 2.45 agrega um **token
 de setup**, impresso só no log do container.
 
-O que fazer com isso é decisão de produto, não correção de bug. Está em
-Pendências.
+O que fazer com isso era decisão de produto, não correção de bug. Resolvido em
+2026-10-06 com a senha pré-definida: ver "Portainer: senha pré-definida".
 
 ## Pendências
 

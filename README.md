@@ -168,18 +168,18 @@ de perguntas do resto.
 Não quer o Portainer? Aperte Enter na pergunta do subdomínio, ou rode a base com
 `--sem-portainer`.
 
-**Abra o endereço e defina a senha logo depois de instalar.** O Portainer
-encerra a criação do administrador poucos minutos depois de subir, e passando
-desse prazo ele só volta a aceitar com um restart:
+**A senha já vem pronta.** A base gera a senha do usuário `admin`, entrega ao
+Portainer antes de ele subir, mostra no fim da instalação e guarda em:
 
-    cd /opt/playahead/portainer && docker compose restart
+    /opt/playahead/portainer/credenciais.txt
 
-É por isso que ele fica na base, e não no instalador da ferramenta: a base
-termina em menos de um minuto, com você na frente do terminal. No meio de uma
-instalação de Mautic, que leva vários minutos, o prazo expiraria sempre.
+Por isso você não vai ver a tela de "setup token" que o Portainer mostra desde a
+versão 2.43, nem o prazo de 5 minutos para criar o administrador. Abra o
+endereço e entre com `admin` e a senha.
 
-Quem entra no Portainer controla todos os containers da máquina. Use uma senha
-forte.
+Quem entra no Portainer controla todos os containers da máquina. Guarde a senha
+num gerenciador de senhas. Para trocá-la, use o próprio painel: editar o arquivo
+`admin_password` daquela pasta não tem efeito depois da primeira subida.
 
 ## Usa Cloudflare?
 

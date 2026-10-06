@@ -398,7 +398,7 @@ base_bloco_final() {
 		ui_info "porque esta máquina tem pouca memória."
 	fi
 
-	portainer_aviso_primeira_visita
+	portainer_bloco_final
 
 	ui_vazio
 	ui_info "Agora instale as ferramentas que quiser. Cada uma tem o"
