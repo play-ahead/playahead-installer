@@ -17,7 +17,7 @@
 # cravar os nomes padrão faz o container subir, o Mautic
 # funcionar e o domínio devolver 404 sem nenhuma mensagem.
 #
-# Validada em VPS contra tres Traefiks: o nosso por flags de CLI,
+# Validada em VPS contra três Traefiks: o nosso por flags de CLI,
 # um de terceiro configurado por arquivo estatico com nomes
 # arbitrarios, e um sem certresolver nenhum.
 # ============================================================

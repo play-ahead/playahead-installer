@@ -270,23 +270,23 @@ main_checar_instalacao_anterior() {
 # main_validar_email_admin <email>
 #
 # O validador do e-mail do bloco de perguntas, com uma guarda a
-# mais: a parte antes do arroba nao pode conter o dominio que
+# mais: a parte antes do arroba não pode conter o domínio que
 # acabou de ser respondido.
 #
 # Defesa contra o erro de 2026-09-30, em que uma colagem deixou
-# sobra na fila do terminal e a pergunta seguinte leu o dominio
+# sobra na fila do terminal e a pergunta seguinte leu o domínio
 # grudado no e-mail, gravando
 # "testemautic.exemplo.comfabioroger7@yahoo.com.br".
 #
-# Vale registrar por que nenhuma validacao generica de e-mail
-# pega esse valor: ele e sintaticamente valido, com 45
-# caracteres antes do arroba e um dominio real. So quem sabe o
+# Vale registrar por que nenhuma validação genérica de e-mail
+# pega esse valor: ele é sintaticamente válido, com 45
+# caracteres antes do arroba e um domínio real. Só quem sabe o
 # que foi respondido na pergunta anterior consegue saber que
 # esta errado.
 #
-# O ui_descartar_entrada ja evita a causa. Esta guarda fica
-# porque custa uma comparacao de string e o erro custou uma
-# instalacao inteira.
+# O ui_descartar_entrada já evita a causa. Esta guarda fica
+# porque custa uma comparação de string e o erro custou uma
+# instalação inteira.
 main_validar_email_admin() {
 	local email="$1"
 

@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-06T14:44:46Z
+# Build:  2026-10-06T16:33:41Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -129,12 +129,12 @@ ui_init() {
 		PA_INTERATIVO=0
 	fi
 
-	# Guarda o modo do terminal e promete devolve-lo.
+	# Guarda o modo do terminal e promete devolvê-lo.
 	#
 	# O ui_descartar_entrada troca o modo por alguns
 	# milissegundos e devolve em seguida. O trap cobre a morte
 	# dentro dessa janela: um Ctrl-C ali deixaria o terminal sem
-	# edicao de linha depois de o script sair, e a pessoa nao
+	# edição de linha depois de o script sair, e a pessoa não
 	# teria como saber por que o Backspace parou de funcionar.
 	if ui_interativo; then
 		PA_TERMINAL_MODO="$(stty -g 2>/dev/null || true)"
@@ -146,8 +146,8 @@ ui_init() {
 # ui_restaurar_terminal
 #
 # Devolve o modo salvo pelo ui_init. Roda no EXIT, e por isso
-# nao imprime nada: no caminho de erro a mensagem util ja foi
-# impressa pelo ui_fatal, e ruido depois dela atrapalha.
+# não imprime nada: no caminho de erro a mensagem útil já foi
+# impressa pelo ui_fatal, e ruído depois dela atrapalha.
 ui_restaurar_terminal() {
 	[[ -n "${PA_TERMINAL_MODO:-}" ]] || return 0
 	stty "$PA_TERMINAL_MODO" 2>/dev/null || true
@@ -215,17 +215,17 @@ ui_aviso() {
 
 # ui_erro <texto...>
 #
-# Diagnostico que NAO encerra o script, e por isso vai no stdout,
+# Diagnóstico que NÃO encerra o script, e por isso vai no stdout,
 # junto com as linhas de ui_info e ui_detalhe que o explicam.
 #
 # Isso corrige um defeito de ordem: com a mensagem no stderr e a
-# explicacao no stdout, quem redireciona a saida para arquivo
+# explicação no stdout, quem redireciona a saída para arquivo
 # recebe os dois blocos embaralhados, e a linha mais importante
-# aparece no meio da explicacao dela mesma. Foi visto ao testar a
+# aparece no meio da explicação dela mesma. Foi visto ao testar a
 # verificacao de roteamento.
 #
-# A regra passou a ser simples: so o ui_fatal escreve no stderr,
-# porque so ele encerra o script.
+# A regra passou a ser simples: só o ui_fatal escreve no stderr,
+# porque só ele encerra o script.
 ui_erro() {
 	ui_linha "  ${PA_COR_ERRO}✗${PA_COR_RESET} $*"
 }
@@ -275,26 +275,26 @@ ui_largura() {
 
 # ui_resumo <titulo> [<rotulo> <valor> <origem>]...
 #
-# A tela de confirmacao antes de comecar. Existe por dois
-# motivos, e os dois sao de gente, nao de codigo: pegar dominio
+# A tela de confirmação antes de começar. Existe por dois
+# motivos, e os dois são de gente, não de código: pegar domínio
 # digitado errado antes de o Let's Encrypt falhar, e dar um
-# momento de narrar, no video, o que vai acontecer.
+# momento de narrar, no vídeo, o que vai acontecer.
 #
-# A <origem> de cada linha e uma destas tres:
+# A <origem> de cada linha é uma destas três:
 #
 #   informado   veio da pessoa, digitado ou por flag
-#   detectado   lido desta maquina
-#   padrao      valor que o script traz de fabrica
+#   detectado   lido desta máquina
+#   padrao      valor que o script traz de fábrica
 #
-# So o "informado" recebe marca na tela, e a razao vem do teste
+# Só o "informado" recebe marca na tela, e a razão vem do teste
 # de 2026-09-30: o resumo mostrou um e-mail errado, fruto de
 # colagem, e passou batido no meio de dez linhas todas com o
-# mesmo peso visual. Detectado e padrao a pessoa nao tem como
-# conferir; informado e o unico grupo em que ela e a fonte, e
-# portanto o unico em que ela pode achar o erro.
+# mesmo peso visual. Detectado e padrão a pessoa não tem como
+# conferir; informado é o único grupo em que ela é a fonte, e
+# portanto o único em que ela pode achar o erro.
 #
-# A marca e um caractere, e nao so cor, porque cor nao existe com
-# NO_COLOR nem quando a saida vai para arquivo.
+# A marca é um caractere, e não só cor, porque cor não existe com
+# NO_COLOR nem quando a saída vai para arquivo.
 ui_resumo() {
 	local titulo="$1"
 	shift
@@ -329,9 +329,9 @@ ui_resumo() {
 			"$cor" "$valor" "$reset"
 	done
 
-	# Sobra de argumento e erro de programacao, nao de quem roda:
-	# alguem passou um par onde o formato pede trio. Falhar alto
-	# aqui e melhor que imprimir um resumo incompleto na tela em
+	# Sobra de argumento é erro de programação, não de quem roda:
+	# alguém passou um par onde o formato pede trio. Falhar alto
+	# aqui é melhor que imprimir um resumo incompleto na tela em
 	# que a pessoa vai confiar para decidir.
 	if [[ "$#" -ne 0 ]]; then
 		ui_fatal "ui_resumo recebeu $# argumento(s) sobrando (erro interno)."
@@ -449,37 +449,37 @@ ui_cabecalho() {
 # Joga fora o que estiver esperando no stdin.
 #
 # Existe por causa de colagem. No teste de 2026-09-30 a pessoa
-# colou texto numa pergunta, a quebra de linha do comeco da
+# colou texto numa pergunta, a quebra de linha do começo da
 # colagem foi lida como resposta vazia, e a sobra ficou na fila
-# do terminal esperando a proxima leitura. Resultado: a resposta
+# do terminal esperando a próxima leitura. Resultado: a resposta
 # seguinte nasceu grudada na sobra, e o e-mail do admin foi
-# gravado como o dominio mais o e-mail, numa string so.
+# gravado como o domínio mais o e-mail, numa string só.
 #
-# Descartar antes de cada pergunta e a unica defesa que funciona
-# aqui, porque quem digita nao ve o que ficou na fila. O custo e
-# que colar as varias respostas de uma vez deixa de funcionar, e
-# esse custo e desejado: era exatamente o que produzia a resposta
+# Descartar antes de cada pergunta é a única defesa que funciona
+# aqui, porque quem digita não vê o que ficou na fila. O custo é
+# que colar as várias respostas de uma vez deixa de funcionar, e
+# esse custo é desejado: era exatamente o que produzia a resposta
 # errada em silencio.
 #
-# Precisa passar o terminal para modo nao canonico, e isso nao e
-# preciosismo: foi medido. Em modo canonico, que e o normal, a
-# linha so fica disponivel para leitura depois do Enter. Uma
+# Precisa passar o terminal para modo não canônico, e isso não é
+# preciosismo: foi medido. Em modo canônico, que é o normal, a
+# linha só fica disponível para leitura depois do Enter. Uma
 # sobra de colagem sem Enter no fim fica parada no buffer do
-# terminal, onde `read -t 0` nao a ve, e o descarte nao descarta
+# terminal, onde `read -t 0` não a vê, e o descarte não descarta
 # nada. Testado num pty: com `read -t 0` sozinho, a sobra
 # "testemautic.colado.com" continuou grudando na resposta
 # seguinte, exatamente como no teste de 2026-09-30.
 #
-# Com -icanon cada caractere fica disponivel na hora, e a sobra
+# Com -icanon cada caractere fica disponível na hora, e a sobra
 # parcial aparece para o descarte.
 #
-# O echo fica ligado de proposito. Se o script morrer entre o
+# O echo fica ligado de propósito. Se o script morrer entre o
 # stty de ida e o de volta, um terminal sem icanon ainda mostra o
 # que a pessoa digita; sem echo ela digitaria no escuro. O
-# ui_init tambem registra um trap de EXIT que devolve o modo
+# ui_init também registra um trap de EXIT que devolve o modo
 # original, para o caso de a morte acontecer aqui dentro.
 #
-# O contador existe para o laco nunca ser infinito.
+# O contador existe para o laço nunca ser infinito.
 ui_descartar_entrada() {
 	ui_interativo || return 0
 
@@ -493,10 +493,10 @@ ui_descartar_entrada() {
 
 	local voltas=0
 
-	# Sem nome de variavel: o que for lido cai em REPLY e morre
-	# ali. Nomear uma variavel so para descartar renderia um
-	# aviso de valor nao usado, com razao. (E comentario nao pode
-	# comecar com a palavra shellcheck: vira diretiva e quebra o
+	# Sem nome de variável: o que for lido cai em REPLY e morre
+	# ali. Nomear uma variável só para descartar renderia um
+	# aviso de valor não usado, com razão. (E comentario não pode
+	# começar com a palavra shellcheck: vira diretiva e quebra o
 	# build.)
 	while [[ "$voltas" -lt 200 ]] && read -r -t 0 2>/dev/null; do
 		read -r -n 4096 -t 0.2 2>/dev/null
@@ -509,14 +509,14 @@ ui_descartar_entrada() {
 
 # ui_limpar_resposta <var>
 #
-# Tira da resposta o que nao e conteudo: retorno de carro, que
-# vem em toda colagem feita a partir do Windows, tabulacao, e
-# espaco nas duas pontas.
+# Tira da resposta o que não é conteúdo: retorno de carro, que
+# vem em toda colagem feita a partir do Windows, tabulação, e
+# espaço nas duas pontas.
 #
-# Um dominio colado com retorno de carro no fim carrega o
-# caractere invisivel junto. Ele passa pelo validador, porque nem
-# todo locale o considera espaco, e chega ao label do Traefik. O
-# roteador sobe com um Host que nunca casa, e o dominio devolve
+# Um domínio colado com retorno de carro no fim carrega o
+# caractere invisível junto. Ele passa pelo validador, porque nem
+# todo locale o considera espaço, e chega ao label do Traefik. O
+# roteador sobe com um Host que nunca casa, e o domínio devolve
 # 404 sem nada no log.
 ui_limpar_resposta() {
 	local -n _bruta="$1"
@@ -525,7 +525,7 @@ ui_limpar_resposta() {
 	_bruta="${_bruta//$'\t'/}"
 	_bruta="${_bruta//$'\n'/}"
 
-	# Espaco das duas pontas, sem sed e sem subshell.
+	# Espaço das duas pontas, sem sed e sem subshell.
 	_bruta="${_bruta#"${_bruta%%[![:space:]]*}"}"
 	_bruta="${_bruta%"${_bruta##*[![:space:]]}"}"
 }
@@ -582,12 +582,12 @@ ui_perguntar() {
 
 # ui_perguntar_opcional <var_destino> <texto> [funcao_validadora]
 #
-# Como ui_perguntar, mas Enter tambem e resposta: devolve 1 e
-# deixa a variavel vazia. Serve para dado que o script sabe
-# dispensar, como o subdominio do Portainer.
+# Como ui_perguntar, mas Enter também é resposta: devolve 1 e
+# deixa a variável vazia. Serve para dado que o script sabe
+# dispensar, como o subdomínio do Portainer.
 #
-# Nao trata o modo automatico, de proposito. La o vazio nao seria
-# escolha de ninguem, e deixar esta funcao decidir espalharia a
+# Não trata o modo automático, de propósito. Lá o vazio não seria
+# escolha de ninguém, e deixar esta função decidir espalharia a
 # regra do --yes por dentro do ui.sh. Quem chama confere
 # ui_interativo antes e diz, com o nome da flag na tela, o que
 # falta.
@@ -1502,7 +1502,7 @@ docker_compose_versao() {
 # cravar os nomes padrão faz o container subir, o Mautic
 # funcionar e o domínio devolver 404 sem nenhuma mensagem.
 #
-# Validada em VPS contra tres Traefiks: o nosso por flags de CLI,
+# Validada em VPS contra três Traefiks: o nosso por flags de CLI,
 # um de terceiro configurado por arquivo estatico com nomes
 # arbitrarios, e um sem certresolver nenhum.
 # ============================================================
@@ -3064,7 +3064,7 @@ mautic_pagina_do_mautic() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-06T14:44:46Z"
+PA_BUILD="2026-10-06T16:33:41Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
@@ -3302,23 +3302,23 @@ main_checar_instalacao_anterior() {
 # main_validar_email_admin <email>
 #
 # O validador do e-mail do bloco de perguntas, com uma guarda a
-# mais: a parte antes do arroba nao pode conter o dominio que
+# mais: a parte antes do arroba não pode conter o domínio que
 # acabou de ser respondido.
 #
 # Defesa contra o erro de 2026-09-30, em que uma colagem deixou
-# sobra na fila do terminal e a pergunta seguinte leu o dominio
+# sobra na fila do terminal e a pergunta seguinte leu o domínio
 # grudado no e-mail, gravando
 # "testemautic.exemplo.comfabioroger7@yahoo.com.br".
 #
-# Vale registrar por que nenhuma validacao generica de e-mail
-# pega esse valor: ele e sintaticamente valido, com 45
-# caracteres antes do arroba e um dominio real. So quem sabe o
+# Vale registrar por que nenhuma validação genérica de e-mail
+# pega esse valor: ele é sintaticamente válido, com 45
+# caracteres antes do arroba e um domínio real. Só quem sabe o
 # que foi respondido na pergunta anterior consegue saber que
 # esta errado.
 #
-# O ui_descartar_entrada ja evita a causa. Esta guarda fica
-# porque custa uma comparacao de string e o erro custou uma
-# instalacao inteira.
+# O ui_descartar_entrada já evita a causa. Esta guarda fica
+# porque custa uma comparação de string e o erro custou uma
+# instalação inteira.
 main_validar_email_admin() {
 	local email="$1"
 

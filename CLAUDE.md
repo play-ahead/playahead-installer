@@ -247,6 +247,33 @@ a lista virar um painel.
 Sem terminal, o menu recusa e manda usar os instaladores direto. Isso também
 cobre quem tenta `curl | bash`.
 
+## Idioma: português do Brasil
+
+**A comunicação com o Fabio é em português do Brasil**, em qualquer resposta,
+relatório ou pergunta, mesmo quando a conversa envolve documentação ou saída de
+ferramenta em inglês.
+
+**Os textos do script também.** Vale para:
+
+- tudo que aparece na tela, inclusive avisos, erros e ajuda;
+- os arquivos que o script gera para a pessoa ler, como os `credenciais.txt` e
+  os cabeçalhos dos composes;
+- os comentários do código, pelo mesmo motivo da regra do travessão: a promessa
+  é `less` antes de rodar, e o comentário é lido na tela.
+
+Português **com acento**. Em 2026-10-06 foram corrigidas 65 linhas de comentário sem
+acento nenhum ("nao", "instalacao", "e" no lugar de "é"), escritas por um
+caminho de edição que só aceitava ASCII. O texto exibido na
+tela estava certo; o problema era só de comentário.
+
+Ficam em ASCII, de propósito, os **identificadores**: nomes de função, de
+variável, de parâmetro e valores que o código compara, como a origem `padrao`
+do `ui_resumo`. Acento em identificador quebra em locale que não é UTF-8.
+
+Termos técnicos sem tradução corrente ficam como são (`healthcheck`, `cache`,
+`proxy`, `token`). Mensagem vinda de ferramenta externa, como o erro do
+`docker compose`, é mostrada como veio, com a explicação em português ao lado.
+
 ## Escrita: o projeto não usa travessão
 
 Nem na tela, nem em comentário de código, nem neste documento. Onde a frase
