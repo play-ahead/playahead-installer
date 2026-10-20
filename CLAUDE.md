@@ -1743,6 +1743,14 @@ porque não tinha entrado no git. Cinco problemas, resolvidos nesta ordem:
 4. **Portainer.** No bloco final da base, acrescentar: "se preferir trocar a
    senha do Portainer, use outra igualmente forte, em Minha conta".
 
+   **Resolvido em 2026-10-20.** A frase entrou no `portainer_bloco_final` e
+   no `credenciais.txt` do Portainer, com o nome do menu em inglês entre
+   parênteses: "Minha conta (My account, no menu do usuário)". A interface
+   do Portainer só existe em inglês, e o item se chama "My account" no menu
+   do usuário, conferido no código da interface do 2.45.0 instalado
+   (`label:"My account"`, `data-cy:"userMenu-myAccount"`). Sem o nome em
+   inglês a pessoa procuraria um menu que não existe.
+
 5. **Teste final.** Entra na lista de conferências: configurar o SMTP do SES no
    painel e enviar um e-mail a um contato, que passa pelo worker. Só depois
    disso sai a tag.

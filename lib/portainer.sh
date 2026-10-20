@@ -403,9 +403,11 @@ portainer_gravar_credenciais() {
 		printf '\nGuarde estes dados num gerenciador de senhas.\n'
 		printf 'Este arquivo não é apagado automaticamente.\n'
 		printf '\nQuem entra no Portainer controla todos os containers\n'
-		printf 'desta máquina. Se trocar a senha, troque pelo painel:\n'
-		printf 'editar o arquivo admin_password depois da primeira\n'
-		printf 'subida não tem efeito nenhum.\n'
+		printf 'desta máquina. Se preferir trocar a senha, use outra\n'
+		printf 'igualmente forte, em Minha conta (My account, no menu do\n'
+		printf 'usuário). Troque pelo painel: editar o arquivo\n'
+		printf 'admin_password depois da primeira subida não tem efeito\n'
+		printf 'nenhum.\n'
 	} >"$PA_PORTAINER_CREDENCIAIS"
 
 	umask "$mascara_antiga"
@@ -431,4 +433,6 @@ portainer_bloco_final() {
 	ui_vazio
 	ui_info "Quem entra no Portainer controla todos os containers"
 	ui_info "desta máquina. Guarde a senha num gerenciador de senhas."
+	ui_info "Se preferir trocar a senha do Portainer, use outra igualmente"
+	ui_info "forte, em Minha conta (My account, no menu do usuário)."
 }

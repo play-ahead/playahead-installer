@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-20T14:20:55Z
+# Build:  2026-10-20T14:29:42Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -823,7 +823,7 @@ ui_mascarar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-20T14:20:55Z"
+PA_BUILD="2026-10-20T14:29:42Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Menu de instaladores"
 
@@ -1261,7 +1261,7 @@ menu_conteudo_base() {
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-06T16:33:41Z
+# Build:  2026-10-20T14:29:42Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -4486,9 +4486,11 @@ portainer_gravar_credenciais() {
 		printf '\nGuarde estes dados num gerenciador de senhas.\n'
 		printf 'Este arquivo não é apagado automaticamente.\n'
 		printf '\nQuem entra no Portainer controla todos os containers\n'
-		printf 'desta máquina. Se trocar a senha, troque pelo painel:\n'
-		printf 'editar o arquivo admin_password depois da primeira\n'
-		printf 'subida não tem efeito nenhum.\n'
+		printf 'desta máquina. Se preferir trocar a senha, use outra\n'
+		printf 'igualmente forte, em Minha conta (My account, no menu do\n'
+		printf 'usuário). Troque pelo painel: editar o arquivo\n'
+		printf 'admin_password depois da primeira subida não tem efeito\n'
+		printf 'nenhum.\n'
 	} >"$PA_PORTAINER_CREDENCIAIS"
 
 	umask "$mascara_antiga"
@@ -4514,6 +4516,8 @@ portainer_bloco_final() {
 	ui_vazio
 	ui_info "Quem entra no Portainer controla todos os containers"
 	ui_info "desta máquina. Guarde a senha num gerenciador de senhas."
+	ui_info "Se preferir trocar a senha do Portainer, use outra igualmente"
+	ui_info "forte, em Minha conta (My account, no menu do usuário)."
 }
 
 # ============================================================
@@ -4565,7 +4569,7 @@ portainer_bloco_final() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-06T16:33:41Z"
+PA_BUILD="2026-10-20T14:29:42Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
