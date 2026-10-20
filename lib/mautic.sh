@@ -576,6 +576,37 @@ mautic_ja_instalado() {
 #                          senha faz abortar com "[password] A
 #                          value is required". Não há alternativa
 #                          no Mautic 7.
+#
+#   sync-metadata-storage  Cria a tabela `migrations` antes da
+#                          instalação. O último passo do
+#                          mautic:install (InstallService::
+#                          finalMigrationStep) roda
+#                          `doctrine:migrations:version --add --all`
+#                          para marcar as 104 migrações como já
+#                          feitas, mas a tabela não existe nessa
+#                          hora: o comando falha com "The metadata
+#                          storage is not initialized", e o
+#                          instalador descarta a saída sem conferir.
+#                          A instalação termina com sucesso e com
+#                          as 104 pendentes.
+#
+#                          O preço aparece na primeira vez que a
+#                          web reinicia, num reboot ou numa troca
+#                          de imagem: o entrypoint da imagem roda
+#                          `doctrine:migrations:migrate`. Medido em
+#                          2026-10-20: 84 migrações puladas por
+#                          pré-checagem, que continuam pendentes e
+#                          voltam a ser checadas a cada subida
+#                          (cerca de 40 s com o site em 404), e 11
+#                          que rodaram 51 comandos SQL num banco já
+#                          atualizado, entre eles conversão de
+#                          charset e recriação de índices. Numa
+#                          base com meses de contatos, isso roda
+#                          durante a subida.
+#
+#                          A imagem oficial faz a mesma coisa no
+#                          caminho dela de dados de teste: sync
+#                          antes do mautic:install.
 mautic_instalar() {
 	local dominio="$1"
 	local email_admin="$2"
@@ -591,6 +622,16 @@ mautic_instalar() {
 	ui_passo "Concluindo a instalação do Mautic"
 
 	PA_MAUTIC_SENHA_ADMIN="$(mautic_gerar_senha)"
+
+	if ! mautic_console doctrine:migrations:sync-metadata-storage; then
+		ui_fatal \
+			"Não consegui preparar a tabela de migrações do banco." \
+			"Nada foi derrubado. Para ver o erro completo:" \
+			"" \
+			"    cd ${PA_MAUTIC_DIR}" \
+			"    docker compose exec -u www-data -w ${PA_MAUTIC_WORKDIR} \\" \
+			"      mautic_web php bin/console doctrine:migrations:sync-metadata-storage"
+	fi
 
 	if ! mautic_console mautic:install \
 		--admin_firstname="$PA_MAUTIC_ADMIN_NOME" \
@@ -611,6 +652,21 @@ mautic_instalar() {
 	fi
 
 	ui_ok "Instalação concluída"
+
+	# O mautic:install não confere o passo das migrações, então a
+	# conferência fica aqui. Avisa e segue: o Mautic funciona, e o
+	# problema só aparece na próxima subida da web.
+	if mautic_console doctrine:migrations:up-to-date; then
+		ui_ok "Migrações do banco registradas"
+	else
+		ui_aviso "Ficaram migrações do banco sem registro."
+		ui_detalhe "Na próxima vez que a web reiniciar, ela vai tentar"
+		ui_detalhe "aplicá-las de novo. Para conferir:"
+		ui_detalhe ""
+		ui_detalhe "    cd ${PA_MAUTIC_DIR}"
+		ui_detalhe "    docker compose exec -u www-data -w ${PA_MAUTIC_WORKDIR} \\"
+		ui_detalhe "      mautic_web php bin/console doctrine:migrations:status"
+	fi
 }
 
 # ------------------------------------------------------------

@@ -621,6 +621,10 @@ Cuidados obrigatórios:
 - Rodar o instalador com `-d date.timezone=UTC` e `-w /var/www/html`.
   Sem o override, toda instalação brasileira falha na checagem de
   requisitos; sem o `-w`, o console nem é encontrado.
+- Rodar `doctrine:migrations:sync-metadata-storage` antes do
+  `mautic:install`, e conferir com `doctrine:migrations:up-to-date` depois.
+  Sem isso as 104 migrações ficam sem registro. Ver o item 3 das pendências
+  do teste de envio.
 - Detectar instalação já existente e não reinstalar por cima.
 - Imprimir URL, e-mail do admin, senha e caminho do `.env` no bloco final.
 
@@ -1705,6 +1709,36 @@ porque não tinha entrado no git. Cinco problemas, resolvidos nesta ordem:
    sync-metadata-storage command" no `doctrine:migrations:version`, com saída
    1. Pode quebrar a primeira atualização de versão. Verificar no código do
    Mautic 7 e corrigir.
+
+   **Resolvido em 2026-10-20.** Causa, no código do Mautic 7.1.2: o último
+   passo do `mautic:install`, `InstallService::finalMigrationStep()`, roda
+   `doctrine:migrations:version --add --all` para marcar as migrações como
+   feitas numa instalação nova. A tabela `migrations` ainda não existe nessa
+   hora, o comando falha, e a saída vai para um `BufferedOutput` que ninguém
+   confere. A instalação termina com sucesso e com as 104 migrações sem
+   registro (`doctrine:migrations:status`: Executed 0, New 104).
+
+   O preço é pior que "quebrar a atualização": o `entrypoint_mautic_web.sh`
+   da imagem roda `doctrine:migrations:migrate -n` **toda vez que a web
+   sobe** com o Mautic instalado. Medido reiniciando a web: 84 migrações
+   puladas por pré-checagem, que continuam pendentes e são checadas de novo
+   a cada subida (a web levou cerca de 60 s para ficar `healthy`, com o site
+   em 404 enquanto isso), e 11 que rodaram 51 comandos SQL num banco já
+   atualizado, entre eles `CONVERT TO CHARACTER SET` e recriação de índices.
+   Num banco vazio isso não estraga nada. Na nossa instalação, porém, a web
+   só reinicia meses depois, num reboot ou numa troca de imagem, e aí esses
+   comandos rodam sobre a base de contatos durante a subida.
+
+   Correção: `mautic_instalar` roda `doctrine:migrations:sync-metadata-storage`
+   antes do `mautic:install`, como a própria imagem faz no caminho de dados
+   de teste (`DOCKER_MAUTIC_LOAD_TEST_DATA`), e confere com
+   `doctrine:migrations:up-to-date` depois, avisando sem abortar. Validado
+   numa instalação do zero na mesma VPS: Executed 104, New 0, nenhum erro no
+   log, 125 tabelas (as 124 de antes mais a `migrations`), e a web
+   reiniciada ficou `healthy` em 18 s, já na última versão.
+
+   Não há reparo automático para instalações anteriores: a 0.1.0 não foi
+   publicada, e só VPSs de teste nasceram sem o registro.
 
 4. **Portainer.** No bloco final da base, acrescentar: "se preferir trocar a
    senha do Portainer, use outra igualmente forte, em Minha conta".
