@@ -839,6 +839,9 @@ Ajustes do template, aplicados e validados em VPS:
   instalação por CLI reprova.
 - **Volume para `docroot/translations`**, nos três serviços do Mautic. Motivo
   na seção abaixo.
+- **`--time-limit=300` nos workers**, por troca de linha no `entrypoint` do
+  `mautic_worker`. Sem isso o SMTP trocado no painel não chega ao worker.
+  Ver o item 1 das pendências do teste de envio.
 
 ### Idiomas: por que translations precisa de volume
 
@@ -1618,13 +1621,54 @@ porque não tinha entrado no git. Cinco problemas, resolvidos nesta ordem:
    uma vez por processo. A web lê o arquivo novo a cada requisição; o cron roda
    processos curtos e também lê. O worker não: o `supervisord.conf` da imagem
    roda `messenger:consume` sem `--time-limit`, e o processo vive para sempre
-   com o DSN que leu ao nascer. Pelo código, um `restart` deveria bastar, e
-   por isso a medição na VPS tem de explicar por que não bastou (suspeita: o
-   log está em volume e guarda as linhas antigas).
+   com o DSN que leu ao nascer.
 
-   Correção preferida: o worker encerrar sozinho de tempos em tempos, para o
-   supervisord recriá-lo e ele reler o `local.php`. Comando manual só como
-   atalho no `credenciais.txt`. Nada de volume para `var/cache`.
+   **Resolvido em 2026-10-20**, medido na VPS 142.93.201.114 (Mautic 7.1.2),
+   com DSN falso no painel e e-mail enviado a um contato pela tela do
+   contato, que passa pela fila. O host tentado foi lido no log:
+
+   | Situação | Host que o worker tentou |
+   |---|---|
+   | DSN trocado no painel, nada reiniciado | `localhost:1025`, o de fábrica: **defeito reproduzido** |
+   | depois de `docker compose restart mautic_worker` | o host novo |
+   | com `--time-limit=300`, DSN trocado de novo, nada reiniciado | o host novo, depois que os workers se renovaram sozinhos 5 min após nascer |
+
+   O `restart` resolve, ao contrário do que o teste de 06/10 pareceu mostrar.
+   A explicação provável é o log: ele mora no volume `playahead_mautic_logs`
+   e guarda as linhas de antes do restart. Nos três casos o `email_stats`
+   marcou o envio como bem-sucedido (`is_failed = 0`): é o "Email Enviado"
+   enganoso, e é do Mautic, não do instalador.
+
+   Correção: o `entrypoint` do `mautic_worker` acrescenta `--time-limit=300`
+   ao `supervisord.conf` da própria imagem e chama o `/entrypoint.sh`
+   original. A imagem não oferece variável para isso (o `command` do
+   supervisord é fixo; só o número de processos é variável), e a
+   documentação do Symfony Messenger só oferece as opções de parada na linha
+   de comando. Ela recomenda exatamente isso: não deixar o worker rodar para
+   sempre e deixar o gerenciador de processos criar outro. O worker só para
+   entre uma mensagem e outra.
+
+   Por que trocar uma linha em vez de montar uma cópia do arquivo: a cópia
+   esconderia em silêncio qualquer mudança futura da imagem. A troca falha
+   para o lado seguro. Se o formato mudar, nada é alterado, o worker roda
+   como antes e um aviso sai no log do container. Verificado: um `restart`
+   não aplica a opção duas vezes, e um arquivo com outro formato fica
+   intacto e gera o aviso.
+
+   Segunda proteção, porque "como antes" é o defeito: `mautic_conferir_workers`
+   confere no fim do `mautic7.sh`, por `ps` dentro do worker, que os
+   processos subiram com `--time-limit`, e avisa na tela se não subiram. Com
+   `--wizard` confere o `supervisord.conf`, porque a imagem só sobe os
+   workers depois do assistente. Validado nos três casos: normal, `--wizard`
+   e arquivo adulterado.
+
+   Nada de volume para `var/cache`, como decidido. O comando manual fica como
+   atalho no `credenciais.txt` (junto com o item 2).
+
+   **Nota de atualização:** o `mautic7.sh` mantém um `docker-compose.yml`
+   que já existe, então uma instalação anterior não recebe a correção
+   rodando o instalador de novo. É preciso trocar o compose e rodar
+   `docker compose up -d mautic_worker`.
 
 2. **SMTP bloqueado na DigitalOcean.** Ela bloqueia saída nas portas 25, 465 e
    587. O SES aceita 2587 (STARTTLS) e 2465. No fim do `mautic7.sh`, testar a

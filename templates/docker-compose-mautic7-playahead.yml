@@ -295,6 +295,27 @@ services:
     image: ${MAUTIC_IMAGE:-mautic/mautic:7-apache}
     restart: unless-stopped
 
+    # Cada worker lê a configuração de e-mail (config/local.php) uma vez,
+    # quando nasce, e o da imagem nunca termina: trocar o SMTP no painel
+    # não chegava a ele, e o e-mail saía para o endereço antigo.
+    # Com --time-limit=300 cada worker encerra a cada 5 minutos, depois
+    # de terminar a mensagem em curso, e o supervisord o cria de novo,
+    # já com a configuração nova.
+    #
+    # A imagem não oferece variável para isso, então a linha abaixo
+    # acrescenta a opção ao supervisord.conf da própria imagem e chama o
+    # entrypoint original. Se o formato do arquivo mudar numa versão
+    # futura, nada é alterado, o worker roda como antes e o aviso sai em
+    # `docker compose logs mautic_worker`.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        conf=/etc/supervisor/conf.d/supervisord.conf
+        sed -i -E 's#^(command=php /var/www/html/bin/console messenger:consume [a-z]+)$$#\1 --time-limit=300#' "$$conf"
+        grep -q -- '--time-limit=' "$$conf" || echo "playahead: AVISO: --time-limit não aplicado em $$conf; os workers não releem a configuração de e-mail sozinhos"
+        exec /entrypoint.sh
+
     depends_on:
       mariadb:
         condition: service_healthy

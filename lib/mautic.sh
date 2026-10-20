@@ -393,6 +393,53 @@ mautic_subir_resto() {
 			"    cd ${PA_MAUTIC_DIR} && docker compose logs mautic_cron"
 
 	ui_ok "Agendador e workers no ar"
+
+	mautic_conferir_workers
+}
+
+# mautic_workers_com_limite
+#
+# Verdadeiro quando os workers vão encerrar sozinhos de tempos em
+# tempos. Na instalação normal confere o processo em execução; com
+# --wizard confere só o supervisord.conf, porque a imagem segura os
+# workers até o assistente web terminar e ainda não há processo.
+mautic_workers_com_limite() {
+	if [[ "$PA_WIZARD" -eq 1 ]]; then
+		mautic_compose exec -T mautic_worker \
+			grep -q -- '--time-limit=' /etc/supervisor/conf.d/supervisord.conf
+		return
+	fi
+
+	mautic_compose exec -T mautic_worker ps -eo args 2>/dev/null |
+		grep -q -- 'messenger:consume email --time-limit='
+}
+
+# mautic_conferir_workers
+#
+# Segunda proteção do --time-limit acrescentado no entrypoint do
+# mautic_worker (o motivo está no comentário dele, no compose).
+#
+# Aquela linha falha para o lado seguro: se uma versão nova da
+# imagem mudar o supervisord.conf, ela não altera nada e o worker
+# roda como antes. Só que "como antes" é o defeito medido em
+# 2026-10-20: o SMTP trocado no painel não chega ao worker, o
+# e-mail vai para o endereço antigo e o histórico do contato diz
+# que foi enviado. Por isso a falha não pode ficar só no log do
+# container, onde ninguém olha. Avisa e segue: o Mautic está no ar.
+mautic_conferir_workers() {
+	if ui_aguardar_ate "Conferindo se os workers releem a configuração" 90 \
+		mautic_workers_com_limite; then
+		return 0
+	fi
+
+	ui_aviso "Os workers subiram sem --time-limit."
+	ui_detalhe "Sem ele, um SMTP trocado no painel só passa a valer"
+	ui_detalhe "depois de reiniciar o worker:"
+	ui_detalhe ""
+	ui_detalhe "    cd ${PA_MAUTIC_DIR} && docker compose restart mautic_worker"
+	ui_detalhe ""
+	ui_detalhe "Causa provável: a imagem do Mautic mudou o supervisord.conf."
+	ui_detalhe "    docker compose logs mautic_worker | grep playahead"
 }
 
 # ------------------------------------------------------------
