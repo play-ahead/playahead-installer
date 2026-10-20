@@ -106,6 +106,9 @@ no final a URL, o usuário e a senha de acesso.
 
 O painel já nasce em português do Brasil, com fuso America/Sao_Paulo.
 
+No fim, testa se a VPS consegue enviar e-mail pelas portas 587 e 2587, e avisa
+qual usar. Ver "E-mail (SMTP)".
+
 ## Onde ficam os arquivos
 
     /opt/playahead/mautic/docker-compose.yml
@@ -236,6 +239,26 @@ Os códigos de idioma válidos são os do
 Informando um código que não existe lá, o script avisa e segue em inglês, em
 vez de parar a instalação.
 
+## E-mail (SMTP)
+
+O script não configura o envio de e-mail, mas no fim da instalação ele testa
+se a VPS consegue sair pelas portas 587 e 2587. **Vários provedores bloqueiam a
+saída nas portas 25, 465 e 587, e a DigitalOcean é um deles.** O painel do
+Mautic aceita a configuração mesmo assim, o envio falha, e nada na tela diz
+por quê.
+
+No Amazon SES, com a 587 bloqueada, use a porta **2587** (STARTTLS) ou a
+**2465** (TLS). O resultado do teste fica no `credenciais.txt`.
+
+Depois de alterar a configuração de e-mail no painel, os workers que fazem o
+envio passam a usá-la **em até 5 minutos**, sozinhos. Para valer na hora:
+
+    cd /opt/playahead/mautic
+    docker compose restart mautic_worker
+
+Confira o envio pelo log, e não pelo histórico do contato: o Mautic marca
+"Email Enviado" mesmo quando o servidor de e-mail recusou a mensagem.
+
 ## O que o script NÃO faz
 
 Não configura SMTP, Amazon SES, SPF, DKIM, DMARC nem aquecimento de domínio.
@@ -253,6 +276,10 @@ perguntar antes.
 
 O script não coleta nem envia nenhuma informação. Não há telemetria, contagem de
 instalações nem registro de IP.
+
+O teste de SMTP do fim da instalação abre uma conexão com o servidor do Amazon
+SES (`email-smtp.us-east-1.amazonaws.com`) e fecha, sem enviar nada. A tela
+avisa quando isso acontece.
 
 O e-mail pedido durante a instalação é usado apenas para emitir o certificado
 SSL e vai para a Let's Encrypt, não para a Play Ahead.

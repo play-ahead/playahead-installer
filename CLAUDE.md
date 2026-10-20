@@ -350,9 +350,11 @@ fim sem input. Cada instalador é dono da própria conversa.
 4. Bloco único de perguntas, incluindo a confirmação dos valores do Traefik.
 5. Validação do DNS do domínio do Mautic. Última chance de abortar sem ter
    escrito nada.
-6. Mautic, em três tempos (ver Stack), mais idioma, fuso e cache.
+6. Mautic, em três tempos (ver Stack), mais idioma, fuso e cache. Depois
+   dos workers, a conferência do `--time-limit` e o teste de saída SMTP,
+   antes de gravar o `credenciais.txt`, que leva o resultado.
 7. Verificação externa de roteamento (anti-404).
-8. Bloco final.
+8. Bloco final, que repete o aviso de porta 587 bloqueada.
 
 ## Checagens obrigatórias antes de qualquer instalação
 
@@ -1675,6 +1677,28 @@ porque não tinha entrado no git. Cinco problemas, resolvidos nesta ordem:
    saída para 587 e 2587 e, com a 587 bloqueada, avisar que no SES se usa a
    2587. Registrar no `credenciais.txt` e no README, junto com o procedimento
    correto depois de alterar a configuração de e-mail.
+
+   **Resolvido em 2026-10-20.** Medido na VPS 142.93.201.114 contra
+   `email-smtp.us-east-1.amazonaws.com`: 25, 465 e 587 não respondem (a
+   conexão não é recusada, fica sem resposta até o timeout); 2465 e 2587
+   conectam na hora.
+
+   `mautic_testar_smtp` abre e fecha uma conexão TCP pelo `/dev/tcp` do bash
+   (nc e telnet não são garantidos), com `timeout 5`, porque é o timeout que
+   decide quando a porta bloqueada não responde. Antes resolve o nome com
+   `getent`: sem DNS o resultado é "desconhecida", e não "bloqueada". A tela
+   diz qual servidor está sendo consultado e que nada é enviado, pelo mesmo
+   motivo do fallback do IP público; o README diz o mesmo em Privacidade.
+
+   Três desfechos, todos conferidos: 587 aberta (ok), 587 bloqueada e 2587
+   aberta (aviso para usar a 2587 no SES), as duas bloqueadas (aviso para
+   pedir liberação ao provedor). O aviso se repete no bloco final, porque o
+   da etapa já rolou para fora da tela. Avisa e segue: nada aborta por isso.
+
+   O `credenciais.txt` ganhou a seção "E-MAIL (SMTP)": o resultado medido,
+   as portas do SES, o atalho `docker compose restart mautic_worker` (o
+   comando medido no item 1) e o alerta de que o "Email Enviado" do
+   histórico não prova envio. O README ganhou a seção "E-mail (SMTP)".
 
 3. **Migrações não marcadas.** Durante o `mautic:install`, o log registrou
    "The metadata storage is not initialized, please run the

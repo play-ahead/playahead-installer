@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-20T14:05:43Z
+# Build:  2026-10-20T14:15:16Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -2808,6 +2808,83 @@ mautic_regionalizar() {
 }
 
 # ------------------------------------------------------------
+# Saída SMTP
+# ------------------------------------------------------------
+
+# Host do Amazon SES usado só para abrir a conexão. Qualquer região
+# serve: o que se mede é se o provedor da VPS deixa a porta sair.
+PA_SMTP_HOST_TESTE="email-smtp.us-east-1.amazonaws.com"
+
+# Preenchidos por mautic_testar_smtp: aberta, bloqueada ou
+# desconhecida (sem DNS, não deu para testar).
+PA_SMTP_587=""
+PA_SMTP_2587=""
+
+# mautic_porta_sai <host> <porta>
+#
+# Só abre a conexão TCP e fecha. Nada é enviado. Usa o /dev/tcp do
+# bash porque nc e telnet não são garantidos no Ubuntu limpo.
+#
+# Medido na DigitalOcean em 2026-10-20: a porta bloqueada não
+# recusa, simplesmente não responde, e por isso o timeout é o que
+# decide. A aberta conecta na hora.
+mautic_porta_sai() {
+	local host="$1"
+	local porta="$2"
+
+	timeout 5 bash -c "exec 3<>/dev/tcp/${host}/${porta}" 2>/dev/null
+}
+
+# mautic_testar_smtp
+#
+# A DigitalOcean bloqueia a saída nas portas 25, 465 e 587, que são
+# as que todo tutorial de SMTP manda usar. O painel do Mautic aceita
+# a configuração, o envio falha, e o histórico do contato diz "Email
+# Enviado". O SES também atende nas portas 2587 (STARTTLS) e 2465,
+# que passam. Medido na VPS de teste: 25, 465 e 587 sem resposta;
+# 2465 e 2587 abertas.
+#
+# O script não configura SMTP (ver "Fora de escopo" no CLAUDE.md).
+# Ele só mede e diz qual porta usar, porque esta é a primeira coisa
+# que a pessoa vai fazer depois de instalar, e a falha é silenciosa.
+#
+# A conexão vai a um servidor da Amazon, e isso é dito na tela: a
+# documentação promete que o script não envia nada sem avisar.
+mautic_testar_smtp() {
+	ui_passo "Testando a saída de e-mail (SMTP) desta VPS"
+	ui_detalhe "Só abre uma conexão com ${PA_SMTP_HOST_TESTE},"
+	ui_detalhe "o servidor do Amazon SES, e fecha. Nada é enviado."
+
+	if ! getent hosts "$PA_SMTP_HOST_TESTE" >/dev/null 2>&1; then
+		PA_SMTP_587="desconhecida"
+		PA_SMTP_2587="desconhecida"
+		ui_aviso "Não consegui resolver ${PA_SMTP_HOST_TESTE}; teste pulado."
+		return 0
+	fi
+
+	PA_SMTP_587="bloqueada"
+	PA_SMTP_2587="bloqueada"
+	mautic_porta_sai "$PA_SMTP_HOST_TESTE" 587 && PA_SMTP_587="aberta"
+	mautic_porta_sai "$PA_SMTP_HOST_TESTE" 2587 && PA_SMTP_2587="aberta"
+
+	if [[ "$PA_SMTP_587" == "aberta" ]]; then
+		ui_ok "Saída pela porta 587 liberada"
+		return 0
+	fi
+
+	if [[ "$PA_SMTP_2587" == "aberta" ]]; then
+		ui_aviso "Esta VPS não consegue sair pela porta 587."
+		ui_detalhe "É bloqueio do provedor (a DigitalOcean bloqueia 25, 465 e 587)."
+		ui_detalhe "No Amazon SES, use a porta 2587 (STARTTLS) no painel do Mautic."
+		return 0
+	fi
+
+	ui_aviso "Esta VPS não consegue sair nem pela porta 587 nem pela 2587."
+	ui_detalhe "Nenhum envio por SMTP vai funcionar daqui. Peça ao provedor"
+	ui_detalhe "a liberação da saída SMTP antes de configurar o e-mail."
+}
+
+# ------------------------------------------------------------
 # Credenciais
 # ------------------------------------------------------------
 
@@ -2851,6 +2928,26 @@ mautic_gravar_credenciais() {
 
 		printf '\nGuarde estes dados num gerenciador de senhas.\n'
 		printf 'Este arquivo não é apagado automaticamente.\n'
+
+		printf '\n'
+		printf '============================================================\n'
+		printf ' E-MAIL (SMTP)\n'
+		printf '============================================================\n\n'
+		printf 'Saída desta VPS, medida na instalação:\n'
+		printf '  porta 587:  %s\n' "${PA_SMTP_587:-não testada}"
+		printf '  porta 2587: %s\n\n' "${PA_SMTP_2587:-não testada}"
+		printf 'Vários provedores bloqueiam a saída nas portas 25, 465 e\n'
+		printf '587; a DigitalOcean é um deles. No Amazon SES, com a 587\n'
+		printf 'bloqueada, use a porta 2587 (STARTTLS) ou a 2465 (TLS).\n\n'
+		printf 'Depois de alterar a configuração de e-mail no painel, os\n'
+		printf 'workers que fazem o envio passam a usá-la em até 5 minutos,\n'
+		printf 'sozinhos. Para valer na hora:\n\n'
+		printf '  cd %s\n' "$PA_MAUTIC_DIR"
+		printf '  docker compose restart mautic_worker\n\n'
+		printf 'Confira o envio pelo log, não pelo histórico do contato: o\n'
+		printf 'Mautic marca "Email Enviado" mesmo quando o servidor de\n'
+		printf 'e-mail recusou. O log fica em:\n\n'
+		printf '  docker compose exec mautic_web ls /var/www/html/var/logs\n'
 
 		printf '\n'
 		printf '============================================================\n'
@@ -3111,7 +3208,7 @@ mautic_pagina_do_mautic() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-20T14:05:43Z"
+PA_BUILD="2026-10-20T14:15:16Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
@@ -3564,6 +3661,9 @@ main_instalar() {
 	fi
 
 	mautic_subir_resto
+
+	# Antes das credenciais, porque o resultado vai para o arquivo.
+	mautic_testar_smtp
 	mautic_gravar_credenciais "$PA_DOMINIO" "$PA_EMAIL_ADMIN"
 }
 
@@ -3603,6 +3703,20 @@ main_bloco_final() {
 	ui_vazio
 	ui_info "Arquivos da instalação:"
 	ui_detalhe "$PA_MAUTIC_DIR"
+
+	# Repetido aqui porque o aviso da etapa já rolou para fora da
+	# tela, e esta é a primeira coisa que a pessoa vai configurar.
+	if [[ "$PA_SMTP_587" == "bloqueada" ]]; then
+		ui_vazio
+		if [[ "$PA_SMTP_2587" == "aberta" ]]; then
+			ui_aviso "A porta 587 está bloqueada nesta VPS."
+			ui_detalhe "No Amazon SES, configure a porta 2587 no painel."
+		else
+			ui_aviso "A saída SMTP está bloqueada nesta VPS (587 e 2587)."
+			ui_detalhe "Peça a liberação ao provedor antes de configurar o e-mail."
+		fi
+		ui_detalhe "Detalhes em ${PA_MAUTIC_CREDENCIAIS}."
+	fi
 
 	ui_vazio
 	ui_separador

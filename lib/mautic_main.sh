@@ -485,6 +485,9 @@ main_instalar() {
 	fi
 
 	mautic_subir_resto
+
+	# Antes das credenciais, porque o resultado vai para o arquivo.
+	mautic_testar_smtp
 	mautic_gravar_credenciais "$PA_DOMINIO" "$PA_EMAIL_ADMIN"
 }
 
@@ -524,6 +527,20 @@ main_bloco_final() {
 	ui_vazio
 	ui_info "Arquivos da instalação:"
 	ui_detalhe "$PA_MAUTIC_DIR"
+
+	# Repetido aqui porque o aviso da etapa já rolou para fora da
+	# tela, e esta é a primeira coisa que a pessoa vai configurar.
+	if [[ "$PA_SMTP_587" == "bloqueada" ]]; then
+		ui_vazio
+		if [[ "$PA_SMTP_2587" == "aberta" ]]; then
+			ui_aviso "A porta 587 está bloqueada nesta VPS."
+			ui_detalhe "No Amazon SES, configure a porta 2587 no painel."
+		else
+			ui_aviso "A saída SMTP está bloqueada nesta VPS (587 e 2587)."
+			ui_detalhe "Peça a liberação ao provedor antes de configurar o e-mail."
+		fi
+		ui_detalhe "Detalhes em ${PA_MAUTIC_CREDENCIAIS}."
+	fi
 
 	ui_vazio
 	ui_separador
