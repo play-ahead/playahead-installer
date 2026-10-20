@@ -1596,7 +1596,54 @@ O que fazer com isso era decisão de produto, não correção de bug. Resolvido 
 ## Pendências
 
 **Cenário 1 validado de ponta a ponta** em 2026-09-12. A tag `mautic7-v0.1.0`
-fica para depois de as correções deste teste serem revalidadas.
+fica para depois de as correções deste teste serem revalidadas, **e das cinco
+pendências do teste de envio abaixo**.
+
+### Teste de envio pelo Amazon SES (2026-10-06)
+
+Feito numa VPS depois dos commits de 06/10, e registrado aqui em 2026-10-20,
+porque não tinha entrado no git. Cinco problemas, resolvidos nesta ordem:
+
+1. **Crítico: o worker ignora a configuração de e-mail salva no painel.** O
+   SMTP do SES foi configurado no painel e o `local.php` ficou certo (porta
+   2587), mas o log mostrava o worker enviando para `localhost:1025`, o padrão
+   de fábrica. Os e-mails eram descartados depois de 3 tentativas, e o
+   histórico do contato dizia "Email Enviado". `docker compose restart` não
+   resolveu (a medir de novo, ver abaixo); `docker compose up -d
+   --force-recreate mautic_worker mautic_cron` resolveu.
+
+   Causa, lida no código do Mautic 7.1.2 e da imagem oficial: **não é cache
+   compilado.** O mailer usa `%env(urlencoded-dsn:MAUTIC_MAILER_DSN)%`, e quem
+   preenche a variável a partir do `config/local.php` é o `AppKernel::boot()`,
+   uma vez por processo. A web lê o arquivo novo a cada requisição; o cron roda
+   processos curtos e também lê. O worker não: o `supervisord.conf` da imagem
+   roda `messenger:consume` sem `--time-limit`, e o processo vive para sempre
+   com o DSN que leu ao nascer. Pelo código, um `restart` deveria bastar, e
+   por isso a medição na VPS tem de explicar por que não bastou (suspeita: o
+   log está em volume e guarda as linhas antigas).
+
+   Correção preferida: o worker encerrar sozinho de tempos em tempos, para o
+   supervisord recriá-lo e ele reler o `local.php`. Comando manual só como
+   atalho no `credenciais.txt`. Nada de volume para `var/cache`.
+
+2. **SMTP bloqueado na DigitalOcean.** Ela bloqueia saída nas portas 25, 465 e
+   587. O SES aceita 2587 (STARTTLS) e 2465. No fim do `mautic7.sh`, testar a
+   saída para 587 e 2587 e, com a 587 bloqueada, avisar que no SES se usa a
+   2587. Registrar no `credenciais.txt` e no README, junto com o procedimento
+   correto depois de alterar a configuração de e-mail.
+
+3. **Migrações não marcadas.** Durante o `mautic:install`, o log registrou
+   "The metadata storage is not initialized, please run the
+   sync-metadata-storage command" no `doctrine:migrations:version`, com saída
+   1. Pode quebrar a primeira atualização de versão. Verificar no código do
+   Mautic 7 e corrigir.
+
+4. **Portainer.** No bloco final da base, acrescentar: "se preferir trocar a
+   senha do Portainer, use outra igualmente forte, em Minha conta".
+
+5. **Teste final.** Entra na lista de conferências: configurar o SMTP do SES no
+   painel e enviar um e-mail a um contato, que passa pelo worker. Só depois
+   disso sai a tag.
 
 **Resolvida em 2026-09-30: o Portainer fica, e no fluxo normal da base.**
 
