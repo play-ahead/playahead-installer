@@ -452,6 +452,7 @@ main_instalar() {
 	mautic_gravar_compose "$PA_TEMPLATE_MAUTIC"
 	mautic_gerar_env "$PA_DOMINIO"
 
+	mautic_baixar_imagens
 	mautic_subir_banco
 	mautic_subir_web
 

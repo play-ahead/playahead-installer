@@ -1842,6 +1842,19 @@ resolvido quando for commitado.
    `tls: "true"`; com `letsencrypt` ou outro nome, o label sai com o nome.
 6. **Download.** 626 MB do Mautic mais 104 MB do MariaDB baixados com a
    saída descartada, com a tela parada.
+
+   **Resolvido em 2026-10-22.** `mautic_baixar_imagens` roda um `docker
+   compose pull` com o progresso na tela, antes da subida do banco,
+   avisando do tamanho. O `up -d` segue silencioso, já sem nada para
+   baixar. Sem rede e com as imagens presentes, avisa e segue; sem rede e
+   sem as imagens, para antes de criar qualquer container. Testado na VPS
+   com a stack desmontada e as imagens apagadas: progresso visível num
+   terminal, MariaDB em 21 s, Mautic em 82 s, instalação inteira com saída 0
+   em 321 s. Os dois caminhos de falha foram simulados com o `pull`
+   falhando.
+
+   O download da base (Traefik e Portainer) continua dentro do `up -d`. São
+   imagens bem menores, e o item era o do Mautic.
 7. **Ctrl-C.** Num pty, os dois instaladores morriam sem imprimir nada.
 8. **Help.** O exemplo do `mautic7.sh` usava `--acme-email`, que ele recusa.
 

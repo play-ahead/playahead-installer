@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-22T19:00:01Z
+# Build:  2026-10-22T19:04:24Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -823,7 +823,7 @@ ui_mascarar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-22T19:00:01Z"
+PA_BUILD="2026-10-22T19:04:24Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Menu de instaladores"
 
@@ -5221,7 +5221,7 @@ menu_conteudo_mautic7() {
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-22T18:55:19Z
+# Build:  2026-10-22T19:04:24Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -7725,6 +7725,51 @@ mautic_container_saudavel() {
 	[[ "$estado" == "healthy" ]]
 }
 
+# mautic_imagens_presentes
+#
+# Verdadeiro quando todas as imagens do compose já estão nesta
+# máquina.
+mautic_imagens_presentes() {
+	local imagem
+	while IFS= read -r imagem; do
+		[[ -n "$imagem" ]] || continue
+		docker image inspect "$imagem" >/dev/null 2>&1 || return 1
+	done < <(mautic_compose config --images 2>/dev/null)
+}
+
+# mautic_baixar_imagens
+#
+# Baixa as imagens antes de subir qualquer coisa, com o progresso
+# na tela. Até 2026-10-22 o download acontecia dentro do `up -d`,
+# com a saída descartada: 626 MB do Mautic e 104 MB do MariaDB
+# (comprimidos, Docker Hub, amd64) com a tela parada num "Subindo o
+# banco de dados", o que convida ao Ctrl-C.
+#
+# Sem rede mas com as imagens já presentes, segue com aviso: o
+# `up -d` usa o que está aqui.
+mautic_baixar_imagens() {
+	ui_passo "Baixando as imagens do Mautic e do banco"
+	ui_detalhe "Cerca de 730 MB na primeira vez. Pode levar alguns minutos,"
+	ui_detalhe "e o progresso aparece logo abaixo."
+
+	if mautic_compose pull; then
+		ui_ok "Imagens prontas"
+		return 0
+	fi
+
+	if mautic_imagens_presentes; then
+		ui_aviso "Não consegui conferir se há imagem mais nova; uso as que já estão aqui."
+		return 0
+	fi
+
+	ui_fatal \
+		"Não consegui baixar as imagens do Mautic." \
+		"Nenhum container foi criado. Confira a conexão da VPS com" \
+		"o Docker Hub e rode este instalador de novo. Para ver o erro:" \
+		"" \
+		"    cd ${PA_MAUTIC_DIR} && docker compose pull"
+}
+
 # mautic_subir_banco
 mautic_subir_banco() {
 	ui_passo "Subindo o banco de dados"
@@ -8635,7 +8680,7 @@ mautic_pagina_do_mautic() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-22T18:55:19Z"
+PA_BUILD="2026-10-22T19:04:24Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
@@ -9055,6 +9100,7 @@ main_instalar() {
 	mautic_gravar_compose "$PA_TEMPLATE_MAUTIC"
 	mautic_gerar_env "$PA_DOMINIO"
 
+	mautic_baixar_imagens
 	mautic_subir_banco
 	mautic_subir_web
 
