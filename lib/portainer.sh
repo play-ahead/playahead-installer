@@ -350,7 +350,11 @@ portainer_verificar_roteamento() {
 
 		if [[ "$codigo" == "200" ]] && [[ "$url_final" != *timeout* ]]; then
 			ui_ok "O domínio abre o Portainer"
-			return 0
+
+			# A medida acima usa -k para classificar; o certificado
+			# é conferido à parte, só agora que o Portainer respondeu.
+			traefik_conferir_certificado "$dominio" "https://${dominio}/"
+			return
 		fi
 
 		sleep 5
@@ -435,4 +439,8 @@ portainer_bloco_final() {
 	ui_info "desta máquina. Guarde a senha num gerenciador de senhas."
 	ui_info "Se preferir trocar a senha do Portainer, use outra igualmente"
 	ui_info "forte, em Minha conta (My account, no menu do usuário)."
+	ui_vazio
+	ui_info "A conferência do endereço rodou de dentro desta VPS e não"
+	ui_info "passa pelo firewall do provedor. Abra no navegador para ter"
+	ui_info "certeza: https://${PA_PORTAINER_DOMINIO}"
 }

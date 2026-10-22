@@ -1114,7 +1114,11 @@ mautic_verificar_roteamento() {
 			ui_detalhe "terminou em ${url_final}, com 200"
 			[[ "${saltos:-0}" -gt 0 ]] &&
 				ui_detalhe "depois de ${saltos} redirecionamento(s)"
-			return 0
+
+			# A medida acima usa -k para classificar; o certificado
+			# é conferido à parte, só agora que o Mautic respondeu.
+			traefik_conferir_certificado "$dominio" "$url_final"
+			return
 		fi
 
 		sleep 6

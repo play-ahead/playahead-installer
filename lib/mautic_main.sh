@@ -528,6 +528,14 @@ main_bloco_final() {
 	ui_info "Arquivos da instalação:"
 	ui_detalhe "$PA_MAUTIC_DIR"
 
+	# Medido em 2026-10-22: o IP público está na placa de rede, e a
+	# requisição da conferência nem sai da máquina. Um firewall do
+	# provedor fechando a 443 não apareceria nela.
+	ui_vazio
+	ui_info "A conferência do endereço rodou de dentro desta VPS e não"
+	ui_info "passa pelo firewall do provedor. Abra no navegador para ter"
+	ui_info "certeza: https://${PA_DOMINIO}"
+
 	# Repetido aqui porque o aviso da etapa já rolou para fora da
 	# tela, e esta é a primeira coisa que a pessoa vai configurar.
 	if [[ "$PA_SMTP_587" == "bloqueada" ]]; then

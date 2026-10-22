@@ -1781,6 +1781,37 @@ resolvido quando for commitado.
    lo`), então o firewall do provedor não é visto. Com `-k`, o
    `%{ssl_verify_result}` do curl 8.5.0 dá 20 até para certificado válido,
    e não serve de teste.
+
+   **Resolvido em 2026-10-22.** A medida principal continua com `-k`, por
+   decisão do Fabio: com roteador errado ou outro site no domínio o Traefik
+   também serve o certificado padrão, e sem `-k` o 404, que é o diagnóstico
+   mais útil do projeto, viraria "certificado não emitido". Só quando ela
+   chega no Mautic (ou no Portainer) com 200, `traefik_conferir_certificado`
+   faz uma segunda chamada sem `-k`, por até 2 minutos. Falhando, mostra o
+   emissor que o `openssl s_client` vê e as linhas do log do Traefik sobre o
+   domínio, já com o motivo extraído (o último trecho depois de " :: " no
+   `error=`). Sem certresolver não confere: quem termina o TLS fora é dono
+   do certificado. O bloco final dos dois diz que a conferência roda de
+   dentro da VPS e manda abrir no navegador.
+
+   Medido na VPS: Mautic e Portainer com certificado válido passam em 0 s;
+   um roteador com certresolver para um domínio `.invalid` (que só existia
+   no `/etc/hosts`) dá 200 com `-k`, e a conferência mostra `CN = TRAEFIK
+   DEFAULT CERT` e "Domain name does not end with a valid public suffix".
+
+   Dois defeitos achados no caminho:
+
+   - **A detecção do Traefik aceitava qualquer imagem que contivesse
+     "traefik".** O `traefik/whoami` do teste entrou como candidato, e o log
+     do ACME foi lido no container errado. `traefik_listar_containers` passou
+     a exigir que o último trecho do nome da imagem, sem tag e sem digest,
+     seja `traefik`. Efeito colateral aceito: uma imagem própria com outro
+     nome (`meu-traefik-custom`) deixa de ser reconhecida, e o script para
+     mostrando quem ocupa a 443, como já fazia sem Traefik.
+   - **Com `set -euo pipefail`, um `grep` sem resultado dentro de
+     `var="$(...)"` encerra o instalador em silêncio.** Aconteceu no teste,
+     com um domínio sem linhas do ACME. As atribuições de pipeline do log e
+     do emissor levam `|| true`.
 4. **Trava do apt.** Medido no apt 2.8.3: o `update` falha em 2 s mesmo com
    `DPkg::Lock::Timeout=60` (a trava é a de `/var/lib/apt/lists`), e o
    `install` sem a opção falha na hora. A mensagem mandava conferir a

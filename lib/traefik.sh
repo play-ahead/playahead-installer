@@ -48,10 +48,23 @@ PA_TRAEFIK_HOST_MODE=0
 # traefik_listar_containers
 #
 # Identificação por imagem, como decidido: container em execução
-# cuja imagem casa com "traefik".
+# cuja imagem é a do Traefik.
+#
+# "É a do Traefik" quer dizer que o último trecho do nome, sem tag
+# e sem digest, é exatamente traefik: casa com traefik:v3.7.12,
+# docker.io/library/traefik e registro/qualquer/traefik:tag. Até
+# 2026-10-22 bastava conter "traefik", e o traefik/whoami, imagem de
+# teste da própria Traefik Labs, entrava como candidato: medido na
+# VPS, o log do ACME foi procurado no container errado.
 traefik_listar_containers() {
 	docker ps --format '{{.Names}}\t{{.Image}}' 2>/dev/null |
-		awk -F'\t' 'tolower($2) ~ /traefik/ {print $1}'
+		awk -F'\t' '{
+			img = tolower($2)
+			sub(/@.*/, "", img)
+			sub(/:[^\/]*$/, "", img)
+			n = split(img, parte, "/")
+			if (parte[n] == "traefik") print $1
+		}'
 }
 
 # traefik_detectar_container
@@ -431,4 +444,120 @@ traefik_mostrar_deteccao() {
 		ui_detalhe "Se estiver errado, use --traefik-certresolver=."
 		ui_vazio
 	fi
+}
+
+# ------------------------------------------------------------
+# Conferência do certificado
+# ------------------------------------------------------------
+
+# traefik_container_em_uso
+#
+# Ecoa o nome do container do Traefik: o detectado, ou o primeiro
+# que traefik_listar_containers encontrar. A base que acabou de
+# instalar o próprio Traefik não passa pela detecção.
+traefik_container_em_uso() {
+	if [[ -n "$PA_TRAEFIK_CONTAINER" ]]; then
+		printf '%s\n' "$PA_TRAEFIK_CONTAINER"
+		return 0
+	fi
+
+	traefik_listar_containers | head -n 1
+}
+
+# traefik_certificado_valido <url>
+#
+# Verdadeiro quando o certificado servido para a URL é aceito sem
+# -k. Medido em 2026-10-22: com o Let's Encrypt falhando, o Traefik
+# serve o "TRAEFIK DEFAULT CERT", e o curl -k devolve 200 como se
+# nada tivesse acontecido. Sem -k o curl sai com 60.
+#
+# O %{ssl_verify_result} não serve no lugar disto: no curl 8.5.0
+# do Ubuntu 24.04, junto com -k, ele devolve 20 até para um
+# certificado válido.
+traefik_certificado_valido() {
+	curl -sS -o /dev/null --max-time 15 "$1" >/dev/null 2>&1
+}
+
+# traefik_conferir_certificado <dominio> <url>
+#
+# Segunda chamada das verificações de roteamento, feita só depois
+# de a primeira (com -k) chegar na aplicação. A primeira tem de
+# continuar com -k: com roteador errado ou outro site no domínio o
+# Traefik também serve o certificado padrão, e sem -k o 404, que é
+# o diagnóstico mais útil, viraria "certificado não emitido".
+#
+# Espera até 2 minutos, porque a emissão pode terminar segundos
+# depois de a aplicação responder. Sem certresolver não confere:
+# quem termina o TLS fora da VPS é dono do certificado, e daqui de
+# dentro a resposta seria sempre o certificado padrão.
+traefik_conferir_certificado() {
+	local dominio="$1"
+	local url="$2"
+
+	if [[ -z "${PA_TRAEFIK_CERTRESOLVER:-}" ]]; then
+		ui_detalhe "Certificado não conferido: sem certresolver, ele é de"
+		ui_detalhe "quem termina o SSL fora desta VPS."
+		return 0
+	fi
+
+	if ui_aguardar_ate "Conferindo o certificado de ${dominio}" 120 \
+		traefik_certificado_valido "$url"; then
+		return 0
+	fi
+
+	local emissor
+	emissor="$(openssl s_client -connect "${dominio}:443" -servername "$dominio" \
+		</dev/null 2>/dev/null | openssl x509 -noout -issuer 2>/dev/null)" || true
+
+	ui_aviso "O site abre, mas o certificado não é válido."
+	[[ -n "$emissor" ]] && ui_detalhe "emitido por: ${emissor#issuer=}"
+	ui_detalhe "O navegador vai mostrar um alerta de segurança. Costuma"
+	ui_detalhe "ser o Let's Encrypt que não conseguiu emitir: DNS recém"
+	ui_detalhe "apontado, porta 80 fechada no firewall do provedor, ou"
+	ui_detalhe "limite de emissões do Let's Encrypt."
+	traefik_mostrar_log_acme "$dominio"
+	return 1
+}
+
+# traefik_mostrar_log_acme <dominio>
+#
+# Mostra na tela as linhas do log do Traefik sobre a emissão do
+# certificado deste domínio, em vez de só mandar a pessoa rodar o
+# comando: é ali que o Let's Encrypt diz por que recusou.
+traefik_mostrar_log_acme() {
+	local dominio="$1"
+	local container
+	container="$(traefik_container_em_uso)" || true
+
+	ui_vazio
+	if [[ -z "$container" ]]; then
+		ui_detalhe "Não achei o container do Traefik para ler o log."
+		return 0
+	fi
+
+	# O Traefik colore o log mesmo sem terminal, e o motivo da recusa
+	# fica no fim da linha, depois da URL do Let's Encrypt: o último
+	# trecho entre " :: " e a aspa que fecha o error=. Linha nesse
+	# formato vira "hora  motivo"; as outras saem só sem as cores.
+	local linhas
+	linhas="$(docker logs --since 30m "$container" 2>&1 |
+		grep -i acme | grep -F "$dominio" | tail -n 4 |
+		sed -E 's/\x1b\[[0-9;]*m//g' |
+		sed -E 's/^([0-9-]+T[0-9:]+)Z? .*acme: error: [0-9]+ :: .* :: ((\\"|[^"])*)".*$/\1  \2/' |
+		sed -E 's/\\"/"/g' | cut -c1-220)" || true
+
+	if [[ -z "$linhas" ]]; then
+		ui_detalhe "O log do Traefik não tem linhas do ACME sobre este"
+		ui_detalhe "domínio nos últimos 30 minutos."
+	else
+		ui_info "Log do Traefik sobre o certificado (últimos 30 min):"
+		local linha
+		while IFS= read -r linha; do
+			ui_detalhe "$linha"
+		done <<<"$linhas"
+	fi
+
+	ui_vazio
+	ui_info "Para ver o log completo:"
+	ui_detalhe "docker logs --since 30m ${container} 2>&1 | grep -i acme"
 }
