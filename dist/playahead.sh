@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-20T14:29:42Z
+# Build:  2026-10-22T18:42:00Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -823,7 +823,7 @@ ui_mascarar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-20T14:29:42Z"
+PA_BUILD="2026-10-22T18:42:00Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Menu de instaladores"
 
@@ -5000,7 +5000,7 @@ menu_conteudo_mautic7() {
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-20T14:20:55Z
+# Build:  2026-10-22T18:42:00Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -8247,7 +8247,7 @@ mautic_pagina_do_mautic() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-20T14:20:55Z"
+PA_BUILD="2026-10-22T18:42:00Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
@@ -8331,7 +8331,7 @@ EXEMPLOS
     sudo bash mautic7.sh
 
     sudo bash mautic7.sh --domain=mautic.exemplo.com.br \
-        --acme-email=voce@exemplo.com.br --yes
+        --admin-email=voce@exemplo.com.br --yes
 
 DOCUMENTAÇÃO
     https://github.com/play-ahead/playahead-installer

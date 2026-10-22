@@ -1755,6 +1755,107 @@ porque não tinha entrado no git. Cinco problemas, resolvidos nesta ordem:
    painel e enviar um e-mail a um contato, que passa pelo worker. Só depois
    disso sai a tag.
 
+### Revisão externa do commit 746ae74 (2026-10-22)
+
+Um revisor (Claude, em outra conversa) leu o código e apontou problemas em
+três blocos. Cada fato foi conferido no código e reproduzido (docker falso,
+pty ou VPS de teste) antes de entrar aqui. A tag espera pelos blocos 1 e 2.
+
+#### Bloco 1: funcionamento (em andamento)
+
+Os oito itens foram confirmados. Ordem de correção aprovada pelo Fabio: 8,
+5, 3, 4, 6, 1 e 2 juntos, 7. Cada item recebe o registro de como foi
+resolvido quando for commitado.
+
+1. **Retomada.** `.env` mais volume do banco era tratado como instalação
+   completa, mas o volume nasce no `up -d mariadb`, antes do
+   `mautic:install`. Reproduzido com docker falso: saída 0, "instalação
+   completa", e nenhum `credenciais.txt`. `.env` sem volume abortava falando
+   de um "banco antigo" que não existe.
+2. **Senha do admin.** O `credenciais.txt` era gravado só no fim; uma queda
+   depois do `mautic:install` perdia a senha. O "Esqueceu a senha" depende de
+   SMTP, que o script não configura.
+3. **Certificado.** As verificações de roteamento usam `curl -k`: um
+   roteador servindo o `TRAEFIK DEFAULT CERT` passou como sucesso (200) na
+   VPS. E a requisição não sai da máquina (`ip route get` dá `local ... dev
+   lo`), então o firewall do provedor não é visto. Com `-k`, o
+   `%{ssl_verify_result}` do curl 8.5.0 dá 20 até para certificado válido,
+   e não serve de teste.
+4. **Trava do apt.** Medido no apt 2.8.3: o `update` falha em 2 s mesmo com
+   `DPkg::Lock::Timeout=60` (a trava é a de `/var/lib/apt/lists`), e o
+   `install` sem a opção falha na hora. A mensagem mandava conferir a
+   conexão.
+5. **Certresolver.** Com o `.env` sem a chave, o `${TRAEFIK_CERTRESOLVER:-letsencrypt}`
+   do template gerava `tls.certresolver: letsencrypt` (`docker compose
+   config`), contrariando a regra de omitir o label.
+6. **Download.** 626 MB do Mautic mais 104 MB do MariaDB baixados com a
+   saída descartada, com a tela parada.
+7. **Ctrl-C.** Num pty, os dois instaladores morriam sem imprimir nada.
+8. **Help.** O exemplo do `mautic7.sh` usava `--acme-email`, que ele recusa.
+
+**Fica de fora, por decisão do Fabio:** gerar uma senha nova para o admin
+direto no banco quando o `credenciais.txt` se perdeu. Precisaria de teste
+próprio, e o caso fica raro depois dos itens 1 e 2.
+
+#### Bloco 2: versões, atualização e segurança (não implementado)
+
+Só começa depois de o bloco 1 estar concluído e testado na VPS. Fatos
+conferidos em 2026-10-22:
+
+- A tag `mautic/mautic:7-apache` tem o mesmo digest da `7.1.2-apache` e não
+  muda desde 2026-06-01. Já existem 7.1.3 (07/07), 7.2.0 (02/09) e 7.2.1.
+- Depois da Traefik v3.7.12 saíram quatro versões, todas com avisos de
+  segurança no GitHub: v3.7.13, v3.7.14, v3.7.15 e v3.7.16 (20/10).
+- A tag `portainer/portainer-ce:lts` aponta para a 2.45.3 (21/10); o script
+  usa a 2.45.0.
+- Não há modo de atualização para quem já instalou.
+- Nenhum compose limita o log, e não há `/etc/docker/daemon.json`: os
+  containers usam `json-file` sem limite.
+- A checagem de DNS só olha IPv4 (`getent ahostsv4`). Um AAAA errado passa
+  sem aviso, e o Let's Encrypt tenta o IPv6 primeiro quando ele existe.
+- **O socket em `:ro` não protege a API do Docker.** Testado na VPS: um
+  container com o socket montado em `:ro` criou uma rede Docker. A
+  documentação do Traefik trata o socket como risco e recomenda proxy de
+  socket. O texto deste documento que diz o contrário será corrigido no
+  bloco 2.
+
+Decisões de 2026-10-22 já tomadas pelo Fabio, a registrar como "política de
+versões" quando o bloco 2 começar:
+
+1. Nunca tag flutuante (`7-apache`, `latest`). Cada ferramenta tem uma
+   versão recomendada exata numa variável: a que passou no teste.
+2. Uma rotina semanal na nuvem do Claude vigia as versões, lê notas e
+   problemas abertos e, se valer, abre um pedido de atualização no GitHub
+   numa branch `claude/`, com resumo em português. Nunca faz merge.
+3. Quem aprova uma versão é o teste fixo do GitHub passar, disparado por todo
+   pedido de atualização. O Fabio aprova ou recusa.
+4. Por tipo: o proxy (Traefik) recebe as correções da própria linha; o painel
+   com LTS (Portainer) segue a LTS; aplicação com banco (Mautic e as
+   próximas) fica travada, e linha nova só entra testada.
+5. O `mautic7.sh` pergunta antes de instalar: 1) Recomendada, testada pela
+   Play Ahead, padrão do Enter; 2) Mais nova, sem teste, com aviso. A mais
+   nova vem do Docker Hub na hora, da mesma linha principal (`7.x.x-apache`),
+   nunca do `latest`. A tela avisa da consulta. Consulta falhando, só a
+   recomendada aparece e a instalação segue. Mais nova igual à recomendada,
+   não pergunta.
+6. A base fica sem pergunta.
+7. A escolha aparece no resumo, no bloco final e no `credenciais.txt`.
+8. Com `--yes` o padrão é a recomendada, e uma flag escolhe a mais nova.
+
+Itens, na ordem sugerida: corrigir o texto do `:ro` e registrar a avaliação
+de um proxy de socket; versões exatas (Mautic 7.1.2 ou 7.1.3, Traefik
+v3.7.16, Portainer LTS); rotação de log pelo compose de cada container, sem
+mexer no `daemon.json`; checagem do AAAA (cuidado: `getent ahostsv6` devolve
+`::ffff:` quando não há AAAA, e isso não conta); a pergunta de versão; o
+teste fixo com o workflow do GitHub; a rotina semanal; e o modo de
+atualização, com desenho aprovado antes, backup do banco e do compose, e
+registro de por que ele é a única exceção à regra de não sobrescrever o
+compose.
+
+#### Bloco 3: visual (não implementado)
+
+Moldura, contador de etapas e quadro final com as credenciais.
+
 **Resolvida em 2026-09-30: o Portainer fica, e no fluxo normal da base.**
 
 A pergunta era se ele continuava aqui ou virava `dist/portainer.sh`. O que

@@ -116,7 +116,7 @@ EXEMPLOS
     sudo bash mautic7.sh
 
     sudo bash mautic7.sh --domain=mautic.exemplo.com.br \
-        --acme-email=voce@exemplo.com.br --yes
+        --admin-email=voce@exemplo.com.br --yes
 
 DOCUMENTAÇÃO
     https://github.com/play-ahead/playahead-installer
