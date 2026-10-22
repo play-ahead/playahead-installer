@@ -62,13 +62,15 @@ docker_instalar() {
 	export DEBIAN_FRONTEND=noninteractive
 
 	ui_info "Atualizando a lista de pacotes"
-	apt-get update -qq >/dev/null 2>&1 ||
+	sistema_apt update -qq ||
 		ui_fatal \
 			"Falha ao atualizar a lista de pacotes." \
-			"Confira a conexão da VPS e rode: apt-get update"
+			"O motivo está nas linhas acima. Para ver de novo:" \
+			"" \
+			"    sudo apt-get update"
 
 	ui_info "Instalando pré-requisitos"
-	apt-get install -y -qq ca-certificates curl >/dev/null 2>&1 ||
+	sistema_apt install -y -qq ca-certificates curl ||
 		ui_fatal "Falha ao instalar ca-certificates e curl."
 
 	ui_info "Adicionando a chave e o repositório oficiais do Docker"
@@ -89,13 +91,13 @@ docker_instalar() {
 		>"$PA_DOCKER_LISTA"
 
 	ui_info "Atualizando a lista com o repositório do Docker"
-	apt-get update -qq >/dev/null 2>&1 ||
+	sistema_apt update -qq ||
 		ui_fatal \
 			"Falha ao ler o repositório do Docker." \
 			"Verifique ${PA_DOCKER_LISTA}"
 
 	ui_info "Instalando Docker e o plugin do Compose"
-	apt-get install -y -qq "${PA_DOCKER_PACOTES[@]}" >/dev/null 2>&1 ||
+	sistema_apt install -y -qq "${PA_DOCKER_PACOTES[@]}" ||
 		ui_fatal \
 			"Falha ao instalar os pacotes do Docker." \
 			"Rode à mão para ver o erro:" \

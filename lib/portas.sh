@@ -157,12 +157,12 @@ portas_instalar_iproute2() {
 	ui_aviso "Nenhuma forma de listar portas em escuta nesta máquina."
 	ui_detalhe "Instalando o iproute2 para conseguir conferir as portas 80 e 443."
 
-	if ! DEBIAN_FRONTEND=noninteractive apt-get update -qq >/dev/null 2>&1; then
+	if ! sistema_apt update -qq; then
 		ui_aviso "Falha ao atualizar a lista de pacotes."
 		return 1
 	fi
 
-	if ! DEBIAN_FRONTEND=noninteractive apt-get install -y -qq iproute2 >/dev/null 2>&1; then
+	if ! sistema_apt install -y -qq iproute2; then
 		ui_aviso "Falha ao instalar o iproute2."
 		return 1
 	fi

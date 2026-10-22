@@ -1816,6 +1816,20 @@ resolvido quando for commitado.
    `DPkg::Lock::Timeout=60` (a trava é a de `/var/lib/apt/lists`), e o
    `install` sem a opção falha na hora. A mensagem mandava conferir a
    conexão.
+
+   **Resolvido em 2026-10-22.** `sistema_apt`, em `lib/sistema.sh`, roda
+   todo `apt-get` da base. Falha por trava (as três mensagens do apt 2.8.3)
+   espera e tenta de novo a cada 10 s, por até 10 minutos, por decisão do
+   Fabio: a atualização automática do primeiro boot pode passar de 5. A
+   tela diz uma vez que o apt está ocupado e por qual processo, e depois
+   avisa de minuto em minuto. Erro que não é de trava falha na hora, com as
+   últimas linhas do apt no lugar do "confira a conexão". Repetir, e não
+   `DPkg::Lock::Timeout`, porque a opção não cobre o `update`.
+
+   Testado na VPS em modo estrito, segurando as travas com `fcntl`: `update`
+   e `install` presos por 25 s esperam e passam; a espera esgotada devolve
+   1 dizendo quem segura; pacote inexistente falha em 1 s com "Unable to
+   locate package"; sem trava passa direto.
 5. **Certresolver.** Com o `.env` sem a chave, o `${TRAEFIK_CERTRESOLVER:-letsencrypt}`
    do template gerava `tls.certresolver: letsencrypt` (`docker compose
    config`), contrariando a regra de omitir o label.

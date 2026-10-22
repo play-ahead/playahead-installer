@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-22T18:55:19Z
+# Build:  2026-10-22T19:00:01Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -1547,12 +1547,12 @@ portas_instalar_iproute2() {
 	ui_aviso "Nenhuma forma de listar portas em escuta nesta máquina."
 	ui_detalhe "Instalando o iproute2 para conseguir conferir as portas 80 e 443."
 
-	if ! DEBIAN_FRONTEND=noninteractive apt-get update -qq >/dev/null 2>&1; then
+	if ! sistema_apt update -qq; then
 		ui_aviso "Falha ao atualizar a lista de pacotes."
 		return 1
 	fi
 
-	if ! DEBIAN_FRONTEND=noninteractive apt-get install -y -qq iproute2 >/dev/null 2>&1; then
+	if ! sistema_apt install -y -qq iproute2; then
 		ui_aviso "Falha ao instalar o iproute2."
 		return 1
 	fi
@@ -1843,6 +1843,88 @@ sistema_persistir_swap_fstab() {
 	fi
 }
 
+# ------------------------------------------------------------
+# apt, esperando a trava
+# ------------------------------------------------------------
+
+# Quanto tempo esperar a trava do apt. O primeiro boot de uma VPS
+# nova roda a atualização automática do Ubuntu, e ela pode passar
+# de 5 minutos.
+PA_APT_ESPERA_SEG=600
+PA_APT_INTERVALO_SEG=10
+
+# sistema_apt_trava_ocupada <arquivo_de_saida>
+#
+# Verdadeiro quando a falha do apt foi trava presa por outro
+# processo, e não erro de rede ou de pacote. As três mensagens são
+# as do apt 2.8.3, medidas em 2026-10-22: a da lista de pacotes
+# (update) e as duas do dpkg (install).
+sistema_apt_trava_ocupada() {
+	grep -q -E 'Could not get lock|Unable to lock directory|Unable to acquire the dpkg frontend lock' "$1"
+}
+
+# sistema_apt <argumentos do apt-get...>
+#
+# Roda o apt-get e, se a trava estiver presa, espera e tenta de
+# novo, por até PA_APT_ESPERA_SEG. Devolve 0 quando o comando
+# passou e 1 quando não, já tendo mostrado na tela o motivo.
+#
+# Por que repetir em vez de usar DPkg::Lock::Timeout: medido no apt
+# 2.8.3, a opção faz o install esperar, mas o update falha em 2 s
+# mesmo com ela, porque a trava dele é a de /var/lib/apt/lists, e a
+# opção não cobre essa.
+#
+# Um erro que não é de trava falha na hora, mostrando as últimas
+# linhas do apt: a mensagem antiga mandava conferir a conexão em
+# qualquer caso, e a trava não tem nada a ver com a conexão.
+sistema_apt() {
+	local saida
+	saida="$(mktemp)" || saida="/tmp/playahead_apt.$$"
+
+	local decorrido=0
+	local avisou=0
+
+	while true; do
+		if DEBIAN_FRONTEND=noninteractive apt-get "$@" >"$saida" 2>&1; then
+			[[ "$avisou" -eq 1 ]] && ui_ok "O apt foi liberado depois de ${decorrido}s"
+			rm -f "$saida"
+			return 0
+		fi
+
+		if ! sistema_apt_trava_ocupada "$saida"; then
+			ui_erro "O apt-get $1 falhou. Últimas linhas:"
+			local linha
+			while IFS= read -r linha; do
+				ui_detalhe "$linha"
+			done < <(grep -v '^\s*$' "$saida" | tail -n 4)
+			rm -f "$saida"
+			return 1
+		fi
+
+		if [[ "$decorrido" -ge "$PA_APT_ESPERA_SEG" ]]; then
+			ui_erro "O apt continuou ocupado por $((PA_APT_ESPERA_SEG / 60)) minutos."
+			ui_detalhe "$(grep -m 1 -o 'held by process.*' "$saida" || true)"
+			rm -f "$saida"
+			return 1
+		fi
+
+		# Uma linha só na primeira vez, e de minuto em minuto depois,
+		# para quem está olhando saber que não travou.
+		if [[ "$avisou" -eq 0 ]]; then
+			ui_aviso "O apt está ocupado por outro processo."
+			ui_detalhe "$(grep -m 1 -o 'held by process.*' "$saida" || true)"
+			ui_detalhe "Numa VPS nova, costuma ser a atualização automática do"
+			ui_detalhe "Ubuntu. Aguardando ela liberar, por até $((PA_APT_ESPERA_SEG / 60)) minutos."
+			avisou=1
+		elif ((decorrido % 60 == 0)); then
+			ui_detalhe "ainda aguardando o apt: ${decorrido}s"
+		fi
+
+		sleep "$PA_APT_INTERVALO_SEG"
+		decorrido=$((decorrido + PA_APT_INTERVALO_SEG))
+	done
+}
+
 # ============================================================
 # lib/docker.sh
 # ============================================================
@@ -2005,13 +2087,15 @@ docker_instalar() {
 	export DEBIAN_FRONTEND=noninteractive
 
 	ui_info "Atualizando a lista de pacotes"
-	apt-get update -qq >/dev/null 2>&1 ||
+	sistema_apt update -qq ||
 		ui_fatal \
 			"Falha ao atualizar a lista de pacotes." \
-			"Confira a conexão da VPS e rode: apt-get update"
+			"O motivo está nas linhas acima. Para ver de novo:" \
+			"" \
+			"    sudo apt-get update"
 
 	ui_info "Instalando pré-requisitos"
-	apt-get install -y -qq ca-certificates curl >/dev/null 2>&1 ||
+	sistema_apt install -y -qq ca-certificates curl ||
 		ui_fatal "Falha ao instalar ca-certificates e curl."
 
 	ui_info "Adicionando a chave e o repositório oficiais do Docker"
@@ -2032,13 +2116,13 @@ docker_instalar() {
 		>"$PA_DOCKER_LISTA"
 
 	ui_info "Atualizando a lista com o repositório do Docker"
-	apt-get update -qq >/dev/null 2>&1 ||
+	sistema_apt update -qq ||
 		ui_fatal \
 			"Falha ao ler o repositório do Docker." \
 			"Verifique ${PA_DOCKER_LISTA}"
 
 	ui_info "Instalando Docker e o plugin do Compose"
-	apt-get install -y -qq "${PA_DOCKER_PACOTES[@]}" >/dev/null 2>&1 ||
+	sistema_apt install -y -qq "${PA_DOCKER_PACOTES[@]}" ||
 		ui_fatal \
 			"Falha ao instalar os pacotes do Docker." \
 			"Rode à mão para ver o erro:" \
@@ -3462,7 +3546,7 @@ portainer_bloco_final() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-22T18:55:19Z"
+PA_BUILD="2026-10-22T19:00:01Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
