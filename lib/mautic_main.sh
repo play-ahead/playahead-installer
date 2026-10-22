@@ -547,6 +547,7 @@ main_confirmar() {
 # ------------------------------------------------------------
 
 main_instalar() {
+	ui_marcar_alteracao
 	ui_secao "Instalando o Mautic"
 
 	mautic_gravar_compose "$PA_TEMPLATE_MAUTIC"
@@ -679,6 +680,9 @@ main() {
 	main_parse_flags "$@"
 
 	ui_init "$PA_NAO_INTERATIVO"
+	ui_tratar_interrupcao \
+		"Para continuar, rode o mesmo comando de novo: o instalador" \
+		"retoma de onde parou, sem perguntar o domínio de novo."
 	ui_cabecalho
 
 	checks_sistema

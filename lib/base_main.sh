@@ -363,6 +363,7 @@ base_confirmar() {
 # ------------------------------------------------------------
 
 base_instalar() {
+	ui_marcar_alteracao
 	ui_secao "Preparando a máquina"
 
 	sistema_criar_swap "$PA_NO_SWAP"
@@ -429,6 +430,9 @@ main() {
 	main_parse_flags "$@"
 
 	ui_init "$PA_NAO_INTERATIVO"
+	ui_tratar_interrupcao \
+		"Para continuar, rode o mesmo comando de novo: a base" \
+		"reaproveita o que já foi instalado e segue do ponto que faltou."
 	ui_cabecalho
 
 	checks_sistema

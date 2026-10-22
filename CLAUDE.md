@@ -1768,7 +1768,7 @@ Um revisor (Claude, em outra conversa) leu o código e apontou problemas em
 três blocos. Cada fato foi conferido no código e reproduzido (docker falso,
 pty ou VPS de teste) antes de entrar aqui. A tag espera pelos blocos 1 e 2.
 
-#### Bloco 1: funcionamento (em andamento)
+#### Bloco 1: funcionamento (concluído em 2026-10-22)
 
 Os oito itens foram confirmados. Ordem de correção aprovada pelo Fabio: 8,
 5, 3, 4, 6, 1 e 2 juntos, 7. Cada item recebe o registro de como foi
@@ -1908,6 +1908,32 @@ resolvido quando for commitado.
    O download da base (Traefik e Portainer) continua dentro do `up -d`. São
    imagens bem menores, e o item era o do Mautic.
 7. **Ctrl-C.** Num pty, os dois instaladores morriam sem imprimir nada.
+
+   **Resolvido em 2026-10-22.** `ui_tratar_interrupcao`, em `lib/ui.sh`, é
+   ligado pelos dois instaladores logo depois do `ui_init`, cada um com a
+   sua dica. No Ctrl-C a tela diz em que etapa parou (a última de
+   `ui_passo` ou `ui_secao`) e, conforme o instalador já tenha começado a
+   mexer na máquina (`ui_marcar_alteracao`), que nada foi alterado ou que
+   nada foi desfeito e rodar de novo retoma. Sai com 130, então o menu
+   segue mostrando "interrompido" e volta para a lista. O menu não liga o
+   tratador.
+
+   **A armadilha que custou três tentativas:** o trap roda com os
+   redirecionamentos do comando interrompido ainda ativos. O Ctrl-C na
+   espera do "Subindo o Mautic" caía dentro do `ui_aguardar_ate`, que roda
+   a checagem com `>/dev/null 2>&1`, e a mensagem inteira ia para o
+   `/dev/null`: saída 130, tela terminando no "^C". O rastreamento com
+   `BASH_XTRACEFD` mostrou o tratador rodando no processo principal e
+   imprimindo tudo. A correção é guardar uma cópia da saída quando o
+   tratador é ligado (`exec {PA_UI_FD_TELA}>&1`) e escrever nela. A
+   primeira hipótese, a de que o trap rodava num subshell, estava errada:
+   o `++` do rastreamento marca código dentro de trap, não subshell.
+
+   Testado num pty da VPS: Ctrl-C na pausa do cabeçalho e na pergunta
+   "Posso começar?" da base dizem que nada foi alterado; no meio da
+   instalação do Mautic, três vezes seguidas, diz a etapa e que rodar de
+   novo retoma; pelo menu, o filho imprime a mensagem e o menu volta para a
+   lista. O terminal fica com `icanon` e `echo` ligados.
 8. **Help.** O exemplo do `mautic7.sh` usava `--acme-email`, que ele recusa.
 
 **Fica de fora, por decisão do Fabio:** gerar uma senha nova para o admin

@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-22T19:15:00Z
+# Build:  2026-10-22T20:01:09Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -143,6 +143,79 @@ ui_init() {
 	fi
 }
 
+# ------------------------------------------------------------
+# Ctrl-C
+# ------------------------------------------------------------
+
+# Etapa em andamento, guardada por ui_passo e ui_secao, e o que o
+# tratador do Ctrl-C precisa saber para dizer algo útil.
+PA_UI_ETAPA=""
+PA_UI_ALTEROU=0
+PA_UI_DICA_INTERRUPCAO=()
+PA_UI_FD_TELA=1
+
+# ui_tratar_interrupcao <linhas da dica...>
+#
+# Cada instalador chama depois do ui_init, com a dica do que fazer
+# para continuar. O menu não chama: o filho que ele roda morre com
+# 130, e o menu já mostra "interrompido" e volta para a lista.
+#
+# Até 2026-10-22 o Ctrl-C matava o instalador sem imprimir nada:
+# medido num pty, a tela terminava no "^C". A pessoa não sabia em
+# que etapa tinha parado, nem se rodar de novo era seguro.
+ui_tratar_interrupcao() {
+	PA_UI_DICA_INTERRUPCAO=("$@")
+
+	# Cópia da saída de agora, que é a tela. Ver ui_mensagem_interrupcao.
+	exec {PA_UI_FD_TELA}>&1
+
+	trap ui_ao_interromper INT
+}
+
+# ui_marcar_alteracao
+#
+# Chamada pelo instalador quando começa a mexer na máquina. Antes
+# disso, o Ctrl-C pode dizer que nada foi alterado.
+ui_marcar_alteracao() {
+	PA_UI_ALTEROU=1
+}
+
+# ui_ao_interromper
+#
+# Sai com 130, o código de quem morre por SIGINT, para o menu
+# continuar reconhecendo a interrupção. O trap de EXIT do ui_init
+# roda em seguida e devolve o terminal.
+ui_ao_interromper() {
+	trap - INT
+	ui_mensagem_interrupcao >&"$PA_UI_FD_TELA" 2>&1
+	exit 130
+}
+
+# ui_mensagem_interrupcao
+#
+# Escrita sempre na cópia da saída guardada por
+# ui_tratar_interrupcao, e não na saída do momento. O trap roda
+# com os redirecionamentos do comando interrompido ainda ativos:
+# medido em 2026-10-22, o Ctrl-C caiu dentro do ui_aguardar_ate,
+# que roda a checagem com >/dev/null, e a mensagem inteira foi
+# para o /dev/null. A tela terminava no "^C", com saída 130.
+ui_mensagem_interrupcao() {
+	ui_vazio
+	ui_erro "Interrompido (Ctrl-C)${PA_UI_ETAPA:+ em: ${PA_UI_ETAPA}}"
+
+	if [[ "$PA_UI_ALTEROU" -eq 0 ]]; then
+		ui_detalhe "Nada foi alterado nesta máquina ainda."
+		ui_detalhe "Rode de novo quando quiser."
+	else
+		ui_detalhe "Nada foi desfeito: o que já foi feito continua aí."
+		local linha
+		for linha in "${PA_UI_DICA_INTERRUPCAO[@]}"; do
+			ui_detalhe "$linha"
+		done
+	fi
+	ui_vazio
+}
+
 # ui_restaurar_terminal
 #
 # Devolve o modo salvo pelo ui_init. Roda no EXIT, e por isso
@@ -202,6 +275,7 @@ ui_info() {
 }
 
 ui_passo() {
+	PA_UI_ETAPA="$*"
 	ui_linha "${PA_COR_TITULO}==>${PA_COR_RESET} $*"
 }
 
@@ -251,6 +325,7 @@ ui_separador() {
 
 # ui_secao <titulo>
 ui_secao() {
+	PA_UI_ETAPA="$1"
 	ui_vazio
 	ui_linha "${PA_COR_TITULO}${PA_COR_DESTAQUE}$1${PA_COR_RESET}"
 	ui_separador
@@ -3599,7 +3674,7 @@ mautic_pagina_do_mautic() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-22T19:15:00Z"
+PA_BUILD="2026-10-22T20:01:09Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
@@ -4114,6 +4189,7 @@ main_confirmar() {
 # ------------------------------------------------------------
 
 main_instalar() {
+	ui_marcar_alteracao
 	ui_secao "Instalando o Mautic"
 
 	mautic_gravar_compose "$PA_TEMPLATE_MAUTIC"
@@ -4246,6 +4322,9 @@ main() {
 	main_parse_flags "$@"
 
 	ui_init "$PA_NAO_INTERATIVO"
+	ui_tratar_interrupcao \
+		"Para continuar, rode o mesmo comando de novo: o instalador" \
+		"retoma de onde parou, sem perguntar o domínio de novo."
 	ui_cabecalho
 
 	checks_sistema
