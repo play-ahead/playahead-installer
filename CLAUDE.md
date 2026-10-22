@@ -1788,6 +1788,13 @@ resolvido quando for commitado.
 5. **Certresolver.** Com o `.env` sem a chave, o `${TRAEFIK_CERTRESOLVER:-letsencrypt}`
    do template gerava `tls.certresolver: letsencrypt` (`docker compose
    config`), contrariando a regra de omitir o label.
+
+   **Resolvido em 2026-10-22.** Sem resolver, `mautic_compose_sem_certresolver`
+   troca a linha do label no compose instalado por um comentário. O template
+   não muda, e o build segue conferindo o embutido byte a byte. Se a linha
+   não estiver lá, o script para, em vez de seguir com o label errado.
+   Conferido com `docker compose config` na VPS: sem resolver, só sobra
+   `tls: "true"`; com `letsencrypt` ou outro nome, o label sai com o nome.
 6. **Download.** 626 MB do Mautic mais 104 MB do MariaDB baixados com a
    saída descartada, com a tela parada.
 7. **Ctrl-C.** Num pty, os dois instaladores morriam sem imprimir nada.

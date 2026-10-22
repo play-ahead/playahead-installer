@@ -220,20 +220,54 @@ mautic_gravar_compose() {
 
 	if declare -F mautic_template_embutido >/dev/null; then
 		mautic_template_embutido >"$PA_MAUTIC_COMPOSE"
-		ui_ok "docker-compose.yml gravado em ${PA_MAUTIC_DIR}"
-		return 0
+	else
+		if [[ ! -f "$template" ]]; then
+			ui_fatal \
+				"Não encontrei o template do compose em ${template}" \
+				"Rodando a partir do repositório, execute na raiz dele." \
+				"Rodando o instalador publicado, o template deveria estar" \
+				"embutido. Sinal de build quebrado; baixe de novo."
+		fi
+
+		cp "$template" "$PA_MAUTIC_COMPOSE"
 	fi
 
-	if [[ ! -f "$template" ]]; then
-		ui_fatal \
-			"Não encontrei o template do compose em ${template}" \
-			"Rodando a partir do repositório, execute na raiz dele." \
-			"Rodando o instalador publicado, o template deveria estar" \
-			"embutido. Sinal de build quebrado; baixe de novo."
-	fi
+	[[ -z "$PA_TRAEFIK_CERTRESOLVER" ]] && mautic_compose_sem_certresolver
 
-	cp "$template" "$PA_MAUTIC_COMPOSE"
 	ui_ok "docker-compose.yml gravado em ${PA_MAUTIC_DIR}"
+}
+
+# mautic_compose_sem_certresolver
+#
+# Tira o label de certresolver do compose instalado, para quem
+# termina o TLS fora da VPS ou tem um Traefik sem resolver.
+#
+# Omitir a chave no .env não basta: o template tem default, e o
+# ${TRAEFIK_CERTRESOLVER:-letsencrypt} vira "letsencrypt" do mesmo
+# jeito. Medido com docker compose config em 2026-10-22. O label
+# apontaria para um resolver que não existe nesse Traefik.
+#
+# A troca é no arquivo instalado, e não no template, para o build
+# continuar conferindo o template embutido byte a byte. Se a linha
+# não estiver lá no formato esperado, para em vez de seguir com o
+# label errado.
+mautic_compose_sem_certresolver() {
+	local label='traefik.http.routers.playahead-mautic.tls.certresolver='
+
+	if ! grep -q -- "$label" "$PA_MAUTIC_COMPOSE"; then
+		ui_fatal \
+			"Não achei o label de certresolver no compose para retirar." \
+			"Sinal de que o template mudou e esta função não acompanhou."
+	fi
+
+	sed -i "s|^\( *\)- \"${label}.*\"\$|\1# Sem certresolver: o TLS é terminado fora desta VPS.|" \
+		"$PA_MAUTIC_COMPOSE"
+
+	if grep -q -- "$label" "$PA_MAUTIC_COMPOSE"; then
+		ui_fatal \
+			"Não consegui retirar o label de certresolver do compose." \
+			"Confira ${PA_MAUTIC_COMPOSE} antes de rodar de novo."
+	fi
 }
 
 # ------------------------------------------------------------
