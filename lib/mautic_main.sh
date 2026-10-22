@@ -245,8 +245,13 @@ main_checar_instalacao_anterior() {
 	estado="$(mautic_detectar_estado)"
 
 	case "$estado" in
-		parcial) mautic_abortar_parcial ;;
-		coerente)
+		perigoso) mautic_abortar_perigoso ;;
+		retomar) main_preparar_retomada ;;
+		nada)
+			# Sobra de uma instalação que foi desmontada à mão.
+			rm -f "$PA_MAUTIC_MARCA"
+			;;
+		concluida)
 			ui_secao "Instalação encontrada"
 			ui_ok "Já existe uma instalação completa em ${PA_MAUTIC_DIR}"
 			ui_vazio
@@ -261,6 +266,69 @@ main_checar_instalacao_anterior() {
 			exit 0
 			;;
 	esac
+}
+
+# main_preparar_retomada
+#
+# Instalação interrompida: existe .env, mas não a marca de
+# concluída. Segue de onde parou, sem perguntar de novo o que já foi
+# decidido. O domínio vem do .env e os valores do Traefik vêm do
+# compose instalado, que nunca é sobrescrito; um --domain diferente
+# para tudo, porque instalaria um domínio por cima de outro.
+#
+# A senha do admin, quando o mautic:install já tinha terminado, não
+# está mais na memória de ninguém: vem do credenciais.txt, que
+# passou a ser gravado logo depois do mautic:install.
+main_preparar_retomada() {
+	local dominio_env
+	dominio_env="$(mautic_env_valor MAUTIC_DOMAIN)"
+
+	if [[ -z "$dominio_env" ]]; then
+		ui_fatal \
+			"Encontrei uma instalação interrompida, mas o .env não diz o domínio." \
+			"Falta a linha MAUTIC_DOMAIN= em ${PA_MAUTIC_ENV}." \
+			"Confira o arquivo antes de rodar de novo."
+	fi
+
+	if [[ -n "$PA_DOMINIO" && "$PA_DOMINIO" != "$dominio_env" ]]; then
+		ui_fatal \
+			"Há uma instalação interrompida para outro domínio." \
+			"" \
+			"    em andamento: ${dominio_env}" \
+			"    informado:    ${PA_DOMINIO}" \
+			"" \
+			"Este instalador retoma a instalação que parou, e não troca o" \
+			"domínio dela. Rode sem --domain para retomar ${dominio_env}."
+	fi
+
+	PA_MAUTIC_RETOMANDO=1
+	PA_DOMINIO="$dominio_env"
+
+	# Os rótulos de origem são lidos por traefik_mostrar_deteccao.
+	# shellcheck disable=SC2034
+	if [[ -f "$PA_MAUTIC_COMPOSE" ]]; then
+		PA_TRAEFIK_NETWORK="$(mautic_compose_label traefik.docker.network)"
+		PA_TRAEFIK_ENTRYPOINT="$(mautic_compose_label traefik.http.routers.playahead-mautic.entrypoints)"
+		PA_TRAEFIK_CERTRESOLVER="$(mautic_compose_label traefik.http.routers.playahead-mautic.tls.certresolver)"
+		PA_TRAEFIK_NETWORK_ORIGEM="lido do compose em andamento"
+		PA_TRAEFIK_ENTRYPOINT_ORIGEM="lido do compose em andamento"
+		PA_TRAEFIK_CERTRESOLVER_ORIGEM="lido do compose em andamento"
+	fi
+
+	mautic_ler_credenciais
+
+	ui_secao "Instalação interrompida encontrada"
+	ui_info "Uma instalação anterior parou antes do fim. Vou retomar"
+	ui_info "de onde ela parou, com o que já está em ${PA_MAUTIC_DIR}:"
+	ui_detalhe "domínio:  ${PA_DOMINIO}"
+	if mautic_site_url_gravado; then
+		ui_detalhe "o Mautic já foi instalado; falta o que vem depois"
+	else
+		ui_detalhe "o Mautic ainda não foi instalado"
+	fi
+	ui_vazio
+	ui_info "Nada será apagado, e a senha do banco continua a mesma."
+	ui_vazio
 }
 
 # ------------------------------------------------------------
@@ -306,6 +374,19 @@ main_validar_email_admin() {
 }
 
 main_perguntar() {
+	# Na retomada, domínio e Traefik já foram decididos na primeira
+	# vez. O e-mail do admin só falta quando o mautic:install ainda
+	# não rodou; depois dele, o e-mail vem do credenciais.txt ou do
+	# banco, e perguntar de novo poderia gravar um que não é o real.
+	if [[ "$PA_MAUTIC_RETOMANDO" -eq 1 ]]; then
+		if [[ -z "$PA_EMAIL_ADMIN" ]] && ! mautic_site_url_gravado; then
+			ui_perguntar PA_EMAIL_ADMIN \
+				"E-mail para entrar no Mautic" \
+				"admin@${PA_DOMINIO}" main_validar_email_admin
+		fi
+		return 0
+	fi
+
 	ui_secao "Algumas perguntas antes de começar"
 	ui_info "Depois daqui a instalação corre sozinha até o fim."
 	ui_vazio
@@ -427,9 +508,28 @@ main_confirmar() {
 	# main_confirmar_traefik, já mostrou a origem de cada um numa
 	# tabela própria, e repetir aqui só tiraria peso da marca de
 	# "veio de você" nas duas linhas que importam.
+	# Na retomada o domínio e o e-mail vêm da instalação anterior, e
+	# não da pessoa: marcá-los como "veio de você" pediria conferência
+	# de um valor que ela não digitou agora.
+	local origem_dominio="informado"
+	local origem_email="informado"
+	local email_mostrado="$PA_EMAIL_ADMIN"
+	local situacao="instalação nova"
+	if [[ "$PA_MAUTIC_RETOMANDO" -eq 1 ]]; then
+		origem_dominio="detectado"
+		situacao="retomando a instalação interrompida"
+		if [[ -z "$PA_EMAIL_ADMIN" ]]; then
+			email_mostrado="o que já está no banco"
+			origem_email="detectado"
+		elif mautic_site_url_gravado; then
+			origem_email="detectado"
+		fi
+	fi
+
 	ui_resumo "Confira antes de começar" \
-		"Domínio" "https://${PA_DOMINIO}" informado \
-		"E-mail do admin" "$PA_EMAIL_ADMIN" informado \
+		"Situação" "$situacao" detectado \
+		"Domínio" "https://${PA_DOMINIO}" "$origem_dominio" \
+		"E-mail do admin" "$email_mostrado" "$origem_email" \
 		"DNS" "$PA_DNS_RESULTADO" detectado \
 		"Rede do Traefik" "${PA_TRAEFIK_NETWORK:-traefik_public}" detectado \
 		"Entrypoint" "${PA_TRAEFIK_ENTRYPOINT:-websecure}" detectado \
@@ -477,12 +577,23 @@ main_instalar() {
 	else
 		mautic_instalar "$PA_DOMINIO" "$PA_EMAIL_ADMIN"
 
-		# Só faz sentido depois de o instalador ter criado o
-		# local.php com as chaves. Numa instalação já existente,
-		# respeitar o que a pessoa configurou.
 		if [[ "$PA_MAUTIC_JA_INSTALADO" -eq 0 ]]; then
-			mautic_regionalizar "$PA_IDIOMA" "$PA_FUSO"
+			# Logo depois do mautic:install, e de novo no fim: a senha
+			# do admin só existe na memória deste processo, e uma queda
+			# daqui até o fim a levaria junto. O "Esqueceu a senha" do
+			# Mautic depende de SMTP, que o script não configura.
+			mautic_gravar_credenciais "$PA_DOMINIO" "$PA_EMAIL_ADMIN"
+		elif [[ -z "$PA_EMAIL_ADMIN" ]]; then
+			# Retomada depois do mautic:install sem credenciais.txt.
+			PA_EMAIL_ADMIN="$(mautic_email_admin_do_banco)"
 		fi
+
+		# Sempre que o script chega aqui, inclusive na retomada:
+		# instalação concluída sai antes, em
+		# main_checar_instalacao_anterior, então nada que a pessoa
+		# tenha configurado no painel é sobrescrito. Na retomada, a
+		# queda pode ter sido justamente no meio desta etapa.
+		mautic_regionalizar "$PA_IDIOMA" "$PA_FUSO"
 	fi
 
 	mautic_subir_resto
@@ -513,7 +624,7 @@ main_bloco_final() {
 		ui_detalhe "base:    mautic"
 		ui_detalhe "usuário: mautic"
 		ui_detalhe "senha:   ${PA_MAUTIC_SENHA_BANCO}"
-	elif [[ "$PA_MAUTIC_JA_INSTALADO" -eq 1 ]]; then
+	elif [[ "$PA_MAUTIC_JA_INSTALADO" -eq 1 && -z "$PA_MAUTIC_SENHA_ADMIN" ]]; then
 		ui_info "E-mail:   ${PA_EMAIL_ADMIN}"
 		ui_info "Senha:    a definida na instalação anterior"
 	else
@@ -587,6 +698,10 @@ main() {
 	# Não aborta: o Mautic está no ar de qualquer jeito, e a regra do
 	# projeto é não derrubar nada quando algo dá errado.
 	mautic_verificar_roteamento "$PA_DOMINIO" || true
+
+	# Último passo. A verificação acima não conta: ela avisa sem
+	# derrubar, e o Mautic está instalado de qualquer jeito.
+	mautic_gravar_marca
 
 	main_bloco_final
 }

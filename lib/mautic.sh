@@ -24,10 +24,19 @@ PA_MAUTIC_COMPOSE="${PA_MAUTIC_DIR}/docker-compose.yml"
 PA_MAUTIC_ENV="${PA_MAUTIC_DIR}/.env"
 PA_MAUTIC_CREDENCIAIS="${PA_MAUTIC_DIR}/credenciais.txt"
 
-# Volume do banco. Serve de marca de instalação anterior: ele
-# sobrevive a `docker compose down`, então é o que distingue
-# "nunca instalado" de "instalado e derrubado".
+# Marca de instalação concluída, gravada no último passo. É ela, e
+# não o .env nem o volume, que diz que a instalação foi até o fim:
+# o volume nasce no `up -d mariadb`, antes do mautic:install, e o
+# site_url nasce no mautic:install, antes de idioma, fuso, workers,
+# teste de SMTP e credenciais. Ver mautic_detectar_estado.
+PA_MAUTIC_MARCA="${PA_MAUTIC_DIR}/.instalacao-concluida"
+
+# Volume do banco. Ele sobrevive a `docker compose down`, então é o
+# que distingue "nunca instalado" de "instalado e derrubado".
 PA_MAUTIC_VOLUME_BANCO="playahead_mautic_mariadb"
+
+# Volume da configuração, onde mora o config/local.php.
+PA_MAUTIC_VOLUME_CONFIG="playahead_mautic_config"
 
 # Diretório de trabalho dentro do container.
 #
@@ -68,6 +77,9 @@ PA_MAUTIC_SENHA_ADMIN=""
 PA_MAUTIC_SENHA_BANCO=""
 PA_MAUTIC_JA_INSTALADO=0
 
+# 1 quando o script está retomando uma instalação interrompida.
+PA_MAUTIC_RETOMANDO=0
+
 # ------------------------------------------------------------
 # Segredos
 # ------------------------------------------------------------
@@ -94,46 +106,155 @@ mautic_volume_banco_existe() {
 
 # mautic_detectar_estado
 #
-# Ecoa um de: nada, coerente, parcial.
+# Ecoa um de: nada, concluida, retomar, perigoso.
 #
-# É a etapa 4 do fluxo, e roda antes de qualquer pergunta para
+# É a etapa 3 do fluxo, e roda antes de qualquer pergunta para
 # não fazer a pessoa digitar o domínio à toa.
+#
+#   .env  volume  marca   estado
+#   não   não     -       nada       instalação nova
+#   sim   sim     sim     concluida  reconcilia e sai com 0
+#   sim   -       não     retomar    segue de onde parou
+#   não   sim     -       perigoso   banco sem a senha dele
+#   sim   não     sim     perigoso   instalação concluída sem banco
+#
+# Até 2026-10-22, .env mais volume já contava como instalação
+# completa. Só que o volume nasce no `up -d mariadb`, antes do
+# mautic:install: reproduzido com um docker falso, uma queda entre
+# os dois fazia a segunda execução dizer "instalação completa", sair
+# com 0 e apontar para um credenciais.txt que não existia. E .env
+# sem volume (download do MariaDB falhando) abortava para sempre,
+# falando de um banco antigo que não existia. Esse caso é seguro de
+# retomar: o banco nasce com a senha que já está no .env.
+#
+# O último caso existe porque retomar ali criaria um banco vazio
+# para um config/local.php que já tem site_url: o mautic:install
+# seria pulado, e o Mautic subiria sem nenhuma tabela.
 mautic_detectar_estado() {
-	local tem_env=0 tem_volume=0
+	local tem_env=0 tem_volume=0 tem_marca=0
 
 	[[ -f "$PA_MAUTIC_ENV" ]] && tem_env=1
 	mautic_volume_banco_existe && tem_volume=1
+	[[ -f "$PA_MAUTIC_MARCA" ]] && tem_marca=1
 
 	if [[ "$tem_env" -eq 0 && "$tem_volume" -eq 0 ]]; then
 		printf 'nada\n'
-	elif [[ "$tem_env" -eq 1 && "$tem_volume" -eq 1 ]]; then
-		printf 'coerente\n'
+	elif [[ "$tem_env" -eq 0 ]]; then
+		printf 'perigoso\n'
+	elif [[ "$tem_marca" -eq 1 && "$tem_volume" -eq 1 ]]; then
+		printf 'concluida\n'
+	elif [[ "$tem_marca" -eq 1 ]]; then
+		printf 'perigoso\n'
 	else
-		printf 'parcial\n'
+		printf 'retomar\n'
 	fi
 }
 
-# mautic_abortar_parcial
+# mautic_abortar_perigoso
 #
-# O estado perigoso: senha nova contra banco antigo gera erro de
-# autenticação que parece bug do script. Parar e explicar é o
-# comportamento decidido.
-mautic_abortar_parcial() {
-	local tem_env="nao" tem_volume="nao"
-	[[ -f "$PA_MAUTIC_ENV" ]] && tem_env="sim"
-	mautic_volume_banco_existe && tem_volume="sim"
+# Os dois estados em que seguir daria errado. Parar e explicar é o
+# comportamento decidido, e o instalador não apaga volume de banco
+# de ninguém.
+mautic_abortar_perigoso() {
+	if [[ ! -f "$PA_MAUTIC_ENV" ]]; then
+		ui_fatal \
+			"Existe o banco de uma instalação anterior, mas não o .env dele." \
+			"" \
+			"    volume ${PA_MAUTIC_VOLUME_BANCO}: existe" \
+			"    arquivo ${PA_MAUTIC_ENV}: não existe" \
+			"" \
+			"A senha desse banco estava no .env. Sem ela o instalador não" \
+			"consegue usá-lo, e uma senha nova contra ele daria erro de" \
+			"autenticação, que pareceria bug do instalador." \
+			"" \
+			"Se você tem uma cópia do .env, devolva-a para esta pasta e" \
+			"rode de novo. O instalador não apaga volume de banco."
+	fi
 
 	ui_fatal \
-		"Encontrei uma instalação anterior pela metade." \
+		"A instalação foi concluída antes, mas o banco não existe mais." \
 		"" \
-		"    arquivo ${PA_MAUTIC_ENV}: ${tem_env}" \
-		"    volume ${PA_MAUTIC_VOLUME_BANCO}: ${tem_volume}" \
+		"    marca ${PA_MAUTIC_MARCA}: existe" \
+		"    volume ${PA_MAUTIC_VOLUME_BANCO}: não existe" \
 		"" \
-		"Seguir daqui geraria senha nova contra banco antigo, e o erro" \
-		"de autenticação resultante pareceria bug do instalador." \
+		"Seguir criaria um banco vazio para uma configuração que já se" \
+		"diz instalada, e o Mautic subiria sem nenhuma tabela." \
 		"" \
-		"Decida antes o que fazer com o que já está aí. O instalador não" \
-		"apaga volume de banco de ninguém."
+		"Se o volume foi apagado de propósito e você quer instalar do" \
+		"zero, mova a pasta ${PA_MAUTIC_DIR} para outro lugar e rode de novo."
+}
+
+# mautic_env_valor <chave>
+#
+# Ecoa o valor de uma chave do .env, ou nada.
+mautic_env_valor() {
+	[[ -f "$PA_MAUTIC_ENV" ]] || return 0
+	awk -F= -v chave="$1" '$1 == chave { sub(/^[^=]*=/, ""); print; exit }' \
+		"$PA_MAUTIC_ENV"
+}
+
+# mautic_compose_label <nome_do_label>
+#
+# Ecoa o valor de um label do mautic_web como o compose instalado o
+# resolve, já com o .env aplicado. Nada quando o label não existe,
+# que é o caso do certresolver omitido.
+mautic_compose_label() {
+	[[ -f "$PA_MAUTIC_COMPOSE" ]] || return 0
+	mautic_compose config 2>/dev/null |
+		awk -v nome="$1:" '$1 == nome { $1 = ""; sub(/^ /, ""); gsub(/"/, ""); print; exit }' ||
+		true
+}
+
+# mautic_site_url_gravado
+#
+# Verdadeiro quando o config/local.php já tem site_url, ou seja,
+# quando o mautic:install terminou. Lê direto do volume, pelo host,
+# para funcionar antes de qualquer container estar de pé.
+mautic_site_url_gravado() {
+	local origem
+	origem="$(docker volume inspect -f '{{.Mountpoint}}' "$PA_MAUTIC_VOLUME_CONFIG" 2>/dev/null)" ||
+		return 1
+	grep -q "site_url" "${origem}/local.php" 2>/dev/null
+}
+
+# mautic_ler_credenciais
+#
+# Na retomada, lê o e-mail e a senha do admin do credenciais.txt,
+# que passou a ser gravado logo depois do mautic:install. Sem isto,
+# a regravação do fim trocaria a senha verdadeira pelo texto
+# "(definida em instalação anterior)".
+mautic_ler_credenciais() {
+	[[ -f "$PA_MAUTIC_CREDENCIAIS" ]] || return 0
+
+	local email senha
+	email="$(awk '/^ADMIN/ {a = 1} a && /^  e-mail:/ {print $2; exit}' "$PA_MAUTIC_CREDENCIAIS")" || true
+	senha="$(awk '/^ADMIN/ {a = 1} a && /^  senha:/ {print $2; exit}' "$PA_MAUTIC_CREDENCIAIS")" || true
+
+	[[ -z "$PA_EMAIL_ADMIN" && -n "$email" ]] && PA_EMAIL_ADMIN="$email"
+	[[ -n "$senha" && "$senha" != \(* ]] && PA_MAUTIC_SENHA_ADMIN="$senha"
+	return 0
+}
+
+# mautic_email_admin_do_banco
+#
+# Último recurso para o e-mail do admin na retomada, quando o
+# mautic:install terminou e o credenciais.txt não chegou a ser
+# gravado. O banco precisa estar de pé.
+mautic_email_admin_do_banco() {
+	# A variável é expandida dentro do container, não aqui.
+	# shellcheck disable=SC2016
+	mautic_compose exec -T mariadb sh -c \
+		'mariadb -N -umautic -p"$MYSQL_PASSWORD" mautic -e "select email from users order by id limit 1"' \
+		2>/dev/null | head -n 1 || true
+}
+
+# mautic_gravar_marca
+#
+# Último passo da instalação. Só depois disto uma nova execução
+# trata a instalação como concluída.
+mautic_gravar_marca() {
+	printf 'Instalação concluída em %s pelo %s %s.\n' \
+		"$(date -Is)" "$PA_FERRAMENTA" "$PA_VERSAO" >"$PA_MAUTIC_MARCA"
 }
 
 # ------------------------------------------------------------
@@ -1024,6 +1145,8 @@ mautic_gravar_credenciais() {
 		printf '  e-mail: %s\n' "$email_admin"
 		if [[ -n "$PA_MAUTIC_SENHA_ADMIN" ]]; then
 			printf '  senha:  %s\n' "$PA_MAUTIC_SENHA_ADMIN"
+		elif [[ "${PA_WIZARD:-0}" -eq 1 ]]; then
+			printf '  senha:  (a que você definir no assistente web)\n'
 		else
 			printf '  senha:  (definida em instalação anterior)\n'
 		fi

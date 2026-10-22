@@ -653,16 +653,23 @@ o terminal se perder, ela se perde junto.
 
 ### Idempotência
 
-Rodar de novo não pode destruir banco nem sobrescrever `.env`. Três estados:
+Rodar de novo não pode destruir banco nem sobrescrever `.env`. Desde
+2026-10-22 quem diz que a instalação terminou é a marca
+`/opt/playahead/mautic/.instalacao-concluida`, gravada no último passo, e não
+o `.env` nem o volume do banco:
 
-| Estado encontrado | Comportamento |
-|---|---|
-| Nada | Instalação nova |
-| Coerente (`.env` + volume + containers) | **Reconcilia e sai com 0.** Reimprime o bloco final e oferece `docker compose up -d` |
-| Parcial (volume sem `.env`, ou o contrário) | **Aborta e explica** |
+| `.env` | volume | marca | Estado | Comportamento |
+|---|---|---|---|---|
+| não | não | - | nada | Instalação nova |
+| sim | sim | sim | concluída | **Reconcilia e sai com 0.** Aponta as credenciais e oferece `docker compose up -d` |
+| sim | - | não | retomar | **Segue de onde parou**, sem perguntar domínio nem Traefik |
+| não | sim | - | perigoso | **Aborta e explica**: o banco existe sem a senha dele |
+| sim | não | sim | perigoso | **Aborta e explica**: concluída, mas o banco sumiu |
 
-Só o estado parcial aborta. É o caso perigoso: senha nova contra banco antigo
-gera erro de autenticação que parece bug do script.
+Os dois perigosos abortam porque seguir daria errado em silêncio: senha nova
+contra banco antigo gera erro de autenticação que parece bug do script, e um
+banco novo para um `local.php` que já tem `site_url` subiria o Mautic sem
+tabelas. O histórico está no item 1 da revisão externa, em Pendências.
 
 ### Verificação final: segue os redirecionamentos
 
@@ -1775,6 +1782,51 @@ resolvido quando for commitado.
 2. **Senha do admin.** O `credenciais.txt` era gravado só no fim; uma queda
    depois do `mautic:install` perdia a senha. O "Esqueceu a senha" depende de
    SMTP, que o script não configura.
+
+   **Itens 1 e 2 resolvidos juntos em 2026-10-22**, porque são a mesma
+   máquina de estados (tabela em "Idempotência"). Os ajustes do Fabio ao
+   desenho proposto:
+
+   - "Concluída" depende de uma marca própria, gravada no último passo, e
+     não só do `site_url`: o `mautic:install` grava o `site_url`, mas idioma,
+     fuso, workers, teste de SMTP e credenciais vêm depois, e uma queda nesse
+     trecho sairia com 0 com o painel em inglês e no fuso UTC.
+   - Sem a marca, o script retoma: pula o `mautic:install` se o `site_url` já
+     existe (lido direto do volume, pelo host) e roda o resto. Domínio vem do
+     `.env` e Traefik do compose instalado (`docker compose config`); nada
+     disso é perguntado de novo, e um `--domain` diferente para e explica.
+   - O `credenciais.txt` é gravado logo depois do `mautic:install` e de novo
+     no fim. Na retomada a senha é lida dele antes da regravação, para a
+     senha verdadeira não virar outro texto. Sem o arquivo, o e-mail do admin
+     vem do banco.
+
+   `.env` sem volume deixou de abortar: o banco nasce com a senha do `.env`.
+   Os dois estados que abortam ganharam mensagem certa para cada caso.
+
+   Testado na VPS, conferindo a senha no banco com `password_verify` e não
+   pelo texto do arquivo:
+
+   | Cenário | Resultado |
+   |---|---|
+   | instalação antiga sem marca | retomou, senha mantida e confere, marca gravada; a segunda execução sai com 0 |
+   | queda em "Subindo o Mautic" | retomou, instalou, senha confere |
+   | queda em "Instalando o idioma", com `site_url` e `credenciais.txt` | pulou o `mautic:install`, aplicou `pt_BR` e `America/Sao_Paulo`, senha mantida e confere |
+   | `--domain` diferente numa retomada | para |
+   | marca sem volume | aborta |
+   | `.env` sem volume | retomou, instalou, senha confere |
+   | volume sem `.env` | aborta; com o `.env` devolvido, segue |
+
+   As quedas foram simuladas matando o grupo de processos com SIGTERM. A
+   primeira tentativa usou SIGINT e não valeu: um bash em segundo plano
+   ignora o SIGINT, e a instalação seguia rodando junto com a retomada.
+
+   Efeito aceito: uma instalação feita antes da marca existir é tratada como
+   interrompida, e a retomada regrava idioma e fuso. Só VPSs de teste estão
+   nessa situação, porque a 0.1.0 não foi publicada.
+
+   Com `--wizard`, o `credenciais.txt` passou a dizer "a que você definir no
+   assistente web" no lugar de "definida em instalação anterior", que estava
+   errado desde sempre.
 3. **Certificado.** As verificações de roteamento usam `curl -k`: um
    roteador servindo o `TRAEFIK DEFAULT CERT` passou como sucesso (200) na
    VPS. E a requisição não sai da máquina (`ip route get` dá `local ... dev
