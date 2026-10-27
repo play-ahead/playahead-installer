@@ -1633,6 +1633,11 @@ Validado invertendo os valores à mão e rodando a função: voltou para `pt_BR`
 `America/Sao_Paulo`, o `php -l` continua limpo, e o painel abriu com "Usuário",
 "Senha" e "Esqueceu" na tela de login.
 
+**Isso deixou de valer em 2026-10-27.** O pacote oficial `pt_BR`, regerado
+naquele dia, não traz `UserBundle/messages.ini`: a tela de login e as de
+usuários saem em inglês, e o resto do painel em português. O instalador não
+promete mais login em português. Ver Pendências.
+
 Com `--wizard` o pacote de idioma entra mas a configuração não: quem completa
 o assistente reescreve o `local.php` no fim, e gravar antes seria trabalho
 jogado fora. Com o pacote no lugar, o idioma já aparece como opção no próprio
@@ -2049,6 +2054,21 @@ compose.
 #### Bloco 3: visual (não implementado)
 
 Moldura, contador de etapas e quadro final com as credenciais.
+
+### Login em inglês: defeito do pacote oficial pt_BR (2026-10-27)
+
+O pacote `https://language-packs.mautic.com/pt_BR.zip`, regerado em
+2026-10-27 01:18, tem 162 arquivos e 47 `messages.ini`, mas não tem
+`UserBundle/messages.ini` (só `fixtures`, `flashes` e `validators`). É dali
+que vêm "Username or email" (`mautic.user.auth.form.loginusername`) e
+"Forgot your password?". Resultado: login e telas de usuários em inglês, o
+resto em português, com `locale` `pt_BR` correto no `local.php` e qualquer
+`Accept-Language` do navegador. Não é defeito do instalador.
+
+Em 2026-09-12, com o pacote da época, o login saiu em português. O CLAUDE.md
+e o README deixaram de prometer isso. A conferir de tempos em tempos se o
+pacote voltou a ter o arquivo; se demorar, avaliar avisar a Mautic (tradução
+no Transifex).
 
 **Resolvida em 2026-09-30: o Portainer fica, e no fluxo normal da base.**
 

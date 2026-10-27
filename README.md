@@ -104,7 +104,8 @@ reaproveitando o que já está lá.
 Gera senhas aleatórias, aguarda os serviços ficarem saudáveis de verdade e mostra
 no final a URL, o usuário e a senha de acesso.
 
-O painel já nasce em português do Brasil, com fuso America/Sao_Paulo.
+O painel já nasce em português do Brasil, com fuso America/Sao_Paulo. A tela
+de login ainda aparece em inglês: ver "Idioma e fuso horário".
 
 No fim, testa se a VPS consegue enviar e-mail pelas portas 587 e 2587, e avisa
 qual usar. Ver "E-mail (SMTP)".
@@ -235,7 +236,14 @@ também recupera.
 ## Idioma e fuso horário
 
 A instalação já nasce em português do Brasil e com fuso `America/Sao_Paulo`,
-sem nenhum passo manual. Para outro idioma ou outro fuso:
+sem nenhum passo manual.
+
+**A tela de login e as telas de usuários saem em inglês.** O pacote oficial de
+tradução `pt_BR` da Mautic não traz, desde outubro de 2026, o arquivo de
+mensagens do módulo de usuários. O resto do painel aparece em português. Não é
+falha da instalação, e volta ao normal quando o pacote oficial for corrigido.
+
+Para outro idioma ou outro fuso:
 
     sudo bash mautic7.sh --idioma=es --fuso=Europe/Madrid
 
