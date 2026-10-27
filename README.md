@@ -207,25 +207,30 @@ comportamento.
 ## Limpar o cache
 
 Limpar cache é a primeira coisa que se tenta quando algo estranho acontece no
-Mautic. **Use sempre com `-u www-data`:**
-
-    cd /opt/playahead/mautic
-    docker compose exec -u www-data mautic_web php bin/console cache:clear
-
-O `-u www-data` não é detalhe. Sem ele o comando roda como root, deixa arquivos
-de root no cache, e o Mautic passa a responder **erro 500** porque o Apache não
-consegue mais escrever ali. Foi medido num teste: um `cache:clear` sem a flag
-deixou 30.737 arquivos de root e derrubou o site.
-
-Se isso já aconteceu e o Mautic está em 500, a recuperação é devolver o dono:
+Mautic. Faça assim, nesta ordem:
 
     cd /opt/playahead/mautic
     docker compose exec mautic_web chown -R www-data:www-data /var/www/html/var
-    docker compose exec -u www-data mautic_web php bin/console cache:clear
+    docker compose exec -u www-data -w /var/www/html/var/cache mautic_web sh -c 'mv prod prod.velho; rm -rf prod.velho pro_ pro~'
+    docker compose restart mautic_web
 
-O `chown` roda como root de propósito: só root consegue devolver os arquivos
-para o `www-data`. Os dois comandos estão no `credenciais.txt` da instalação,
-para não depender de você achar esta página.
+O primeiro comando devolve os arquivos para o `www-data` (só root consegue). O
+segundo tira o cache do caminho de uma vez e o apaga. O terceiro reinicia o
+site, que monta um cache novo sozinho em menos de um minuto. Os três estão no
+`credenciais.txt` da instalação, para não depender de você achar esta página.
+
+**Não use o `cache:clear`.** Com o site no ar, ele disputa a pasta com o
+próprio Mautic: num teste ele falhou no meio, deixou o cache em pedaços e o
+site passou a responder **erro 500**.
+
+**Não recrie o container para limpar o cache** (`up -d --force-recreate`):
+temas e plugins instalados pelo painel moram dentro dele e se perderiam.
+
+Qualquer comando de console (`php bin/console`) vai **sempre com
+`-u www-data`**. Sem ele o comando roda como root, deixa arquivos de root no
+cache, e o Mautic passa a responder erro 500. Foi medido num teste: 30.737
+arquivos de root e o site fora do ar. Se isso já aconteceu, a receita acima
+também recupera.
 
 ## Idioma e fuso horário
 

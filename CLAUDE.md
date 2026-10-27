@@ -1532,17 +1532,68 @@ A correção é de dono, não de volume:
 - `mautic_console` centraliza todo comando de console e sempre passa
   `-u www-data`. Nenhum caminho do script roda console como root.
 - `mautic_corrigir_dono` devolve `var/` para `www-data`, como root, e roda
-  antes de cada `cache:clear`, e cobre cache já sujado numa execução anterior.
+  antes de cada limpeza de cache, e cobre cache já sujado numa execução
+  anterior.
 - O comando correto e a recuperação ficam no `credenciais.txt` e no README.
   Não dá para depender de a pessoa achar a documentação.
 
-Recuperação validada, para quem já caiu no 500:
+**Desde 2026-10-27 o script não usa mais o `cache:clear`.** Ver "Limpeza de
+cache sem `cache:clear`", logo abaixo. A receita que vale, inclusive para
+quem já caiu no 500:
 
     docker compose exec mautic_web chown -R www-data:www-data /var/www/html/var
-    docker compose exec -u www-data mautic_web php bin/console cache:clear
+    docker compose exec -u www-data -w /var/www/html/var/cache mautic_web sh -c 'mv prod prod.velho; rm -rf prod.velho pro_ pro~'
+    docker compose restart mautic_web
 
-Reparar o dono é melhor que apagar: o cache se refaz sozinho e nada mais em
-`var/` morre por causa disso.
+Reparar o dono continua sendo a primeira parte: nada mais em `var/` precisa
+morrer por causa disso.
+
+### Limpeza de cache sem `cache:clear`
+
+Achado em 2026-10-27, na VPS de 2 GB (1 vCPU) com Mautic 7.2.2, no teste do
+bloco 1 pelo menu. O passo de idioma e fuso avisou "Não consegui limpar o
+cache": o `cache:clear` levou 37 s e falhou com "Failed to remove directory
+var/cache/prod: Directory not empty". Enquanto ele apaga, o Apache continua
+atendendo (healthcheck, robôs no domínio público) e recria arquivos ali.
+Rodado de novo à mão, ele parou no meio, deixou o cache em três pedaços
+(`prod`, `pro_` e `pro~`) e o site passou a responder 500. Era o comando que
+o README e o `credenciais.txt` recomendavam. A falha é intermitente: sob a
+mesma carga, uma outra rodada passou.
+
+O que entrou no lugar, em `mautic_descartar_cache` e na receita:
+
+- `mv prod prod.velho` tira a pasta do caminho de uma vez (é atômico); a
+  próxima requisição monta outra do zero, e o `rm` apaga uma pasta que
+  ninguém mais usa. `pro_` e `pro~` são sobras de um `cache:clear`
+  interrompido e vão junto.
+- `docker compose restart mautic_web` em seguida. O `opcache` da imagem
+  revalida arquivos (`validate_timestamps` ligado), então o restart não é
+  obrigatório; ele garante que nada em memória sobreviva, e custa pouco.
+- O `chown` antes não derruba a função: com o site no ar, um arquivo do
+  cache pode sumir no meio da varredura. Uma rodada sob carga morreu calada
+  ali antes do `|| true`.
+
+**Por que não recriar o container**, que seria o jeito mais limpo: temas
+(`docroot/themes`), plugins (`docroot/plugins`), `vendor` e `composer.json`
+moram na camada do container, fora de qualquer volume (conferido com
+`docker inspect` dos mounts). Um tema enviado pelo painel ou um plugin do
+Marketplace se perderia. Por decisão do Fabio, a receita que a pessoa usa
+meses depois não pode perder nada; no instalador, logo depois de instalar,
+não haveria o que perder, mas a função é a mesma da receita para haver um
+caminho só, e testado.
+
+Testado na VPS, sob carga de 2 pedidos por segundo: três rodadas da função
+com saída 0, sem pasta sobrando e com todos os arquivos de `www-data`; a
+receita do README, colada como está, recuperou o site. Dois efeitos
+esperados do restart: logo depois de "pronto", uma requisição externa pode
+levar mais de 20 s ou receber 404 por alguns segundos, enquanto o Traefik
+religa a rota e o cache é remontado. Remontar o cache pesa: com 2 pedidos
+por segundo, a carga média de 1 vCPU foi a 10. Um teste com 4 clientes sem
+pausa deixou a VPS sem responder nem ao SSH por um minuto.
+
+**Consequência para o modo de atualização (bloco 2):** trocar a imagem
+recria os containers, e temas e plugins instalados pelo painel se perdem do
+mesmo jeito. Precisa estar resolvido, ou ao menos avisado, no desenho.
 
 ### Idioma: a instalação nasce em pt_BR
 

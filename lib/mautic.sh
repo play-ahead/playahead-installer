@@ -448,29 +448,68 @@ mautic_corrigir_dono() {
 		chown -R www-data:www-data "${PA_MAUTIC_WORKDIR}/var" >/dev/null 2>&1
 }
 
+# mautic_descartar_cache
+#
+# Tira o cache do caminho sem disputar a pasta com o site, como
+# www-data. Mesmo comando da receita do credenciais.txt e do README.
+#
+# Por que não o cache:clear: medido em 2026-10-27, numa VPS de 2 GB
+# com Mautic 7.2.2, ele levou 37 s e falhou com "Failed to remove
+# directory var/cache/prod: Directory not empty". Enquanto ele
+# apaga, o Apache continua atendendo (healthcheck, robôs no domínio
+# público) e recria arquivos ali dentro. Rodado de novo à mão, parou
+# no meio, deixou o cache em pedaços (prod, pro_ e pro~) e o site
+# passou a responder 500.
+#
+# O mv é atômico: a pasta sai do caminho de uma vez, a próxima
+# requisição monta outra do zero, e o rm apaga uma pasta que
+# ninguém mais usa. O pro_ e o pro~ são sobras de um cache:clear
+# interrompido.
+mautic_descartar_cache() {
+	# A expansão acontece dentro do container, não aqui.
+	# shellcheck disable=SC2016
+	mautic_compose exec -T -u www-data -w "${PA_MAUTIC_WORKDIR}/var/cache" mautic_web \
+		sh -c 'mv prod "prod.descartar.$$" 2>/dev/null; rm -rf prod.descartar.* pro_ pro~' \
+		>/dev/null 2>&1
+}
+
 # mautic_limpar_cache
 #
 # Sempre depois de mexer em config/local.php: o Mautic guarda a
 # configuração compilada no cache, então gravar idioma ou fuso sem
 # limpar não muda nada na tela. Foi exatamente o que fez o painel
 # nascer em inglês com o idioma correto salvo.
+#
+# Não recria o container: temas e plugins instalados pelo painel
+# moram na camada dele (docroot/themes, docroot/plugins, vendor), e
+# se perderiam. Logo depois de instalar não haveria o que perder,
+# mas a função é a mesma da receita que a pessoa usa meses depois, e
+# um caminho só é um caminho testado.
 mautic_limpar_cache() {
-	# O chown antes é barato e cobre o caso de o cache já ter sido
-	# sujado por root em alguma execução anterior. Sem ele, o
-	# cache:clear falha com "Permission denied" e não diz por quê.
-	mautic_corrigir_dono
+	# O chown antes cobre o caso de o cache já ter sido sujado por
+	# root em alguma execução anterior. Sem ele, o rm falha com
+	# "Permission denied" nos arquivos de root.
+	#
+	# Ele não derruba a função: com o site no ar, um arquivo do cache
+	# pode sumir no meio da varredura, e o chown sai com erro sem que
+	# nada esteja errado. Num teste sob carga, em 2026-10-27, uma
+	# rodada morreu calada aqui. Se o dono estiver mesmo errado, o rm
+	# abaixo falha e o aviso sai.
+	mautic_corrigir_dono || true
 
-	if mautic_console cache:clear; then
-		ui_ok "Cache limpo"
-		return 0
+	if ! mautic_descartar_cache; then
+		ui_aviso "Não consegui limpar o cache."
+		ui_detalhe "O Mautic pode demorar a refletir idioma e fuso."
+		ui_detalhe "A receita para fazer à mão está em ${PA_MAUTIC_CREDENCIAIS}."
+		return 1
 	fi
 
-	ui_aviso "Não consegui limpar o cache."
-	ui_detalhe "O Mautic pode demorar a refletir idioma e fuso."
-	ui_detalhe "Rode à mão:"
-	ui_detalhe "cd ${PA_MAUTIC_DIR} && docker compose exec -u www-data \\"
-	ui_detalhe "  mautic_web php bin/console cache:clear"
-	return 1
+	# Reinicia só a web, para nada em memória sobreviver ao cache
+	# novo. Cron e worker não precisam: processos curtos, e os
+	# workers se renovam sozinhos a cada 5 minutos.
+	mautic_compose restart mautic_web >/dev/null 2>&1 || true
+	ui_aguardar_ate "Cache limpo; aguardando o Mautic voltar" 180 \
+		mautic_container_saudavel mautic_web || return 1
 }
 
 # mautic_container_saudavel <servico>
@@ -1186,23 +1225,30 @@ mautic_gravar_credenciais() {
 		printf ' LIMPAR O CACHE\n'
 		printf '============================================================\n\n'
 		printf 'Limpar cache é a primeira coisa que se tenta quando algo\n'
-		printf 'estranho acontece. Use SEMPRE com -u www-data:\n\n'
-		printf '  cd %s\n' "$PA_MAUTIC_DIR"
-		printf '  docker compose exec -u www-data mautic_web \\\n'
-		printf '    php bin/console cache:clear\n\n'
-		printf 'O -u www-data não é detalhe. Sem ele o comando roda como\n'
-		printf 'root, deixa arquivos de root no cache, e o Mautic passa a\n'
-		printf 'responder 500 porque o Apache não consegue mais escrever\n'
-		printf 'ali. Foi medido: um cache:clear como root deixou 30.737\n'
-		printf 'arquivos de root e derrubou o site.\n\n'
-		printf 'Se isso já aconteceu e o site está em 500, recupere assim:\n\n'
+		printf 'estranho acontece. Faça assim, nesta ordem:\n\n'
 		printf '  cd %s\n' "$PA_MAUTIC_DIR"
 		printf '  docker compose exec mautic_web \\\n'
 		printf '    chown -R www-data:www-data /var/www/html/var\n'
-		printf '  docker compose exec -u www-data mautic_web \\\n'
-		printf '    php bin/console cache:clear\n\n'
-		printf 'O chown roda como root de propósito: só root consegue\n'
-		printf 'devolver os arquivos para o www-data.\n'
+		printf '  docker compose exec -u www-data -w /var/www/html/var/cache \\\n'
+		# As aspas simples são do comando que a pessoa vai colar.
+		# shellcheck disable=SC2016
+		printf '    mautic_web sh -c %s\n' "'mv prod prod.velho; rm -rf prod.velho pro_ pro~'"
+		printf '  docker compose restart mautic_web\n\n'
+		printf 'O primeiro comando devolve os arquivos para o www-data (só\n'
+		printf 'root consegue). O segundo tira o cache do caminho de uma\n'
+		printf 'vez e o apaga, como www-data. O terceiro reinicia o site,\n'
+		printf 'que monta um cache novo sozinho em menos de um minuto.\n\n'
+		printf 'Não use o cache:clear. Medido: com o site no ar, ele disputa\n'
+		printf 'a pasta com o próprio Mautic, falha no meio e pode deixar o\n'
+		printf 'site em erro 500.\n\n'
+		printf 'Não recrie o container para limpar o cache (up -d com\n'
+		printf '%s): temas e plugins instalados pelo painel\n' "--force-recreate"
+		printf 'moram dentro dele e se perderiam.\n\n'
+		printf 'Comando de console (php bin/console) vai SEMPRE com\n'
+		printf '%s. Sem ele o comando roda como root, deixa arquivos\n' "-u www-data"
+		printf 'de root no cache, e o Mautic passa a responder 500. Foi\n'
+		printf 'medido: 30.737 arquivos de root e o site fora do ar. Se isso\n'
+		printf 'já aconteceu, a receita acima também recupera.\n'
 	} >"$PA_MAUTIC_CREDENCIAIS"
 
 	umask "$mascara_antiga"
