@@ -176,6 +176,12 @@ services:
   portainer:
     image: portainer/portainer-ce:${PA_PORTAINER_VERSAO}
     restart: unless-stopped
+    # Log com rotação: até 5 arquivos de 20 MB, comprimidos.
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "5"
 
     command:
       - -H

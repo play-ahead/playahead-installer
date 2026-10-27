@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-27T18:22:55Z
+# Build:  2026-10-27T18:48:14Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -898,7 +898,7 @@ ui_mascarar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-27T18:22:55Z"
+PA_BUILD="2026-10-27T18:48:14Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Menu de instaladores"
 
@@ -1336,7 +1336,7 @@ menu_conteudo_base() {
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-27T18:13:11Z
+# Build:  2026-10-27T18:48:14Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -4234,6 +4234,12 @@ services:
   traefik:
     image: traefik:${PA_TRAEFIK_VERSAO}
     restart: unless-stopped
+    # Log com rotação: até 5 arquivos de 20 MB, comprimidos.
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "5"
     command:
       - --providers.docker=true
       - --providers.docker.exposedByDefault=false
@@ -4632,6 +4638,12 @@ services:
   portainer:
     image: portainer/portainer-ce:${PA_PORTAINER_VERSAO}
     restart: unless-stopped
+    # Log com rotação: até 5 arquivos de 20 MB, comprimidos.
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "5"
 
     command:
       - -H
@@ -4953,7 +4965,7 @@ portainer_bloco_final() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-27T18:13:11Z"
+PA_BUILD="2026-10-27T18:48:14Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
@@ -5388,7 +5400,7 @@ menu_conteudo_mautic7() {
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-27T18:22:55Z
+# Build:  2026-10-27T18:48:14Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -9112,7 +9124,7 @@ mautic_pagina_do_mautic() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-27T18:22:55Z"
+PA_BUILD="2026-10-27T18:48:14Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
@@ -9875,6 +9887,12 @@ services:
   mariadb:
     image: ${MARIADB_IMAGE:-mariadb:10.11.19}
     restart: unless-stopped
+    # Log com rotação: até 5 arquivos de 20 MB, comprimidos.
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "5"
 
     environment:
       MYSQL_DATABASE: mautic
@@ -9914,6 +9932,12 @@ services:
   mautic_web:
     image: ${MAUTIC_IMAGE:-mautic/mautic:7.2.2-apache}
     restart: unless-stopped
+    # Log com rotação: até 5 arquivos de 20 MB, comprimidos.
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "5"
 
     depends_on:
       mariadb:
@@ -10048,6 +10072,12 @@ services:
   mautic_cron:
     image: ${MAUTIC_IMAGE:-mautic/mautic:7.2.2-apache}
     restart: unless-stopped
+    # Log com rotação: até 5 arquivos de 20 MB, comprimidos.
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "5"
 
     depends_on:
       mariadb:
@@ -10092,6 +10122,12 @@ services:
   mautic_worker:
     image: ${MAUTIC_IMAGE:-mautic/mautic:7.2.2-apache}
     restart: unless-stopped
+    # Log com rotação: até 5 arquivos de 20 MB, comprimidos.
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "5"
 
     # Cada worker lê a configuração de e-mail (config/local.php) uma vez,
     # quando nasce, e o da imagem nunca termina: trocar o SMTP no painel

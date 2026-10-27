@@ -855,6 +855,9 @@ Ajustes do template, aplicados e validados em VPS:
 - **`--time-limit=300` nos workers**, por troca de linha no `entrypoint` do
   `mautic_worker`. Sem isso o SMTP trocado no painel não chega ao worker.
   Ver o item 1 das pendências do teste de envio.
+- **Log com rotação nos quatro serviços** (`logging: driver: local`, 20 MB
+  × 5 arquivos, comprimidos), como nos composes do Traefik e do Portainer.
+  Ver o item 3 do bloco 2.
 
 ### Idiomas: por que translations precisa de volume
 
@@ -2136,6 +2139,37 @@ compose.
   sem swap): base e Mautic pelo menu, os quatro containers com a versão
   exata conferida por dentro, swap criado, certificados conferidos sem `-k`,
   117 migrações registradas e 0 pendentes.
+
+- **Item 3, rotação de log: feito em 2026-10-27.** `logging: driver: local`
+  com `max-size: "20m"` e `max-file: "5"`, por extenso, em todos os
+  containers que o script cria: Traefik e Portainer (nos geradores de
+  compose) e os quatro serviços do template do Mautic. Sem tocar no
+  `/etc/docker/daemon.json`. Motivo, da documentação do Docker
+  (https://docs.docker.com/engine/logging/configure/): o padrão `json-file`
+  "não faz rotação" (`max-size` padrão é ilimitado), e o `local` é o
+  recomendado porque faz rotação por padrão; os valores escritos são os
+  padrões dele (100 MB por container). O `docker logs` continua funcionando
+  com o `local` (https://docs.docker.com/engine/logging/dual-logging/).
+
+  Testado na VPS sem reinstalar do zero, para não gastar outro certificado
+  do Let's Encrypt com os mesmos nomes: os composes novos foram gerados
+  pelas próprias funções do script, comparados com os instalados (a única
+  diferença era o bloco de log) e aplicados com `up -d`. Os seis containers
+  saíram com `local` e `max-file:5 max-size:20m`; `docker logs`, `docker
+  compose logs` e o leitor do log do ACME do script funcionam; os dois sites
+  respondem 200. **Vale só para containers criados depois:** uma instalação
+  existente só passa a ter rotação quando os containers forem recriados com
+  o compose novo, o que o modo de atualização (item 8) faz.
+
+  **Lição do teste:** a conexão SSH caiu no meio do `docker compose up -d`
+  do Mautic (carga média 12 em 1 vCPU) e matou o comando. A stack ficou pela
+  metade: containers novos só criados, o antigo da web em remoção, cron e
+  worker antigos rodando com nomes provisórios (`b8ddedd00c62_mautic-...`).
+  Rodar o `up -d` de novo resolveu tudo. É exatamente o que a pessoa do
+  vídeo veria se o terminal dela caísse, e a retomada do bloco 1 cobre o
+  caso, porque refaz o `up -d`. No modo de atualização, o passo que recria
+  containers deve rodar desligado da sessão (`setsid`/`nohup`) ou aceitar a
+  retomada como saída.
 
 **Achado no teste do item 2, a decidir:** durante o download e a subida do
 banco, numa VPS de 1 vCPU, a carga média chegou a 13, e o SSH ficou sem

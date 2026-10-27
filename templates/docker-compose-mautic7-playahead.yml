@@ -77,6 +77,12 @@ services:
   mariadb:
     image: ${MARIADB_IMAGE:-mariadb:10.11.19}
     restart: unless-stopped
+    # Log com rotação: até 5 arquivos de 20 MB, comprimidos.
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "5"
 
     environment:
       MYSQL_DATABASE: mautic
@@ -116,6 +122,12 @@ services:
   mautic_web:
     image: ${MAUTIC_IMAGE:-mautic/mautic:7.2.2-apache}
     restart: unless-stopped
+    # Log com rotação: até 5 arquivos de 20 MB, comprimidos.
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "5"
 
     depends_on:
       mariadb:
@@ -250,6 +262,12 @@ services:
   mautic_cron:
     image: ${MAUTIC_IMAGE:-mautic/mautic:7.2.2-apache}
     restart: unless-stopped
+    # Log com rotação: até 5 arquivos de 20 MB, comprimidos.
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "5"
 
     depends_on:
       mariadb:
@@ -294,6 +312,12 @@ services:
   mautic_worker:
     image: ${MAUTIC_IMAGE:-mautic/mautic:7.2.2-apache}
     restart: unless-stopped
+    # Log com rotação: até 5 arquivos de 20 MB, comprimidos.
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "5"
 
     # Cada worker lê a configuração de e-mail (config/local.php) uma vez,
     # quando nasce, e o da imagem nunca termina: trocar o SMTP no painel
