@@ -41,7 +41,13 @@ PA_TRAEFIK_REDE="traefik_public"
 #   httpchallenge           é o desafio que funciona quando o DNS
 #                           acabou de ser apontado e ainda não há
 #                           certificado nenhum
-#   socket :ro              o Traefik só precisa ler
+#   socket :ro              impede trocar o arquivo do socket, e só
+#                           isso: NÃO limita a API do Docker. Medido
+#                           em 2026-10-22, um container com o socket
+#                           em :ro criou uma rede. Quem controla o
+#                           Traefik controla o Docker; a proteção
+#                           de verdade seria um proxy de socket
+#                           (ver Pendências no CLAUDE.md)
 traefik_gerar_compose() {
 	local caminho="$1"
 

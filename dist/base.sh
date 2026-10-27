@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-22T20:01:09Z
+# Build:  2026-10-27T18:08:03Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -2896,7 +2896,13 @@ PA_TRAEFIK_REDE="traefik_public"
 #   httpchallenge           é o desafio que funciona quando o DNS
 #                           acabou de ser apontado e ainda não há
 #                           certificado nenhum
-#   socket :ro              o Traefik só precisa ler
+#   socket :ro              impede trocar o arquivo do socket, e só
+#                           isso: NÃO limita a API do Docker. Medido
+#                           em 2026-10-22, um container com o socket
+#                           em :ro criou uma rede. Quem controla o
+#                           Traefik controla o Docker; a proteção
+#                           de verdade seria um proxy de socket
+#                           (ver Pendências no CLAUDE.md)
 traefik_gerar_compose() {
 	local caminho="$1"
 
@@ -3264,9 +3270,11 @@ portainer_preparar_senha() {
 
 # portainer_gerar_compose <caminho>
 #
-# O socket do Docker vai montado para LEITURA E ESCRITA, ao
-# contrário do Traefik, que recebe `:ro`. Não há como contornar:
-# o Portainer existe para criar, parar e remover containers.
+# O socket do Docker vai montado sem `:ro`. Não há como contornar:
+# o Portainer existe para criar, parar e remover containers. Isso
+# não o separa do Traefik tanto quanto parece: o `:ro` no socket
+# não limita a API do Docker (medido em 2026-10-22, um container
+# com o socket em `:ro` criou uma rede).
 #
 # A consequência precisa ficar dita em voz alta, porque não é
 # óbvia para quem está começando: quem entra no Portainer tem,
@@ -3621,7 +3629,7 @@ portainer_bloco_final() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-22T20:01:09Z"
+PA_BUILD="2026-10-27T18:08:03Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 

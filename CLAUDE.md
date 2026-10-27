@@ -1132,7 +1132,11 @@ Decisões que o `lib/traefik.sh` precisa preservar:
   entrypoint vale para tudo e o `.env` do Mautic não precisa saber.
 - `httpchallenge`, não TLS-ALPN. O desafio HTTP é o que funciona
   quando o DNS acabou de ser apontado e ainda não há certificado.
-- Socket montado como `:ro`. O Traefik só precisa ler.
+- Socket montado como `:ro`, o que **não** protege a API do Docker: o `:ro`
+  só impede trocar o arquivo do socket. Medido em 2026-10-22, um container
+  com o socket em `:ro` criou uma rede Docker. Até 2026-10-22 este item dizia
+  "o Traefik só precisa ler", como se isso bastasse. Quem controla o Traefik
+  controla o Docker; ver o proxy de socket em Pendências.
 - O volume do ACME é nomeado com prefixo `playahead_`, para caber no
   mesmo namespace do resto e não colidir com instalação alheia.
 
@@ -2015,8 +2019,19 @@ conferidos em 2026-10-22:
 - **O socket em `:ro` não protege a API do Docker.** Testado na VPS: um
   container com o socket montado em `:ro` criou uma rede Docker. A
   documentação do Traefik trata o socket como risco e recomenda proxy de
-  socket. O texto deste documento que diz o contrário será corrigido no
-  bloco 2.
+  socket. **Corrigido em 2026-10-27** (item 1 do bloco 2): o texto da seção
+  do Traefik e os comentários de `lib/traefik_instalar.sh` e
+  `lib/portainer.sh` dizem agora o que o `:ro` faz e o que não faz. O `:ro`
+  continua no compose do Traefik, porque não custa nada.
+
+  **Pendente, sem implementar: avaliar um proxy de socket para o Traefik.**
+  É o que a documentação do Traefik recomenda
+  (https://doc.traefik.io/traefik/reference/install-configuration/providers/docker/):
+  um proxy filtrando a API, como o Docker Socket Proxy da Tecnativa, deixa o
+  Traefik só ler containers e redes. A avaliar: mais um container na base,
+  o que ele quebra na detecção do Traefik de terceiros (que lê o socket
+  direto), e se vale para o Portainer, que precisa escrever de qualquer
+  jeito.
 
 Decisões de 2026-10-22 já tomadas pelo Fabio, a registrar como "política de
 versões" quando o bloco 2 começar:

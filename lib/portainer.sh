@@ -137,9 +137,11 @@ portainer_preparar_senha() {
 
 # portainer_gerar_compose <caminho>
 #
-# O socket do Docker vai montado para LEITURA E ESCRITA, ao
-# contrário do Traefik, que recebe `:ro`. Não há como contornar:
-# o Portainer existe para criar, parar e remover containers.
+# O socket do Docker vai montado sem `:ro`. Não há como contornar:
+# o Portainer existe para criar, parar e remover containers. Isso
+# não o separa do Traefik tanto quanto parece: o `:ro` no socket
+# não limita a API do Docker (medido em 2026-10-22, um container
+# com o socket em `:ro` criou uma rede).
 #
 # A consequência precisa ficar dita em voz alta, porque não é
 # óbvia para quem está começando: quem entra no Portainer tem,
