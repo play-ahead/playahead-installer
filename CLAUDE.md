@@ -347,7 +347,8 @@ fim sem input. Cada instalador é dono da própria conversa.
    encerra com 1, sem tocar em nada.
 3. Detecção de instalação anterior, **antes** de perguntar qualquer coisa, para
    não fazer a pessoa digitar o domínio à toa.
-4. Bloco único de perguntas, incluindo a confirmação dos valores do Traefik.
+4. Bloco único de perguntas, incluindo a confirmação dos valores do Traefik
+   e, por último, a versão do Mautic (consulta ao Docker Hub, anunciada).
 5. Validação do DNS do domínio do Mautic. Última chance de abortar sem ter
    escrito nada.
 6. Mautic, em três tempos (ver Stack), mais idioma, fuso e cache. Depois
@@ -498,6 +499,7 @@ o que saiu do `mautic7.sh` saiu porque a responsabilidade mudou de dono.
 | `--no-certresolver` | TLS terminado fora; omite o label de certresolver |
 | `--idioma=` | idioma do painel; padrão `pt_BR` |
 | `--fuso=` | fuso horário da aplicação; padrão `America/Sao_Paulo` |
+| `--versao=` | `recomendada` (padrão) ou `mais-nova`; ver "Política de versões" |
 | `--wizard` | não conclui a instalação, deixa o assistente web |
 | `--skip-dns-check` | pula a validação de DNS |
 | `--yes` | não interativo: nenhuma pergunta, falha se faltar dado |
@@ -521,6 +523,7 @@ o que saiu do `mautic7.sh` saiu porque a responsabilidade mudou de dono.
 | 1 | Domínio do Mautic | bloco único | obrigatória | `--domain=` |
 | 2 | E-mail do admin | bloco único | `admin@dominio` | `--admin-email=` |
 | 3 | Confirmar valores do Traefik | bloco único, sempre | aceitar o detectado | `--traefik-*` |
+| 5 | Versão: recomendada ou mais nova | bloco único, só quando o Docker Hub tem 7.x mais nova que a recomendada | recomendada | `--versao=` |
 | 4 | Continuar em Ubuntu LTS não testado? | só se o SO for LTS mais nova | sim | - |
 
 Duas mudanças com a separação da base: a pergunta do Portainer saiu do
@@ -2197,6 +2200,37 @@ compose.
   `getent` também lê, em modo estrito: domínio real sem AAAA passa calado; A
   certo com AAAA `2001:db8::1` para o Mautic com a mensagem certa (saída 1);
   AAAA do Cloudflare avisa e segue; AAAA errado no Portainer só avisa.
+- **Item 5, pergunta de versão: feito em 2026-10-27.** `mautic_escolher_versao`,
+  no fim do bloco de perguntas, conforme a "Política de versões":
+  - Consulta `https://hub.docker.com/v2/namespaces/mautic/repositories/mautic/tags`
+    (endereço documentado) com `name=7.` e `ordering=last_updated` (não
+    documentados, mas funcionaram), timeout de 5 s. Lê o JSON com `grep`,
+    porque `jq` não vem no Ubuntu limpo; formato diferente cai no mesmo
+    caminho de consulta que falhou.
+  - Filtro ancorado `^7\.[0-9]+\.[0-9]+-apache$` e maior versão por `sort -V`,
+    não pela data. Fora: `7.2.2-20261026-apache`, `7.0.0-beta-apache`,
+    `latest`.
+  - Mais nova igual ou menor que a recomendada: não pergunta. Consulta
+    falhando: avisa e fica a recomendada, mesmo com `--versao=mais-nova`.
+  - A escolha troca o padrão `${MAUTIC_IMAGE:-...}` no compose instalado
+    (`mautic_compose_definir_imagem`, mesmo jeito do certresolver). O `.env`
+    não muda.
+  - Aparece no resumo (com a marca `>` só quando é a mais nova), no bloco
+    final e numa seção "VERSÃO" do `credenciais.txt`, com imagem, banco e
+    versão do instalador. Na retomada não pergunta: lê a imagem do compose.
+  - **Defeito achado no teste:** a opção 2 voltava como 1. O `ui_escolher`
+    recebe a variável por referência e tem uma local `resposta`; passei uma
+    variável com esse mesmo nome, e a escolha foi para a dele. Os outros
+    chamadores usam nomes `PA_*` e não têm o problema.
+
+  Testado na VPS, com a recomendada simulada em 7.2.1 numa cópia do script
+  (variável e template trocados juntos) para a 7.2.2 aparecer como mais
+  nova: sem versão mais nova não pergunta; opção 2 grava a 7.2.2 no
+  compose; Enter mantém a recomendada; `--yes` sem flag fica na recomendada
+  e com `--versao=mais-nova` vai na mais nova sem perguntar; Docker Hub
+  inacessível avisa e segue; no fluxo real de perguntas, a escolha aparece
+  marcada no resumo e o "não" no "Posso começar?" sai sem criar nada.
+  `--versao=ultima` para com a mensagem dos dois valores válidos.
 
 **Achado no teste do item 2, a decidir:** durante o download e a subida do
 banco, numa VPS de 1 vCPU, a carga média chegou a 13, e o SSH ficou sem

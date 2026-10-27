@@ -105,6 +105,10 @@ OPÇÕES
     --no-certresolver            para quem termina o SSL fora da VPS
     --idioma=CODIGO              idioma do painel (padrão pt_BR)
     --fuso=FUSO                  fuso horário (padrão America/Sao_Paulo)
+    --versao=recomendada         instala a versão testada pela Play Ahead
+                                 (padrão)
+    --versao=mais-nova           instala a mais nova do Mautic 7, sem
+                                 teste da Play Ahead
     --wizard                     não conclui a instalação, deixa o
                                  assistente web do Mautic
     --skip-dns-check             pula a validação de DNS
@@ -142,6 +146,14 @@ main_parse_flags() {
 			--traefik-certresolver=*) PA_TRAEFIK_CERTRESOLVER="${arg#*=}" ;;
 			--idioma=*) PA_IDIOMA="${arg#*=}" ;;
 			--fuso=*) PA_FUSO="${arg#*=}" ;;
+			--versao=recomendada | --versao=mais-nova)
+				PA_MAUTIC_VERSAO_FLAG="${arg#*=}"
+				;;
+			--versao=*)
+				ui_fatal \
+					"Valor inválido em ${arg}." \
+					"Use --versao=recomendada (o padrão) ou --versao=mais-nova."
+				;;
 			--no-certresolver) PA_SEM_CERTRESOLVER=1 ;;
 			--wizard) PA_WIZARD=1 ;;
 			--skip-dns-check) PA_SKIP_DNS=1 ;;
@@ -313,6 +325,15 @@ main_preparar_retomada() {
 		PA_TRAEFIK_NETWORK_ORIGEM="lido do compose em andamento"
 		PA_TRAEFIK_ENTRYPOINT_ORIGEM="lido do compose em andamento"
 		PA_TRAEFIK_CERTRESOLVER_ORIGEM="lido do compose em andamento"
+
+		# A versão também já foi escolhida na primeira vez.
+		local imagem
+		imagem="$(mautic_compose config --images 2>/dev/null |
+			grep '^mautic/mautic:' | head -n 1)" || true
+		if [[ -n "$imagem" && "$imagem" != "$PA_MAUTIC_IMAGEM_RECOMENDADA" ]]; then
+			PA_MAUTIC_IMAGEM="$imagem"
+			PA_MAUTIC_VERSAO_ESCOLHA="em-andamento"
+		fi
 	fi
 
 	mautic_ler_credenciais
@@ -416,6 +437,9 @@ main_perguntar() {
 	# sempre de outro script, mesmo quando foi a nossa base que o
 	# instalou. Um caminho só, e a tela diz de onde veio cada valor.
 	main_confirmar_traefik
+
+	# 4. versão do Mautic: recomendada ou mais nova
+	mautic_escolher_versao
 }
 
 # main_confirmar_traefik
@@ -526,10 +550,17 @@ main_confirmar() {
 		fi
 	fi
 
+	# A versão só é "veio de você" quando a pessoa escolheu a mais
+	# nova: é a única hipótese em que ela tem algo a conferir.
+	local origem_versao="padrao"
+	[[ "$PA_MAUTIC_VERSAO_ESCOLHA" == "mais-nova" ]] && origem_versao="informado"
+	[[ "$PA_MAUTIC_VERSAO_ESCOLHA" == "em-andamento" ]] && origem_versao="detectado"
+
 	ui_resumo "Confira antes de começar" \
 		"Situação" "$situacao" detectado \
 		"Domínio" "https://${PA_DOMINIO}" "$origem_dominio" \
 		"E-mail do admin" "$email_mostrado" "$origem_email" \
+		"Mautic" "$(mautic_descrever_versao)" "$origem_versao" \
 		"DNS" "$PA_DNS_RESULTADO" detectado \
 		"Rede do Traefik" "${PA_TRAEFIK_NETWORK:-traefik_public}" detectado \
 		"Entrypoint" "${PA_TRAEFIK_ENTRYPOINT:-websecure}" detectado \
@@ -615,6 +646,7 @@ main_bloco_final() {
 	ui_info "Mautic instalado e no ar."
 	ui_vazio
 	ui_info "URL:      https://${PA_DOMINIO}"
+	ui_info "Versão:   Mautic $(mautic_descrever_versao)"
 
 	if [[ "$PA_WIZARD" -eq 1 ]]; then
 		ui_vazio

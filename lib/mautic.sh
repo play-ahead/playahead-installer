@@ -33,11 +33,21 @@
 # build.sh confere que os dois batem: o template também é usado à
 # mão, sem o script.
 #
-# Lidas pelo build.sh, por texto; o shellcheck não enxerga esse uso.
-# shellcheck disable=SC2034
 PA_MAUTIC_IMAGEM_RECOMENDADA="mautic/mautic:7.2.2-apache"
-# shellcheck disable=SC2034
 PA_MARIADB_IMAGEM="mariadb:10.11.19"
+
+# Lista de tags do Mautic no Docker Hub, para a opção "mais nova".
+# O endereço é o documentado (/v2/namespaces/.../tags). O name= e o
+# ordering= funcionaram em 2026-10-27, mas não estão na documentação:
+# se pararem, a consulta volta sem a 7.x e a pergunta some, sem
+# quebrar nada.
+PA_MAUTIC_HUB_TAGS="https://hub.docker.com/v2/namespaces/mautic/repositories/mautic/tags?page_size=100&name=7.&ordering=last_updated"
+
+# Escolha da versão: recomendada ou mais-nova, como na flag
+# --versao=. A imagem final vai para o compose instalado.
+PA_MAUTIC_VERSAO_ESCOLHA="recomendada"
+PA_MAUTIC_VERSAO_FLAG=""
+PA_MAUTIC_IMAGEM="$PA_MAUTIC_IMAGEM_RECOMENDADA"
 
 PA_MAUTIC_DIR="/opt/playahead/mautic"
 PA_MAUTIC_COMPOSE="${PA_MAUTIC_DIR}/docker-compose.yml"
@@ -374,6 +384,7 @@ mautic_gravar_compose() {
 	fi
 
 	[[ -z "$PA_TRAEFIK_CERTRESOLVER" ]] && mautic_compose_sem_certresolver
+	mautic_compose_definir_imagem
 
 	ui_ok "docker-compose.yml gravado em ${PA_MAUTIC_DIR}"
 }
@@ -1097,6 +1108,153 @@ mautic_regionalizar() {
 }
 
 # ------------------------------------------------------------
+# Versão do Mautic
+# ------------------------------------------------------------
+
+# mautic_versao_da_imagem <imagem>
+#
+# mautic/mautic:7.2.2-apache vira 7.2.2.
+mautic_versao_da_imagem() {
+	local tag="${1##*:}"
+	printf '%s\n' "${tag%-apache}"
+}
+
+# mautic_consultar_mais_nova
+#
+# Ecoa a tag mais nova da linha 7 (ex.: 7.2.3-apache), ou nada.
+#
+# O filtro é ancorado, e não "começa com 7": existem tags como
+# 7.2.2-20261026-apache e 7.0.0-beta-apache, que não são versões a
+# oferecer. A ordem é por número de versão (sort -V), e não pela
+# data, porque uma 7.1.x reconstruída hoje teria data mais nova que
+# a 7.2.2. Nunca a tag latest: um dia ela pula para o Mautic 8.
+#
+# O JSON é lido com grep, porque jq não vem no Ubuntu limpo. Se o
+# formato mudar, o grep não acha nada e a função ecoa vazio, que é
+# o mesmo caminho de uma consulta que falhou.
+mautic_consultar_mais_nova() {
+	curl -fsS --max-time 5 "$PA_MAUTIC_HUB_TAGS" 2>/dev/null |
+		grep -o '"name": *"[^"]*"' |
+		sed -E 's/"name": *"([^"]*)"/\1/' |
+		grep -E '^7\.[0-9]+\.[0-9]+-apache$' |
+		sort -V | tail -n 1 || true
+}
+
+# mautic_versao_maior <a> <b>
+#
+# Verdadeiro quando a é mais nova que b.
+mautic_versao_maior() {
+	[[ "$1" != "$2" ]] &&
+		[[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n 1)" == "$1" ]]
+}
+
+# mautic_escolher_versao
+#
+# Política de versões do CLAUDE.md: recomendada (testada, padrão do
+# Enter) ou mais nova da mesma linha (sem teste, por conta da
+# pessoa). A consulta ao Docker Hub é anunciada na tela, como as
+# outras consultas a terceiros do script. Consulta falhando ou sem
+# versão mais nova, não há pergunta e a recomendada segue.
+mautic_escolher_versao() {
+	local recomendada nova tag
+	recomendada="$(mautic_versao_da_imagem "$PA_MAUTIC_IMAGEM_RECOMENDADA")"
+
+	ui_vazio
+	ui_info "Consultando o Docker Hub (hub.docker.com) para ver se há Mautic 7"
+	ui_info "mais novo que o ${recomendada}, a versão testada pela Play Ahead."
+	ui_detalhe "Só lê a lista pública de versões; nada desta máquina é enviado."
+
+	tag="$(mautic_consultar_mais_nova)"
+
+	if [[ -z "$tag" ]]; then
+		ui_aviso "Não consegui consultar o Docker Hub; fica a versão recomendada."
+		[[ "$PA_MAUTIC_VERSAO_FLAG" == "mais-nova" ]] &&
+			ui_detalhe "O --versao=mais-nova não tem efeito sem a consulta."
+		PA_MAUTIC_VERSAO_ESCOLHA="recomendada"
+		return 0
+	fi
+
+	nova="$(mautic_versao_da_imagem "$tag")"
+
+	if ! mautic_versao_maior "$nova" "$recomendada"; then
+		ui_ok "A versão recomendada (${recomendada}) é a mais nova da linha 7"
+		PA_MAUTIC_VERSAO_ESCOLHA="recomendada"
+		return 0
+	fi
+
+	local escolha="${PA_MAUTIC_VERSAO_FLAG:-}"
+
+	if [[ -z "$escolha" ]]; then
+		if ! ui_interativo; then
+			escolha="recomendada"
+		else
+			local opcao_recomendada="Recomendada: Mautic ${recomendada}, testada pela Play Ahead"
+			local opcao_nova="Mais nova: Mautic ${nova}, sem teste, por sua conta"
+			# O nome não pode ser "resposta": o ui_escolher recebe a
+			# variável por referência e tem uma local com esse nome, e
+			# a escolha iria para a dele. Medido: a opção 2 voltava 1.
+			local versao_escolhida=""
+			ui_escolher versao_escolhida "Qual versão do Mautic instalar?" \
+				"$opcao_recomendada" "$opcao_nova"
+			escolha="recomendada"
+			[[ "$versao_escolhida" == "$opcao_nova" ]] && escolha="mais-nova"
+		fi
+	fi
+
+	PA_MAUTIC_VERSAO_ESCOLHA="$escolha"
+
+	if [[ "$escolha" == "mais-nova" ]]; then
+		PA_MAUTIC_IMAGEM="mautic/mautic:${tag}"
+		ui_aviso "Mautic ${nova} não passou pelo teste da Play Ahead."
+		ui_detalhe "Se algo der errado, a versão testada é a ${recomendada}."
+	else
+		ui_ok "Fica a versão recomendada, ${recomendada}"
+		ui_detalhe "Existe a ${nova}, ainda sem teste da Play Ahead."
+	fi
+}
+
+# mautic_compose_definir_imagem
+#
+# Troca o padrão da imagem do Mautic no compose instalado pela
+# escolhida, quando ela não é a recomendada. Mesmo jeito do
+# certresolver: o template não muda, e o build segue conferindo o
+# embutido byte a byte. Para se não achar o padrão, em vez de
+# instalar uma versão e anunciar outra.
+mautic_compose_definir_imagem() {
+	[[ "$PA_MAUTIC_IMAGEM" != "$PA_MAUTIC_IMAGEM_RECOMENDADA" ]] || return 0
+
+	local antes="\${MAUTIC_IMAGE:-${PA_MAUTIC_IMAGEM_RECOMENDADA}}"
+	local depois="\${MAUTIC_IMAGE:-${PA_MAUTIC_IMAGEM}}"
+
+	grep -qF -- "$antes" "$PA_MAUTIC_COMPOSE" ||
+		ui_fatal \
+			"Não achei a imagem recomendada no compose para trocar." \
+			"Sinal de que o template mudou e esta função não acompanhou."
+
+	sed -i "s|${antes//\$/\\\$}|${depois//\$/\\\$}|g" "$PA_MAUTIC_COMPOSE"
+
+	if grep -qF -- "$antes" "$PA_MAUTIC_COMPOSE" ||
+		! grep -qF -- "$depois" "$PA_MAUTIC_COMPOSE"; then
+		ui_fatal \
+			"Não consegui trocar a imagem do Mautic no compose." \
+			"Confira ${PA_MAUTIC_COMPOSE} antes de rodar de novo."
+	fi
+}
+
+# mautic_descrever_versao
+#
+# Uma linha para o resumo, o bloco final e o credenciais.txt.
+mautic_descrever_versao() {
+	local versao
+	versao="$(mautic_versao_da_imagem "$PA_MAUTIC_IMAGEM")"
+	case "$PA_MAUTIC_VERSAO_ESCOLHA" in
+		mais-nova) printf '%s (mais nova, sem teste da Play Ahead)\n' "$versao" ;;
+		em-andamento) printf '%s (a da instalação em andamento)\n' "$versao" ;;
+		*) printf '%s (recomendada, testada pela Play Ahead)\n' "$versao" ;;
+	esac
+}
+
+# ------------------------------------------------------------
 # Saída SMTP
 # ------------------------------------------------------------
 
@@ -1199,6 +1357,12 @@ mautic_gravar_credenciais() {
 		printf ' Gerado em %s\n' "$(date -Is)"
 		printf '============================================================\n\n'
 		printf 'URL:      https://%s\n\n' "$dominio"
+
+		printf 'VERSÃO\n'
+		printf '  Mautic %s\n' "$(mautic_descrever_versao)"
+		printf '  imagem: %s\n' "$PA_MAUTIC_IMAGEM"
+		printf '  banco:  %s\n' "$PA_MARIADB_IMAGEM"
+		printf '  instalador: %s %s\n\n' "$PA_FERRAMENTA" "$PA_VERSAO"
 
 		printf 'ADMIN\n'
 		printf '  e-mail: %s\n' "$email_admin"
