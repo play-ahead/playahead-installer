@@ -419,6 +419,27 @@ Este é o mesmo cenário do Traefik sem certresolver, visto do outro lado: quem
 termina TLS no Cloudflare não precisa de Let's Encrypt na VPS. Os dois pontos
 têm de ser coerentes entre si.
 
+### O registro AAAA (IPv6)
+
+Desde 2026-10-27 (item 4 do bloco 2), a checagem de DNS olha também o IPv6.
+Um AAAA que não aponta para esta VPS recebe o mesmo tratamento de um A
+errado, por decisão do Fabio: o Let's Encrypt tenta o IPv6 primeiro quando
+ele existe, e quem visita pelo IPv6 cai no outro servidor.
+
+- Os IPv6 do domínio vêm de `getent ahostsv6`, **tirando os `::ffff:`**: sem
+  AAAA, o `getent` devolve o IPv4 disfarçado (`::ffff:201.79.41.0`, medido na
+  VPS), e isso não é registro AAAA.
+- Os da VPS vêm de `ip -6 addr show scope global`. A VPS de teste da
+  DigitalOcean não tinha IPv6 nenhum; para ela, qualquer AAAA está errado.
+- AAAA do Cloudflare com proxy avisa e passa, como o IPv4. As faixas IPv6
+  ficam embutidas em `PA_FAIXAS_CDN_V6`, de https://www.cloudflare.com/ips-v6.
+- A comparação expande os endereços para a forma completa em bash puro
+  (`checks_ipv6_expandir`, `checks_ipv6_em_faixa`), porque python e ipcalc
+  não são garantidos no Ubuntu limpo. Testada com `::`, maiúsculas, zona
+  (`%eth0`) e a borda da faixa `/29` do Cloudflare.
+- Mautic: `checks_dns_aaaa ... fatal`, depois de o A passar, e para. Portainer:
+  `... aviso` em `base_validar`, e segue. `--skip-dns-check` desliga os dois.
+
 ## Swap
 
 No cenário 1 e 1.5, **se a RAM for menor que 3800 MB e não houver swap
@@ -2170,6 +2191,12 @@ compose.
   caso, porque refaz o `up -d`. No modo de atualização, o passo que recria
   containers deve rodar desligado da sessão (`setsid`/`nohup`) ou aceitar a
   retomada como saída.
+
+- **Item 4, registro AAAA: feito em 2026-10-27.** Ver "O registro AAAA
+  (IPv6)", na seção de DNS. Testado na VPS com nomes no `/etc/hosts`, que o
+  `getent` também lê, em modo estrito: domínio real sem AAAA passa calado; A
+  certo com AAAA `2001:db8::1` para o Mautic com a mensagem certa (saída 1);
+  AAAA do Cloudflare avisa e segue; AAAA errado no Portainer só avisa.
 
 **Achado no teste do item 2, a decidir:** durante o download e a subida do
 banco, numa VPS de 1 vCPU, a carga média chegou a 13, e o SSH ficou sem

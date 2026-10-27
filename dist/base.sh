@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-27T18:48:14Z
+# Build:  2026-10-27T18:56:36Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -937,6 +937,19 @@ PA_FAIXAS_CDN=(
 	"131.0.72.0/22"
 )
 
+# As mesmas faixas em IPv6, para o registro AAAA de quem está atrás
+# do Cloudflare com proxy. Fonte: https://www.cloudflare.com/ips-v6,
+# conferida em 2026-10-27 (a de IPv4 continuava igual à de cima).
+PA_FAIXAS_CDN_V6=(
+	"2400:cb00::/32"
+	"2606:4700::/32"
+	"2803:f800::/32"
+	"2405:b500::/32"
+	"2405:8100::/32"
+	"2a06:98c0::/29"
+	"2c0f:f248::/32"
+)
+
 # Preenchidas pelas checagens, lidas pelo resto do instalador.
 PA_SO_ID=""
 PA_SO_VERSAO=""
@@ -1294,6 +1307,169 @@ checks_ip_em_cdn() {
 }
 
 # ------------------------------------------------------------
+# IPv6
+# ------------------------------------------------------------
+
+# checks_ipv6_expandir <ip>
+#
+# Ecoa o endereço na forma completa, 8 grupos de 4 dígitos em
+# minúsculas: 2606:4700::1 vira 2606:4700:0000:...:0001. É o que
+# permite comparar dois endereços escritos de jeitos diferentes e
+# testar faixa sem depender de python ou de ipcalc, que não vêm no
+# Ubuntu limpo. Devolve 1 para o que não for IPv6 puro.
+checks_ipv6_expandir() {
+	local ip="${1,,}"
+	ip="${ip%%/*}"
+	ip="${ip%%\%*}"
+
+	local -a esquerda=() direita=()
+	if [[ "$ip" == *"::"* ]]; then
+		[[ -n "${ip%%::*}" ]] && IFS=: read -r -a esquerda <<<"${ip%%::*}"
+		[[ -n "${ip#*::}" ]] && IFS=: read -r -a direita <<<"${ip#*::}"
+	else
+		IFS=: read -r -a esquerda <<<"$ip"
+	fi
+
+	local -a grupos=("${esquerda[@]}")
+	local faltam=$((8 - ${#esquerda[@]} - ${#direita[@]}))
+	local i
+	for ((i = 0; i < faltam; i++)); do
+		grupos+=(0)
+	done
+	grupos+=("${direita[@]}")
+
+	[[ "${#grupos[@]}" -eq 8 ]] || return 1
+
+	local saida="" grupo
+	for grupo in "${grupos[@]}"; do
+		[[ "$grupo" =~ ^[0-9a-f]{1,4}$ ]] || return 1
+		saida+="$(printf '%04x' "0x${grupo}"):"
+	done
+	printf '%s\n' "${saida%:}"
+}
+
+# checks_ipv6_em_faixa <ip> <rede/bits>
+checks_ipv6_em_faixa() {
+	local ip rede
+	ip="$(checks_ipv6_expandir "$1")" || return 1
+	rede="$(checks_ipv6_expandir "${2%/*}")" || return 1
+	local bits="${2#*/}"
+
+	local -a a=() b=()
+	IFS=: read -r -a a <<<"$ip"
+	IFS=: read -r -a b <<<"$rede"
+
+	local i mascara
+	for ((i = 0; i < 8 && bits > 0; i++)); do
+		if ((bits >= 16)); then
+			[[ "${a[i]}" == "${b[i]}" ]] || return 1
+			bits=$((bits - 16))
+		else
+			mascara=$(((0xffff << (16 - bits)) & 0xffff))
+			(((0x${a[i]} & mascara) == (0x${b[i]} & mascara))) || return 1
+			bits=0
+		fi
+	done
+	return 0
+}
+
+checks_ipv6_em_cdn() {
+	local faixa
+	for faixa in "${PA_FAIXAS_CDN_V6[@]}"; do
+		checks_ipv6_em_faixa "$1" "$faixa" && return 0
+	done
+	return 1
+}
+
+# checks_aaaa_do_dominio <dominio>
+#
+# Os IPv6 de verdade do domínio. O getent ahostsv6 devolve o IPv4
+# disfarçado (::ffff:201.79.41.0) quando não existe AAAA, conferido
+# na VPS em 2026-10-27, e isso não é registro AAAA nenhum.
+checks_aaaa_do_dominio() {
+	getent ahostsv6 "$1" 2>/dev/null |
+		awk '{print tolower($1)}' | grep -v '^::ffff:' | sort -u || true
+}
+
+# checks_ipv6_desta_vps
+checks_ipv6_desta_vps() {
+	ip -6 addr show scope global 2>/dev/null |
+		awk '/inet6/ {split($2, a, "/"); print a[1]}' || true
+}
+
+# checks_dns_aaaa <dominio> <fatal|aviso>
+#
+# Um AAAA que não aponta para esta VPS recebe o mesmo tratamento de
+# um registro A errado, por decisão do Fabio (2026-10-22): o Let's
+# Encrypt tenta o IPv6 primeiro quando ele existe, e se outro
+# servidor responder ali o certificado não sai; e os visitantes com
+# IPv6 chegam no servidor errado. Sem AAAA, nada a dizer. AAAA de CDN
+# segue a regra do IPv4: avisa e passa.
+#
+# No modo fatal (domínio do Mautic) para a instalação; no modo aviso
+# (Portainer) avisa e segue, como já acontece com o IPv4 dele.
+checks_dns_aaaa() {
+	local dominio="$1"
+	local modo="$2"
+
+	local -a aaaa=() locais=()
+	mapfile -t aaaa < <(checks_aaaa_do_dominio "$dominio")
+	[[ "${#aaaa[@]}" -gt 0 ]] || return 0
+
+	mapfile -t locais < <(checks_ipv6_desta_vps)
+
+	local -a errados=()
+	local ip local_ achou cdn=0
+	for ip in "${aaaa[@]}"; do
+		if checks_ipv6_em_cdn "$ip"; then
+			cdn=1
+			continue
+		fi
+		achou=0
+		for local_ in "${locais[@]}"; do
+			[[ "$(checks_ipv6_expandir "$ip")" == "$(checks_ipv6_expandir "$local_")" ]] &&
+				achou=1
+		done
+		[[ "$achou" -eq 1 ]] || errados+=("$ip")
+	done
+
+	if [[ "${#errados[@]}" -eq 0 ]]; then
+		if [[ "$cdn" -eq 1 ]]; then
+			ui_aviso "O IPv6 (AAAA) de ${dominio} também é do Cloudflare; seguindo."
+		else
+			ui_ok "O IPv6 (AAAA) de ${dominio} também aponta para esta VPS"
+		fi
+		return 0
+	fi
+
+	local desta="${locais[*]}"
+	[[ -n "$desta" ]] || desta="nenhum (esta VPS não tem IPv6)"
+
+	if [[ "$modo" == "fatal" ]]; then
+		ui_fatal \
+			"O domínio ${dominio} tem um registro AAAA (IPv6) que não é desta VPS." \
+			"" \
+			"    AAAA resolve para:  ${errados[*]}" \
+			"    IPv6 desta VPS:     ${desta}" \
+			"" \
+			"O Let's Encrypt tenta o IPv6 primeiro quando ele existe: se outro" \
+			"servidor responder ali, o certificado não é emitido, mesmo com o" \
+			"registro A certo. E quem visita pelo IPv6 cai no outro servidor." \
+			"" \
+			"Apague o registro AAAA no seu provedor de DNS (ou aponte para o" \
+			"IPv6 desta VPS) e espere a propagação. Se tiver certeza de que" \
+			"está certo, rode de novo com --skip-dns-check."
+	fi
+
+	ui_aviso "${dominio} tem um registro AAAA (IPv6) que não é desta VPS."
+	ui_detalhe "AAAA resolve para: ${errados[*]}"
+	ui_detalhe "IPv6 desta VPS:    ${desta}"
+	ui_detalhe "O Portainer vai subir, mas o certificado pode não ser emitido."
+	ui_detalhe "Apague o AAAA no seu provedor de DNS, ou aponte para esta VPS."
+	return 0
+}
+
+# ------------------------------------------------------------
 # DNS
 # ------------------------------------------------------------
 
@@ -1331,6 +1507,7 @@ checks_dns() {
 		PA_DNS_RESULTADO="não validado: IP desta VPS desconhecido"
 		ui_aviso "IP público desconhecido; não dá para validar o DNS."
 		ui_detalhe "Resolvido: ${resolvidos[*]}"
+		checks_dns_aaaa "$dominio" fatal
 		return 0
 	fi
 
@@ -1339,6 +1516,7 @@ checks_dns() {
 		if [[ "$ip" == "$PA_IP_PUBLICO" ]]; then
 			PA_DNS_RESULTADO="aponta para esta VPS"
 			ui_ok "DNS de ${dominio} aponta para esta VPS"
+			checks_dns_aaaa "$dominio" fatal
 			return 0
 		fi
 	done
@@ -1354,6 +1532,7 @@ checks_dns() {
 			ui_detalhe "precisa estar em Full (strict). Em modo Flexible o Mautic"
 			ui_detalhe "entra em laço de redirecionamento e não abre."
 			ui_vazio
+			checks_dns_aaaa "$dominio" fatal
 			return 0
 		fi
 	done
@@ -3646,7 +3825,7 @@ portainer_bloco_final() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-27T18:48:14Z"
+PA_BUILD="2026-10-27T18:56:36Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
@@ -3864,6 +4043,15 @@ base_validar() {
 	ui_secao "Conferindo o DNS do Portainer"
 	checks_ip_publico || true
 
+	base_validar_ipv4
+	checks_dns_aaaa "$PA_PORTAINER_DOMINIO" aviso
+}
+
+# base_validar_ipv4
+#
+# Separada para o AAAA rodar depois dela em qualquer caso, inclusive
+# quando o IPv4 sai cedo.
+base_validar_ipv4() {
 	# Avisa em vez de abortar: o Portainer é opcional, e o resto da
 	# base não depende do DNS dele.
 	if [[ -z "$PA_IP_PUBLICO" ]]; then

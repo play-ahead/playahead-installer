@@ -262,6 +262,15 @@ base_validar() {
 	ui_secao "Conferindo o DNS do Portainer"
 	checks_ip_publico || true
 
+	base_validar_ipv4
+	checks_dns_aaaa "$PA_PORTAINER_DOMINIO" aviso
+}
+
+# base_validar_ipv4
+#
+# Separada para o AAAA rodar depois dela em qualquer caso, inclusive
+# quando o IPv4 sai cedo.
+base_validar_ipv4() {
 	# Avisa em vez de abortar: o Portainer é opcional, e o resto da
 	# base não depende do DNS dele.
 	if [[ -z "$PA_IP_PUBLICO" ]]; then
