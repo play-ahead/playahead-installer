@@ -995,6 +995,10 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
 
     lib/menu_main.sh        orquestrador do menu             playahead
 
+    testes/ponta-a-ponta.sh teste fixo: instala e confere   (não publicado)
+    .github/workflows/teste-instalador.yml
+                            roda o teste fixo em todo pull request
+
 Só o compose do Mautic é template em arquivo. Os do Traefik e do Portainer
 são gerados em código, por `traefik_gerar_compose` e
 `portainer_gerar_compose`: os dois dependem de valores descobertos em
@@ -2231,6 +2235,38 @@ compose.
   inacessível avisa e segue; no fluxo real de perguntas, a escolha aparece
   marcada no resumo e o "não" no "Posso começar?" sai sem criar nada.
   `--versao=ultima` para com a mensagem dos dois valores válidos.
+- **Item 6, teste fixo e workflow: teste feito em 2026-10-27; o workflow
+  ainda não rodou no GitHub.**
+  - `testes/ponta-a-ponta.sh` roda o `dist/base.sh` e o `dist/mautic7.sh`
+    com `--yes` e `--skip-dns-check`, com `mautic.ci.test` e
+    `portainer.ci.test` no `/etc/hosts` apontando para 127.0.0.1, e confere:
+    os 6 containers no ar (banco e web `healthy`); cada imagem igual à
+    recomendada que o próprio `dist/` declara (o teste lê as variáveis, em
+    vez de repetir números que envelhecem) e o console dizendo a mesma
+    versão; marca de concluída, `site_url`, migrações em dia
+    (`doctrine:migrations:up-to-date`), `credenciais.txt` 600 com a versão;
+    6 workers com `--time-limit=300`; log `local` nos 6 containers; a raiz do
+    Mautic chegando no `/s/login` com `_username` pelo Traefik (`curl -k
+    --resolve`), o Portainer com 200 e o HTTP redirecionando para HTTPS; e a
+    segunda execução saindo com 0 sem reinstalar.
+  - **Roteamento sem DNS público:** os domínios `.test` no `/etc/hosts` e
+    `curl --resolve ...:443:127.0.0.1`. O Traefik roteia pelo `Host` de
+    verdade, com o certificado padrão dele. O que não é coberto está no
+    cabeçalho do script: DNS, Let's Encrypt, firewall do provedor, Docker e
+    swap quando a máquina já tem os dois, menu e envio de e-mail.
+  - Rodado numa VPS de 2 GB zerada (sem Docker nem swap, então cobrindo
+    também o cenário 1): todas as conferências passaram. E reprovou quando
+    devia: com o worker parado, duas falhas e saída 1.
+  - `.github/workflows/teste-instalador.yml`: em todo pull request e à mão.
+    Primeiro `./build.sh --check` com ShellCheck 0.11.0 baixado (a máquina do
+    GitHub traz o 0.9.0, e o build local usa o 0.11.0), depois o teste fixo
+    em `ubuntu-24.04` (o `ubuntu-latest` vira 26.04 entre outubro e novembro
+    de 2026, e LTS não testado faz o instalador perguntar). As ações
+    `checkout` e `upload-artifact` são fixadas por commit. Os logs vão como
+    artefato; as senhas neles são as descartáveis da máquina do teste.
+  - Na máquina do GitHub o Docker já vem instalado e há 16 GB de RAM: o
+    teste lá passa pelo cenário 1.5 e não cobre a instalação do Docker nem
+    o swap. Esses dois continuam dependendo da VPS.
 
 **Achado no teste do item 2, a decidir:** durante o download e a subida do
 banco, numa VPS de 1 vCPU, a carga média chegou a 13, e o SSH ficou sem

@@ -1,0 +1,79 @@
+# ============================================================
+# Teste do instalador
+#
+# Roda em todo pedido de atualização (pull request) e à mão, pela
+# aba Actions. Pela política de versões do CLAUDE.md, quem aprova
+# uma versão nova é este teste passar, e não a opinião de ninguém.
+#
+# Duas etapas:
+#   1. o dist/ está em dia com o lib/, e tudo passa no shellcheck;
+#   2. o teste fixo, testes/ponta-a-ponta.sh, instala a base e o
+#      Mautic numa máquina limpa e confere o resultado. O que ele
+#      não cobre está no cabeçalho dele.
+#
+# A máquina é fixada em ubuntu-24.04, e não ubuntu-latest: o latest
+# muda para o 26.04 entre outubro e novembro de 2026, e um Ubuntu LTS
+# não testado faz o instalador perguntar se continua.
+#
+# As ações do GitHub são fixadas por commit, pelo mesmo motivo das
+# imagens do instalador: uma tag pode ser movida.
+# ============================================================
+
+name: Teste do instalador
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: teste-instalador-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: dist em dia e shellcheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Baixar o repositório
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: ShellCheck 0.11.0
+        # A máquina traz o 0.9.0. A mesma versão de quem faz o build
+        # evita aviso que só aparece de um lado.
+        run: |
+          curl -fsSL https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz | tar -xJ
+          sudo install -m 0755 shellcheck-v0.11.0/shellcheck /usr/local/bin/shellcheck
+          shellcheck --version
+
+      - name: dist/ em dia com o lib/
+        run: ./build.sh --check
+
+      - name: shellcheck no teste fixo
+        run: shellcheck testes/ponta-a-ponta.sh
+
+  ponta-a-ponta:
+    name: instalação de ponta a ponta
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Baixar o repositório
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Instalar a base e o Mautic e conferir
+        run: sudo bash testes/ponta-a-ponta.sh
+
+      - name: Guardar os logs
+        if: always()
+        # actions/upload-artifact v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: logs-do-teste
+          path: /tmp/teste-instalador
+          if-no-files-found: ignore
