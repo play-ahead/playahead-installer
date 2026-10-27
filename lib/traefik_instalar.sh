@@ -17,9 +17,13 @@
 # Constantes
 # ------------------------------------------------------------
 
-# Versão fixa da linha v3, nunca `latest`. Conferida na API do
-# Docker Hub em 2026-09-01 e validada em VPS.
-PA_TRAEFIK_VERSAO="v3.7.12"
+# Versão fixa da linha v3, nunca `latest`. Política de versões do
+# CLAUDE.md: o proxy recebe as correções da própria linha.
+#
+# v3.7.16 é a última da 3.7 em 2026-10-27, conferida no Docker Hub
+# e no GitHub. As quatro versões depois da v3.7.12, que o script
+# usava até então, trazem avisos de segurança.
+PA_TRAEFIK_VERSAO="v3.7.16"
 
 PA_TRAEFIK_DIR="/opt/playahead/traefik"
 PA_TRAEFIK_REDE="traefik_public"

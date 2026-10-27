@@ -38,13 +38,14 @@
 # Constantes
 # ------------------------------------------------------------
 
-# Versão fixa, nunca `latest`, pela mesma razão do Traefik.
+# Versão fixa, nunca `latest` nem `lts`. Política de versões do
+# CLAUDE.md: o painel com LTS segue a linha LTS.
 #
-# 2.45.0 é a LTS em 2026-09-12. Conferido comparando o digest da
+# 2.45.3 é a LTS em 2026-10-27. Conferido comparando o digest da
 # tag `lts` com o da tag numerada, e não assumido pelo número:
 # a linha 2.39.x recebe patches e parece LTS, mas o digest da
-# `lts` bate com a 2.45.0.
-PA_PORTAINER_VERSAO="2.45.0"
+# `lts` bate com a 2.45.3.
+PA_PORTAINER_VERSAO="2.45.3"
 
 PA_PORTAINER_DIR="/opt/playahead/portainer"
 PA_PORTAINER_CREDENCIAIS="${PA_PORTAINER_DIR}/credenciais.txt"

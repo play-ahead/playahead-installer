@@ -468,6 +468,35 @@ validar() {
 
 	info "${alvo}: template idêntico ao original ($(wc -l <"$extraido") linhas)"
 	rm -f "$extraido"
+
+	verificar_versoes_template "$template"
+}
+
+# verificar_versoes_template <template>
+#
+# A versão recomendada de cada imagem vive em dois lugares: na
+# variável do lib/mautic.sh, que o script usa para mostrar e
+# escolher, e no padrão do template, que vale para quem usa o
+# compose à mão. Os dois têm de bater. Sem esta conferência, um
+# pedido de atualização que trocasse um e esquecesse o outro
+# instalaria uma versão e anunciaria outra.
+verificar_versoes_template() {
+	local template="$1"
+	local variavel imagem esperado encontrados
+
+	for variavel in PA_MAUTIC_IMAGEM_RECOMENDADA:MAUTIC_IMAGE PA_MARIADB_IMAGEM:MARIADB_IMAGE; do
+		esperado="$(awk -F'"' -v v="${variavel%%:*}=" 'index($0, v) == 1 { print $2; exit }' lib/mautic.sh)"
+		[[ -n "$esperado" ]] || erro "falta ${variavel%%:*} em lib/mautic.sh"
+
+		imagem="${variavel##*:}"
+		encontrados="$(grep -o "\${${imagem}:-[^}]*}" "$template" | sort -u)"
+
+		if [[ "$encontrados" != "\${${imagem}:-${esperado}}" ]]; then
+			erro "o template usa ${encontrados//$'\n'/ }, mas ${variavel%%:*} é ${esperado}"
+		fi
+	done
+
+	info "versões do template iguais às de lib/mautic.sh"
 }
 
 # ------------------------------------------------------------

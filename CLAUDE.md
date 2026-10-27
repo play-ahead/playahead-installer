@@ -929,8 +929,9 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
   diretiva `post_max_size` do PHP. Não "corrigir".
 - **Versões mínimas do Mautic 7:** PHP 8.2, MySQL 8.4.0 ou MariaDB 10.11.0. A
   stack usa `mariadb:10.11`, que é o piso e é LTS.
-- **A tag `mautic/mautic:7-apache` hoje entrega Mautic 7.1.x**, não 7.0. Manter a
-  versão numa variável no topo do script, fácil de trocar.
+- **A tag `mautic/mautic:7-apache` é flutuante e muda sem aviso.** Entregava
+  7.1.2 até 2026-10-25 e passou a entregar 7.2.2 em 2026-10-26. O script não
+  a usa mais: a versão é exata, ver "Política de versões".
 - Usar a variante `apache`. A documentação oficial desaconselha a `fpm`.
 - **`America/Sao_Paulo` reprova na checagem de requisitos do `mautic:install`.**
   A checagem do Symfony monta a lista de fusos aceitos a partir de
@@ -974,6 +975,48 @@ execução (rede, entrypoint, certresolver), e um template com marcador para
 cada um deles seria mais difícil de ler que o heredoc que o gera.
 
 ## Decisões tomadas
+
+### Política de versões (decisões de 2026-10-22)
+
+Tomadas pelo Fabio na revisão externa do commit 746ae74.
+
+1. **Nunca tag flutuante** (`7-apache`, `10.11`, `lts`, `latest`). Cada
+   ferramenta tem uma versão recomendada exata, numa variável do script. A
+   recomendada é a que passou no teste. Motivo, medido em 2026-10-27: a
+   `7-apache` trocou de 7.1.2 para 7.2.2 de um dia para o outro, e a
+   instalação daquele dia saiu com uma versão nunca testada aqui.
+2. **Quem vigia as versões é uma rotina semanal na nuvem do Claude.** Ela vê
+   se saiu versão nova, lê as notas de lançamento e os problemas abertos e,
+   se valer, abre um pedido de atualização no GitHub, numa branch `claude/`,
+   com resumo em português. Nunca faz merge.
+3. **Quem aprova uma versão é o teste fixo do GitHub passar**, disparado por
+   todo pedido de atualização. O Fabio aprova ou recusa. Não é a opinião do
+   Claude que aprova.
+4. **Regra por tipo de ferramenta:** o proxy (Traefik) recebe as correções da
+   própria linha; o painel com LTS (Portainer) segue a LTS; aplicação com
+   banco (Mautic e as próximas) fica travada, e linha nova só entra depois de
+   testada.
+5. **O instalador de ferramenta pergunta a versão antes de instalar:**
+   1) Recomendada, testada pela Play Ahead, padrão do Enter; 2) Mais nova, sem
+   teste, por conta da pessoa, com aviso. A mais nova vem do Docker Hub na
+   hora, da mesma linha principal (filtro `7.x.y-apache`), nunca do `latest`,
+   que um dia pula para o Mautic 8. A tela avisa da consulta. Consulta
+   falhando, só a recomendada aparece e a instalação segue. Mais nova igual à
+   recomendada, não pergunta.
+6. **A base fica sem pergunta.**
+7. **A escolha aparece no resumo, no bloco final e no `credenciais.txt`**, para
+   o suporte saber o que a pessoa instalou.
+8. **Com `--yes` o padrão é a recomendada.** A flag é `--versao=mais-nova`, com
+   `--versao=recomendada` como padrão, e o mesmo nome em todos os instaladores
+   de ferramenta que vierem (decisão de 2026-10-27).
+
+**Regra de 2026-10-27: linha sem correção de segurança dá lugar à nova, sem
+esperar.** Quando a linha em uso deixa de receber correção de segurança, a
+linha nova entra assim que passar no teste, sem esperar semanas. Nasceu do
+caso da 7.2.2: os 8 avisos dela atingem `>= 7.0.0, < 7.2.2`, um deles
+crítico (execução remota de código na importação de campanha), a correção
+foi levada para a 6.0.10 e a 5.2.12, e a linha 7.1 parou na 7.1.3 sem ela.
+Pela regra 4 o Mautic ficaria na 7.1; por esta, foi para a 7.2.2.
 
 **Traefik: versão fixa da linha v3, nunca `latest`.** Fixar a minor exata numa
 variável no topo do script (por exemplo `TRAEFIK_VERSION="v3.x"`), conferindo a
@@ -1595,6 +1638,13 @@ religa a rota e o cache é remontado. Remontar o cache pesa: com 2 pedidos
 por segundo, a carga média de 1 vCPU foi a 10. Um teste com 4 clientes sem
 pausa deixou a VPS sem responder nem ao SSH por um minuto.
 
+Terceiro efeito, visto no log depois: requisições já em andamento no
+instante do `mv` não acham mais o arquivo do cache que esperavam
+("Failed opening required var/cache/prod/..."), e respondem 500. Foram 5
+durante os testes sob carga. Aceito pelo Fabio em 2026-10-27; por isso a
+receita do README e do `credenciais.txt` manda limpar o cache num horário
+de pouco movimento.
+
 **Consequência para o modo de atualização (bloco 2):** trocar a imagem
 recria os containers, e temas e plugins instalados pelo painel se perdem do
 mesmo jeito. Precisa estar resolvido, ou ao menos avisado, no desenho.
@@ -2065,6 +2115,38 @@ teste fixo com o workflow do GitHub; a rotina semanal; e o modo de
 atualização, com desenho aprovado antes, backup do banco e do compose, e
 registro de por que ele é a única exceção à regra de não sobrescrever o
 compose.
+
+**Andamento (plano aprovado pelo Fabio em 2026-10-27):**
+
+- **Item 0, defeito do bloco 1 achado no teste de 2 GB:** limpeza de cache
+  sem `cache:clear`. Feito (commit `9ce9446`); ver "Limpeza de cache sem
+  `cache:clear`".
+- **Item 1, socket `:ro`:** feito (commit `cedd4c0`).
+- **Item 2, versões exatas: feito em 2026-10-27.** Mautic `7.2.2-apache`,
+  MariaDB `10.11.19`, Traefik `v3.7.16` e Portainer `2.45.3`, cada uma numa
+  variável (`PA_MAUTIC_IMAGEM_RECOMENDADA`, `PA_MARIADB_IMAGEM`,
+  `PA_TRAEFIK_VERSAO`, `PA_PORTAINER_VERSAO`). As duas do Mautic também são
+  o padrão do template, e `verificar_versoes_template`, no `build.sh`, para o
+  build quando script e template divergem (provado nos dois sentidos).
+  Mautic 7.2.2 no lugar da 7.1.x pela regra da linha sem correção de
+  segurança (ver "Política de versões"). Antes do commit, duas conferências
+  pedidas pelo Fabio: os 8 avisos atingem `>= 7.0.0, < 7.2.2`, e o 7.2.2
+  salvou um e-mail com link (criar e editar) sem erro, o que falhava na
+  7.2.1. Teste completo numa VPS de 2 GB desmontada até o zero (sem Docker,
+  sem swap): base e Mautic pelo menu, os quatro containers com a versão
+  exata conferida por dentro, swap criado, certificados conferidos sem `-k`,
+  117 migrações registradas e 0 pendentes.
+
+**Achado no teste do item 2, a decidir:** durante o download e a subida do
+banco, numa VPS de 1 vCPU, a carga média chegou a 13, e o SSH ficou sem
+responder até derrubar a conexão de quem estava olhando. A instalação
+seguiu sozinha e terminou com saída 0, mas quem segue o tutorial pode achar
+que travou, ou fechar o terminal. Proposta a avaliar: um aviso na tela antes
+do download, dizendo que a VPS pode ficar lenta por alguns minutos e que a
+instalação continua mesmo se o terminal cair. Também a avaliar: se a
+conexão cair, o processo do instalador morre junto? Neste teste não morreu,
+porque o terminal era um pty de outro processo; num SSH comum, provavelmente
+morre, e a retomada (bloco 1) cobre o caso.
 
 #### Bloco 3: visual (não implementado)
 

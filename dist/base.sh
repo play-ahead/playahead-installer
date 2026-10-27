@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-27T18:08:03Z
+# Build:  2026-10-27T18:13:11Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -2872,9 +2872,13 @@ traefik_mostrar_log_acme() {
 # Constantes
 # ------------------------------------------------------------
 
-# Versão fixa da linha v3, nunca `latest`. Conferida na API do
-# Docker Hub em 2026-09-01 e validada em VPS.
-PA_TRAEFIK_VERSAO="v3.7.12"
+# Versão fixa da linha v3, nunca `latest`. Política de versões do
+# CLAUDE.md: o proxy recebe as correções da própria linha.
+#
+# v3.7.16 é a última da 3.7 em 2026-10-27, conferida no Docker Hub
+# e no GitHub. As quatro versões depois da v3.7.12, que o script
+# usava até então, trazem avisos de segurança.
+PA_TRAEFIK_VERSAO="v3.7.16"
 
 PA_TRAEFIK_DIR="/opt/playahead/traefik"
 PA_TRAEFIK_REDE="traefik_public"
@@ -3171,13 +3175,14 @@ cenario_faltando() {
 # Constantes
 # ------------------------------------------------------------
 
-# Versão fixa, nunca `latest`, pela mesma razão do Traefik.
+# Versão fixa, nunca `latest` nem `lts`. Política de versões do
+# CLAUDE.md: o painel com LTS segue a linha LTS.
 #
-# 2.45.0 é a LTS em 2026-09-12. Conferido comparando o digest da
+# 2.45.3 é a LTS em 2026-10-27. Conferido comparando o digest da
 # tag `lts` com o da tag numerada, e não assumido pelo número:
 # a linha 2.39.x recebe patches e parece LTS, mas o digest da
-# `lts` bate com a 2.45.0.
-PA_PORTAINER_VERSAO="2.45.0"
+# `lts` bate com a 2.45.3.
+PA_PORTAINER_VERSAO="2.45.3"
 
 PA_PORTAINER_DIR="/opt/playahead/portainer"
 PA_PORTAINER_CREDENCIAIS="${PA_PORTAINER_DIR}/credenciais.txt"
@@ -3629,7 +3634,7 @@ portainer_bloco_final() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-27T18:08:03Z"
+PA_BUILD="2026-10-27T18:13:11Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 

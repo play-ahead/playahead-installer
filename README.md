@@ -208,7 +208,9 @@ comportamento.
 ## Limpar o cache
 
 Limpar cache é a primeira coisa que se tenta quando algo estranho acontece no
-Mautic. Faça assim, nesta ordem:
+Mautic. Faça num horário de pouco movimento, porque o site sai do ar por menos
+de um minuto e quem estiver usando naquele instante pode ver uma página de
+erro. Nesta ordem:
 
     cd /opt/playahead/mautic
     docker compose exec mautic_web chown -R www-data:www-data /var/www/html/var

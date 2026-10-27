@@ -19,6 +19,26 @@
 # Constantes
 # ------------------------------------------------------------
 
+# Versões recomendadas: as que passaram no teste. Nunca tag
+# flutuante (`7-apache`, `10.11`, `latest`); ver "Política de
+# versões" no CLAUDE.md. A tag `7-apache` trocou de 7.1.2 para 7.2.2
+# em 2026-10-26 sem ninguém pedir, e a instalação daquele dia saiu
+# com uma versão que nunca tinha sido testada aqui.
+#
+# 7.2.2 corrige 8 avisos de segurança que atingem toda a 7.x antes
+# dela, entre eles uma execução remota de código; a linha 7.1 parou
+# na 7.1.3 e não recebeu a correção.
+#
+# Os mesmos valores estão como padrão no template do compose, e o
+# build.sh confere que os dois batem: o template também é usado à
+# mão, sem o script.
+#
+# Lidas pelo build.sh, por texto; o shellcheck não enxerga esse uso.
+# shellcheck disable=SC2034
+PA_MAUTIC_IMAGEM_RECOMENDADA="mautic/mautic:7.2.2-apache"
+# shellcheck disable=SC2034
+PA_MARIADB_IMAGEM="mariadb:10.11.19"
+
 PA_MAUTIC_DIR="/opt/playahead/mautic"
 PA_MAUTIC_COMPOSE="${PA_MAUTIC_DIR}/docker-compose.yml"
 PA_MAUTIC_ENV="${PA_MAUTIC_DIR}/.env"
@@ -1225,7 +1245,8 @@ mautic_gravar_credenciais() {
 		printf ' LIMPAR O CACHE\n'
 		printf '============================================================\n\n'
 		printf 'Limpar cache é a primeira coisa que se tenta quando algo\n'
-		printf 'estranho acontece. Faça assim, nesta ordem:\n\n'
+		printf 'estranho acontece. Faça num horário de pouco movimento\n'
+		printf '(o site sai do ar por menos de um minuto), nesta ordem:\n\n'
 		printf '  cd %s\n' "$PA_MAUTIC_DIR"
 		printf '  docker compose exec mautic_web \\\n'
 		printf '    chown -R www-data:www-data /var/www/html/var\n'

@@ -32,8 +32,8 @@
 #      TRAEFIK_CERTRESOLVER=nome_do_resolver   # padrão: letsencrypt
 #
 #    Opcional, para trocar de versão:
-#      MAUTIC_IMAGE=mautic/mautic:7-apache
-#      MARIADB_IMAGE=mariadb:10.11
+#      MAUTIC_IMAGE=mautic/mautic:7.2.2-apache
+#      MARIADB_IMAGE=mariadb:10.11.19
 #
 # 2) docker compose up -d mariadb   # espere ficar healthy
 # 3) docker compose up -d mautic_web
@@ -75,7 +75,7 @@ services:
   # ============================================================
 
   mariadb:
-    image: ${MARIADB_IMAGE:-mariadb:10.11}
+    image: ${MARIADB_IMAGE:-mariadb:10.11.19}
     restart: unless-stopped
 
     environment:
@@ -114,7 +114,7 @@ services:
   # ============================================================
 
   mautic_web:
-    image: ${MAUTIC_IMAGE:-mautic/mautic:7-apache}
+    image: ${MAUTIC_IMAGE:-mautic/mautic:7.2.2-apache}
     restart: unless-stopped
 
     depends_on:
@@ -248,7 +248,7 @@ services:
   # ============================================================
 
   mautic_cron:
-    image: ${MAUTIC_IMAGE:-mautic/mautic:7-apache}
+    image: ${MAUTIC_IMAGE:-mautic/mautic:7.2.2-apache}
     restart: unless-stopped
 
     depends_on:
@@ -292,7 +292,7 @@ services:
   # ============================================================
 
   mautic_worker:
-    image: ${MAUTIC_IMAGE:-mautic/mautic:7-apache}
+    image: ${MAUTIC_IMAGE:-mautic/mautic:7.2.2-apache}
     restart: unless-stopped
 
     # Cada worker lê a configuração de e-mail (config/local.php) uma vez,

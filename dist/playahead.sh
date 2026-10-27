@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-27T18:08:03Z
+# Build:  2026-10-27T18:22:55Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -898,7 +898,7 @@ ui_mascarar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-27T18:08:03Z"
+PA_BUILD="2026-10-27T18:22:55Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Menu de instaladores"
 
@@ -1336,7 +1336,7 @@ menu_conteudo_base() {
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-27T18:08:03Z
+# Build:  2026-10-27T18:13:11Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -4191,9 +4191,13 @@ traefik_mostrar_log_acme() {
 # Constantes
 # ------------------------------------------------------------
 
-# Versão fixa da linha v3, nunca `latest`. Conferida na API do
-# Docker Hub em 2026-09-01 e validada em VPS.
-PA_TRAEFIK_VERSAO="v3.7.12"
+# Versão fixa da linha v3, nunca `latest`. Política de versões do
+# CLAUDE.md: o proxy recebe as correções da própria linha.
+#
+# v3.7.16 é a última da 3.7 em 2026-10-27, conferida no Docker Hub
+# e no GitHub. As quatro versões depois da v3.7.12, que o script
+# usava até então, trazem avisos de segurança.
+PA_TRAEFIK_VERSAO="v3.7.16"
 
 PA_TRAEFIK_DIR="/opt/playahead/traefik"
 PA_TRAEFIK_REDE="traefik_public"
@@ -4490,13 +4494,14 @@ cenario_faltando() {
 # Constantes
 # ------------------------------------------------------------
 
-# Versão fixa, nunca `latest`, pela mesma razão do Traefik.
+# Versão fixa, nunca `latest` nem `lts`. Política de versões do
+# CLAUDE.md: o painel com LTS segue a linha LTS.
 #
-# 2.45.0 é a LTS em 2026-09-12. Conferido comparando o digest da
+# 2.45.3 é a LTS em 2026-10-27. Conferido comparando o digest da
 # tag `lts` com o da tag numerada, e não assumido pelo número:
 # a linha 2.39.x recebe patches e parece LTS, mas o digest da
-# `lts` bate com a 2.45.0.
-PA_PORTAINER_VERSAO="2.45.0"
+# `lts` bate com a 2.45.3.
+PA_PORTAINER_VERSAO="2.45.3"
 
 PA_PORTAINER_DIR="/opt/playahead/portainer"
 PA_PORTAINER_CREDENCIAIS="${PA_PORTAINER_DIR}/credenciais.txt"
@@ -4948,7 +4953,7 @@ portainer_bloco_final() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-27T18:08:03Z"
+PA_BUILD="2026-10-27T18:13:11Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
@@ -5383,7 +5388,7 @@ menu_conteudo_mautic7() {
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-27T17:58:51Z
+# Build:  2026-10-27T18:22:55Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -7615,6 +7620,26 @@ cenario_faltando() {
 # Constantes
 # ------------------------------------------------------------
 
+# Versões recomendadas: as que passaram no teste. Nunca tag
+# flutuante (`7-apache`, `10.11`, `latest`); ver "Política de
+# versões" no CLAUDE.md. A tag `7-apache` trocou de 7.1.2 para 7.2.2
+# em 2026-10-26 sem ninguém pedir, e a instalação daquele dia saiu
+# com uma versão que nunca tinha sido testada aqui.
+#
+# 7.2.2 corrige 8 avisos de segurança que atingem toda a 7.x antes
+# dela, entre eles uma execução remota de código; a linha 7.1 parou
+# na 7.1.3 e não recebeu a correção.
+#
+# Os mesmos valores estão como padrão no template do compose, e o
+# build.sh confere que os dois batem: o template também é usado à
+# mão, sem o script.
+#
+# Lidas pelo build.sh, por texto; o shellcheck não enxerga esse uso.
+# shellcheck disable=SC2034
+PA_MAUTIC_IMAGEM_RECOMENDADA="mautic/mautic:7.2.2-apache"
+# shellcheck disable=SC2034
+PA_MARIADB_IMAGEM="mariadb:10.11.19"
+
 PA_MAUTIC_DIR="/opt/playahead/mautic"
 PA_MAUTIC_COMPOSE="${PA_MAUTIC_DIR}/docker-compose.yml"
 PA_MAUTIC_ENV="${PA_MAUTIC_DIR}/.env"
@@ -8821,7 +8846,8 @@ mautic_gravar_credenciais() {
 		printf ' LIMPAR O CACHE\n'
 		printf '============================================================\n\n'
 		printf 'Limpar cache é a primeira coisa que se tenta quando algo\n'
-		printf 'estranho acontece. Faça assim, nesta ordem:\n\n'
+		printf 'estranho acontece. Faça num horário de pouco movimento\n'
+		printf '(o site sai do ar por menos de um minuto), nesta ordem:\n\n'
 		printf '  cd %s\n' "$PA_MAUTIC_DIR"
 		printf '  docker compose exec mautic_web \\\n'
 		printf '    chown -R www-data:www-data /var/www/html/var\n'
@@ -9086,7 +9112,7 @@ mautic_pagina_do_mautic() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-27T17:58:51Z"
+PA_BUILD="2026-10-27T18:22:55Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
@@ -9804,8 +9830,8 @@ mautic_template_embutido() {
 #      TRAEFIK_CERTRESOLVER=nome_do_resolver   # padrão: letsencrypt
 #
 #    Opcional, para trocar de versão:
-#      MAUTIC_IMAGE=mautic/mautic:7-apache
-#      MARIADB_IMAGE=mariadb:10.11
+#      MAUTIC_IMAGE=mautic/mautic:7.2.2-apache
+#      MARIADB_IMAGE=mariadb:10.11.19
 #
 # 2) docker compose up -d mariadb   # espere ficar healthy
 # 3) docker compose up -d mautic_web
@@ -9847,7 +9873,7 @@ services:
   # ============================================================
 
   mariadb:
-    image: ${MARIADB_IMAGE:-mariadb:10.11}
+    image: ${MARIADB_IMAGE:-mariadb:10.11.19}
     restart: unless-stopped
 
     environment:
@@ -9886,7 +9912,7 @@ services:
   # ============================================================
 
   mautic_web:
-    image: ${MAUTIC_IMAGE:-mautic/mautic:7-apache}
+    image: ${MAUTIC_IMAGE:-mautic/mautic:7.2.2-apache}
     restart: unless-stopped
 
     depends_on:
@@ -10020,7 +10046,7 @@ services:
   # ============================================================
 
   mautic_cron:
-    image: ${MAUTIC_IMAGE:-mautic/mautic:7-apache}
+    image: ${MAUTIC_IMAGE:-mautic/mautic:7.2.2-apache}
     restart: unless-stopped
 
     depends_on:
@@ -10064,7 +10090,7 @@ services:
   # ============================================================
 
   mautic_worker:
-    image: ${MAUTIC_IMAGE:-mautic/mautic:7-apache}
+    image: ${MAUTIC_IMAGE:-mautic/mautic:7.2.2-apache}
     restart: unless-stopped
 
     # Cada worker lê a configuração de e-mail (config/local.php) uma vez,
