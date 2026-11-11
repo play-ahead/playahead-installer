@@ -507,14 +507,32 @@ verificar_versoes_template() {
 # Serve para comparar duas builds ignorando a data. Sem isso, todo
 # build produziria um diff mesmo sem mudança no fonte, e o
 # `git status` viveria sujo.
+#
+# Só a DATA é ignorada, e só nas duas linhas que o build escreve, no
+# formato exato em que ele as escreve. Até 2026-11-11 a função
+# apagava qualquer linha que começasse com "PA_BUILD=", e a auditoria
+# de segurança mostrou o preço: uma linha
+#
+#     PA_BUILD="$(comando qualquer)"
+#
+# acrescentada ao dist/ passava pelo --check como "em dia" e rodava
+# como root na VPS de quem baixasse. O --check é o que garante que o
+# dist/ saiu do lib/, e a trava dos pedidos da rotina confia nele.
+#
+# Trocando a data por um marcador, em vez de apagar a linha, uma
+# linha a mais ou uma linha fora do formato aparece na comparação.
 # ------------------------------------------------------------
 
 corpo() {
 	local arquivo="$1"
+	local data='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
 
 	[[ -f "$arquivo" ]] || return 0
 
-	sed -e '/^# Build:/d' -e '/^PA_BUILD=/d' "$arquivo"
+	sed -E \
+		-e "s/^# Build:  ${data}\$/# Build:  DATA/" \
+		-e "s/^PA_BUILD=\"${data}\"\$/PA_BUILD=\"DATA\"/" \
+		"$arquivo"
 }
 
 # ------------------------------------------------------------
