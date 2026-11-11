@@ -205,6 +205,21 @@ menu_gravar() {
 	# A comparação é byte a byte. Comparar versão declarada no
 	# cabeçalho não serviria: uma cópia editada à mão mantém o
 	# número e muda o código.
+	# Link simbólico com o nome do instalador: para. Gravar por cima
+	# seguiria o link e sobrescreveria, como root, o arquivo para onde
+	# ele aponta. Medido em 2026-11-11, numa pasta de teste: o arquivo
+	# apontado virou o base.sh. Em pasta compartilhada como /tmp,
+	# qualquer usuário da máquina consegue deixar um link desses.
+	if [[ -L "$arquivo" ]]; then
+		ui_fatal \
+			"${arquivo} nesta pasta é um link simbólico, e não um arquivo." \
+			"Gravar por cima sobrescreveria o arquivo para onde ele aponta:" \
+			"" \
+			"    $(readlink -- "$arquivo")" \
+			"" \
+			"Apague o link, ou rode o menu de outra pasta."
+	fi
+
 	if [[ -e "$arquivo" ]]; then
 		if "$extrator" | cmp -s - "$arquivo"; then
 			ui_ok "${arquivo} já está aqui, e é igual ao deste menu"
@@ -235,13 +250,21 @@ menu_gravar() {
 		fi
 	fi
 
-	if ! "$extrator" >"$arquivo"; then
+	# Grava num arquivo novo, de nome que ninguém adivinha, e só
+	# então troca pelo nome final. A troca substitui a entrada da
+	# pasta em vez de escrever dentro do que estiver lá, e quem roda o
+	# instalador em seguida nunca pega um arquivo pela metade.
+	local novo
+	if ! novo="$(mktemp "./${arquivo}.XXXXXXXX")" ||
+		! "$extrator" >"$novo" ||
+		! chmod 755 "$novo" ||
+		! mv -f -- "$novo" "$arquivo"; then
+		rm -f -- "${novo:-}"
 		ui_fatal \
 			"Não consegui gravar ${arquivo} neste diretório." \
 			"Verifique a permissão de escrita em: $(pwd)"
 	fi
 
-	chmod +x "$arquivo"
 	ui_ok "${arquivo} gravado em $(pwd)"
 }
 

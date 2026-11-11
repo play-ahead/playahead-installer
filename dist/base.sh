@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-11-11T13:55:35Z
+# Build:  2026-11-11T13:56:12Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -2430,7 +2430,61 @@ PA_DOCKER_PACOTES=(
 PA_DOCKER_KEYRING="/etc/apt/keyrings/docker.asc"
 PA_DOCKER_LISTA="/etc/apt/sources.list.d/docker.list"
 PA_DOCKER_GPG_URL="https://download.docker.com/linux/ubuntu/gpg"
+
+# Impressão digital da chave de assinatura do repositório do Docker,
+# como está na documentação oficial de instalação
+# (https://docs.docker.com/engine/install/ubuntu/):
+# 9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88. A mesma desde
+# 2017. A chave baixada é conferida contra ela antes de o apt passar
+# a confiar no repositório.
+PA_DOCKER_GPG_IMPRESSAO="9DC858229FC7DD38854AE2D88D81803C0EBFCD88"
 PA_DOCKER_REPO_URL="https://download.docker.com/linux/ubuntu"
+
+# ------------------------------------------------------------
+# Chave do repositório
+# ------------------------------------------------------------
+
+# docker_conferir_chave
+#
+# Confere a impressão digital da chave que acabou de ser baixada.
+#
+# É essa chave que diz ao apt em quais pacotes confiar, e ela chega
+# pelo mesmo canal dos pacotes. Sem conferir, quem conseguisse
+# entregar outra chave nesse endereço entregaria também os pacotes.
+# Achado da auditoria de segurança de 2026-11-11.
+#
+# Chave diferente apaga o arquivo e para: é melhor não instalar do
+# que confiar numa chave desconhecida. Sem o gpg na máquina, que é o
+# caso de imagem muito enxuta, a conferência é pulada e dita na
+# tela, em vez de instalar mais um pacote só para isso.
+docker_conferir_chave() {
+	if ! command -v gpg >/dev/null 2>&1; then
+		ui_detalhe "Chave do Docker não conferida: esta máquina não tem o gpg."
+		return 0
+	fi
+
+	local impressao
+	impressao="$(gpg --show-keys --with-colons "$PA_DOCKER_KEYRING" 2>/dev/null |
+		awk -F: '$1 == "fpr" { print $10; exit }')" || true
+
+	if [[ "$impressao" == "$PA_DOCKER_GPG_IMPRESSAO" ]]; then
+		ui_ok "Chave do repositório do Docker conferida"
+		return 0
+	fi
+
+	rm -f "$PA_DOCKER_KEYRING"
+	ui_fatal \
+		"A chave baixada do repositório do Docker não é a esperada." \
+		"" \
+		"    esperada: ${PA_DOCKER_GPG_IMPRESSAO}" \
+		"    baixada:  ${impressao:-ilegível}" \
+		"" \
+		"Nenhum pacote foi instalado. Pode ser uma interferência na" \
+		"conexão, ou o Docker trocou de chave depois que este instalador" \
+		"foi publicado. Confira a impressão digital em" \
+		"https://docs.docker.com/engine/install/ubuntu/ e baixe a versão" \
+		"mais recente do instalador."
+}
 
 # ------------------------------------------------------------
 # Instalação
@@ -2479,6 +2533,8 @@ docker_instalar() {
 		ui_fatal \
 			"Falha ao baixar a chave do repositório do Docker." \
 			"Origem: ${PA_DOCKER_GPG_URL}"
+
+	docker_conferir_chave
 
 	chmod a+r "$PA_DOCKER_KEYRING"
 
@@ -4574,7 +4630,7 @@ base_atualizar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-11-11T13:55:35Z"
+PA_BUILD="2026-11-11T13:56:12Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
