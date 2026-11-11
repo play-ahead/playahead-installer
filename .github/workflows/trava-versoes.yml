@@ -25,7 +25,10 @@ name: Trava da rotina de versões
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened]
+    # "edited" cobre a troca da branch de destino. Sem ele, um pedido
+    # aberto contra outra branch, conferido lá e depois apontado para
+    # o main chegaria aqui com a conferência antiga ainda valendo.
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read

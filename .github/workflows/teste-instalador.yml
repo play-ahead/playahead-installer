@@ -45,8 +45,14 @@ jobs:
       - name: ShellCheck 0.11.0
         # A máquina traz o 0.9.0. A mesma versão de quem faz o build
         # evita aviso que só aparece de um lado.
+        #
+        # O arquivo é conferido pelo sha256 antes de ser aberto: é ele
+        # que roda logo antes do ./build.sh --check, e um binário
+        # trocado poderia mentir sobre o resultado.
         run: |
-          curl -fsSL https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz | tar -xJ
+          curl -fsSL -o shellcheck.tar.xz https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  shellcheck.tar.xz" | sha256sum -c -
+          tar -xJf shellcheck.tar.xz
           sudo install -m 0755 shellcheck-v0.11.0/shellcheck /usr/local/bin/shellcheck
           shellcheck --version
 
