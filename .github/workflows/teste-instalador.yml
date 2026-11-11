@@ -53,8 +53,8 @@ jobs:
       - name: dist/ em dia com o lib/
         run: ./build.sh --check
 
-      - name: shellcheck no teste fixo
-        run: shellcheck testes/ponta-a-ponta.sh
+      - name: shellcheck no teste fixo e na trava
+        run: shellcheck testes/ponta-a-ponta.sh testes/trava-versoes.sh
 
   ponta-a-ponta:
     name: instalação de ponta a ponta

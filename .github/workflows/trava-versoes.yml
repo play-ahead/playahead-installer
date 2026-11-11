@@ -1,0 +1,57 @@
+# ============================================================
+# Trava da rotina de versões
+#
+# A rotina semanal que vigia as versões abre pedidos de atualização
+# (pull requests) sozinha, a partir de branches claude/versoes-*.
+# Ela só pode trocar número de versão. Este workflow reprova o
+# pedido dela que altere qualquer outra coisa. As regras estão em
+# testes/trava-versoes.sh.
+#
+# Pedido de qualquer outra branch passa direto.
+#
+# Por que pull_request_target, e não pull_request: com
+# pull_request, o workflow e o script que rodam são os do próprio
+# pedido, e um pedido poderia apagar a trava que o confere. Com
+# pull_request_target, os dois vêm do main.
+#
+# O cuidado que esse gatilho exige: o código do pedido nunca é
+# baixado para a pasta de trabalho nem executado. Ele é lido como
+# dado, pelo git diff. O nome da branch chega por variável de
+# ambiente, e não colado dentro do comando. A permissão é só de
+# leitura.
+# ============================================================
+
+name: Trava da rotina de versões
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trava-versoes-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  trava:
+    name: trava da rotina de versões
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Baixar o main
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Conferir o que o pedido altera
+        env:
+          RAMO: ${{ github.event.pull_request.head.ref }}
+          NUMERO: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch --quiet --no-tags origin "+refs/pull/${NUMERO}/head:refs/remotes/pedido/head"
+          base="$(git merge-base HEAD refs/remotes/pedido/head)"
+          bash testes/trava-versoes.sh "$base" refs/remotes/pedido/head
