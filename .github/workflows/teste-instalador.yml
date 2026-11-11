@@ -59,6 +59,20 @@ jobs:
       - name: dist/ em dia com o lib/
         run: ./build.sh --check
 
+      - name: o check reprova um dist/ adulterado
+        # Até 2026-11-11 uma linha PA_BUILD com comando dentro passava
+        # pelo --check como "em dia". Este passo adultera o dist/ e
+        # exige a reprovação, para o defeito não voltar calado.
+        run: |
+          linha="$(grep -n '^PA_BUILD=' dist/base.sh | head -n 1 | cut -d: -f1)"
+          sed -i "$((linha + 1))i PA_BUILD=\"\$(echo adulterado >\&2)\"" dist/base.sh
+          if ./build.sh --check; then
+            echo "::error::./build.sh --check aceitou um dist/ adulterado"
+            exit 1
+          fi
+          git checkout -- dist/base.sh
+          ./build.sh --check
+
       - name: shellcheck no teste fixo e na trava
         run: shellcheck testes/ponta-a-ponta.sh testes/trava-versoes.sh
 

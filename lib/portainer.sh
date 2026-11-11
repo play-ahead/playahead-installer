@@ -215,6 +215,9 @@ COMPOSE
 
 		cat <<COMPOSE
       - "traefik.http.services.playahead-portainer.loadbalancer.server.port=9000"
+      # HSTS: quem já abriu o painel por HTTPS não volta a tentar HTTP.
+      - "traefik.http.middlewares.playahead-portainer-hsts.headers.stsSeconds=31536000"
+      - "traefik.http.routers.playahead-portainer.middlewares=playahead-portainer-hsts"
       - "traefik.docker.network=${rede}"
 
 volumes:

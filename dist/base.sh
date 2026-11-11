@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-11-11T13:56:12Z
+# Build:  2026-11-11T14:07:03Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -1240,7 +1240,9 @@ checks_ip_publico() {
 
 	ip="$(curl -fsS --max-time 10 https://api.ipify.org 2>/dev/null || true)"
 
-	if [[ -z "$ip" ]]; then
+	# A resposta vem de um serviço de terceiro e vai para a tela e
+	# para comparações: só serve se for um IPv4, e nada além dele.
+	if [[ ! "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
 		ui_aviso "Não consegui descobrir o IP público desta máquina."
 		return 1
 	fi
@@ -2180,8 +2182,13 @@ sistema_apt_trava_ocupada() {
 # linhas do apt: a mensagem antiga mandava conferir a conexão em
 # qualquer caso, e a trava não tem nada a ver com a conexão.
 sistema_apt() {
+	# Sem plano B com nome fixo em /tmp: um nome previsível, gravado
+	# por root, é convite para link simbólico.
 	local saida
-	saida="$(mktemp)" || saida="/tmp/playahead_apt.$$"
+	if ! saida="$(mktemp)"; then
+		ui_aviso "Não consegui criar um arquivo temporário. Costuma ser disco cheio."
+		return 1
+	fi
 
 	local decorrido=0
 	local avisou=0
@@ -3714,6 +3721,9 @@ COMPOSE
 
 		cat <<COMPOSE
       - "traefik.http.services.playahead-portainer.loadbalancer.server.port=9000"
+      # HSTS: quem já abriu o painel por HTTPS não volta a tentar HTTP.
+      - "traefik.http.middlewares.playahead-portainer-hsts.headers.stsSeconds=31536000"
+      - "traefik.http.routers.playahead-portainer.middlewares=playahead-portainer-hsts"
       - "traefik.docker.network=${rede}"
 
 volumes:
@@ -4630,7 +4640,7 @@ base_atualizar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-11-11T13:56:12Z"
+PA_BUILD="2026-11-11T14:07:03Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 

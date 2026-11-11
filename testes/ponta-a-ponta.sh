@@ -39,6 +39,11 @@
 
 set -euo pipefail
 
+# Os logs deste teste trazem a tela final dos instaladores, com as
+# senhas geradas. São descartáveis, mas não precisam nascer legíveis
+# por todo usuário da máquina.
+umask 077
+
 DOMINIO_MAUTIC="mautic.ci.test"
 DOMINIO_PORTAINER="portainer.ci.test"
 EMAIL="ci@playahead.com.br"
@@ -255,6 +260,82 @@ case "$codigo" in
 esac
 
 # ------------------------------------------------------------
+passo "Segurança do que ficou publicado"
+# ------------------------------------------------------------
+
+# cabecalhos_mautic
+#
+# Os cabeçalhos da tela de login, pelo Traefik. Usada depois da
+# instalação e de novo depois da atualização, que recria o container.
+cabecalhos_mautic() {
+	curl -skI --max-time 30 --resolve "${DOMINIO_MAUTIC}:443:127.0.0.1" \
+		"https://${DOMINIO_MAUTIC}/s/login" 2>/dev/null || true
+}
+
+# conferir_seguranca_mautic <quando>
+conferir_seguranca_mautic() {
+	local quando="$1" cabecalhos codigo
+	cabecalhos="$(cabecalhos_mautic)"
+
+	if grep -qiE '^set-cookie:.*; *secure' <<<"$cabecalhos"; then
+		ok "${quando}: cookie de sessão com secure"
+	else
+		falhou "${quando}: cookie de sessão sem secure"
+	fi
+
+	if grep -qi '^strict-transport-security: *max-age=31536000' <<<"$cabecalhos"; then
+		ok "${quando}: HSTS no Mautic"
+	else
+		falhou "${quando}: sem HSTS no Mautic"
+	fi
+
+	# O cabeçalho Forwarded de um visitante não pode derrubar o pixel.
+	codigo="$(curl -sk --max-time 30 --resolve "${DOMINIO_MAUTIC}:443:127.0.0.1" \
+		-H 'Forwarded: for=203.0.113.7;proto=http' -o /dev/null -w '%{http_code}' \
+		"https://${DOMINIO_MAUTIC}/mtracking.gif" 2>/dev/null || true)"
+	if [[ "$codigo" == "200" ]]; then
+		ok "${quando}: pixel responde 200 com o cabeçalho Forwarded"
+	else
+		falhou "${quando}: pixel com o cabeçalho Forwarded respondeu ${codigo:-nada}"
+	fi
+}
+
+conferir_seguranca_mautic "depois de instalar"
+
+if curl -skI --max-time 30 --resolve "${DOMINIO_PORTAINER}:443:127.0.0.1" \
+	"https://${DOMINIO_PORTAINER}/" 2>/dev/null |
+	grep -qi '^strict-transport-security: *max-age=31536000'; then
+	ok "HSTS no Portainer"
+else
+	falhou "sem HSTS no Portainer"
+fi
+
+publicado="$(docker inspect -f '{{index .Config.Labels "traefik.enable"}}' mautic-mautic_web-1 2>/dev/null || true)"
+if [[ "$publicado" == "true" ]]; then
+	ok "o Mautic terminou publicado no Traefik (traefik.enable=true)"
+else
+	falhou "o Mautic terminou com traefik.enable=${publicado:-?}"
+fi
+
+# O root do banco só existe para conexão de dentro do container.
+hosts_root="$(docker exec mautic-mariadb-1 sh -c \
+	'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mariadb -N -uroot -e "select group_concat(host order by host) from mysql.user where user=\"root\""' \
+	2>/dev/null || true)"
+if [[ "$hosts_root" == "localhost" ]]; then
+	ok "root do banco só em localhost"
+else
+	falhou "root do banco em: ${hosts_root:-não consegui ler}"
+fi
+
+# Só o Traefik publica porta no host.
+publicadas="$(docker ps --format '{{.Names}} {{.Ports}}' | grep -E '0\.0\.0\.0:|:::' | awk '{print $1}' | sort -u | tr '\n' ' ')"
+if [[ "$publicadas" == "traefik-traefik-1 " ]]; then
+	ok "só o Traefik publica porta no host"
+else
+	falhou "containers com porta publicada: ${publicadas:-nenhum}"
+fi
+
+# ------------------------------------------------------------
 passo "Segunda execução não reinstala"
 # ------------------------------------------------------------
 
@@ -357,6 +438,10 @@ if [[ "$medida" == "200 https://${DOMINIO_MAUTIC}/s/login" ]]; then
 else
 	falhou "Mautic depois da atualização: ${medida:-sem resposta}"
 fi
+
+# A atualização recria o container, que volta com o cache da imagem.
+# Sem refazer o cache, o cookie de sessão sairia sem secure.
+conferir_seguranca_mautic "depois de atualizar"
 
 printf '# linha acrescentada pelo teste\n' >>/opt/playahead/traefik/docker-compose.yml
 

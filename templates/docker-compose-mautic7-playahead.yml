@@ -89,6 +89,12 @@ services:
       MYSQL_USER: mautic
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      # O root do banco só entra de dentro do próprio container. Sem
+      # isto a imagem cria root@%, que aceita conexão de qualquer
+      # container da rede. Ninguém aqui usa o root pela rede: o Mautic
+      # usa o usuário mautic, e o backup da atualização roda dentro do
+      # container do banco. Só vale para banco criado do zero.
+      MARIADB_ROOT_HOST: localhost
       TZ: America/Sao_Paulo
 
     command:
@@ -221,7 +227,13 @@ services:
       # O valor da regra PRECISA estar entre crases (exigência do Traefik)
       # ----------------------------------------------------------
 
-      - "traefik.enable=true"
+      # "true", a não ser durante a instalação. O instalador sobe o
+      # Mautic com PLAYAHEAD_PUBLICAR=false enquanto ele não está
+      # instalado: sem isso, o assistente web fica aberto na internet
+      # por um ou dois minutos, com os dados do banco já preenchidos,
+      # e quem chegasse primeiro criaria o administrador. Terminada a
+      # instalação, o container é recriado com a rota ligada.
+      - "traefik.enable=${PLAYAHEAD_PUBLICAR:-true}"
 
       - "traefik.http.routers.playahead-mautic.rule=Host(`${MAUTIC_DOMAIN}`)"
 
@@ -232,6 +244,23 @@ services:
       - "traefik.http.routers.playahead-mautic.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
 
       - "traefik.http.services.playahead-mautic.loadbalancer.server.port=80"
+
+      # Dois cuidados aplicados pelo Traefik antes de o pedido chegar
+      # ao Mautic:
+      #
+      # HSTS: o navegador que já abriu este endereço por HTTPS não
+      # volta a tentar HTTP, nem na primeira requisição de uma visita
+      # nova. Um ano, só para este domínio (sem subdomínios).
+      #
+      # Cabeçalho "Forwarded" removido: o Mautic confia no proxy para
+      # saber o IP e o protocolo do visitante, e o Traefik informa isso
+      # pelos X-Forwarded-*, que ele mesmo regrava. O "Forwarded" ele
+      # deixa passar como veio. Medido em 2026-11-11: qualquer pedido
+      # com esse cabeçalho recebia erro 500, inclusive no pixel e no
+      # mtc.js, porque os dois cabeçalhos se contradiziam.
+      - "traefik.http.middlewares.playahead-mautic-seguranca.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.playahead-mautic-seguranca.headers.customRequestHeaders.Forwarded="
+      - "traefik.http.routers.playahead-mautic.middlewares=playahead-mautic-seguranca"
 
       - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik_public}"
 

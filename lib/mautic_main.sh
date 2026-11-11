@@ -651,6 +651,9 @@ main_instalar() {
 		ui_ok "Instalação por linha de comando pulada por --wizard"
 		ui_detalhe "Conclua pelo navegador; as credenciais do banco estão"
 		ui_detalhe "no bloco final e em ${PA_MAUTIC_CREDENCIAIS}."
+		ui_aviso "Conclua o assistente web assim que este instalador terminar."
+		ui_detalhe "Até lá ele fica aberto na internet, e quem abrir o endereço"
+		ui_detalhe "primeiro cria o administrador."
 
 		# Com --wizard o pacote de idioma entra, mas a configuração
 		# não: quem completa o assistente reescreve o local.php no
@@ -682,6 +685,16 @@ main_instalar() {
 	fi
 
 	mautic_subir_resto
+
+	# Depois de publicar, e não antes: o container recriado volta com
+	# o cache que veio na imagem. É este passo que faz o idioma e o
+	# fuso aparecerem, e o cookie de sessão sair com "secure". Com
+	# --wizard fica de fora: ainda não há site_url para compilar.
+	if [[ "$PA_WIZARD" -eq 0 ]]; then
+		mautic_limpar_cache || true
+	fi
+
+	mautic_conferir_workers
 
 	# Antes das credenciais, porque o resultado vai para o arquivo.
 	mautic_testar_smtp
