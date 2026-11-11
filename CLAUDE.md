@@ -1752,6 +1752,176 @@ O que fazer com isso era decisão de produto, não correção de bug. Resolvido 
 
 ## Pendências
 
+### Estado em 2026-11-11 (passagem para a próxima conversa)
+
+Escrito no fim da conversa que fez os blocos 1 e 2 até o item 7, para nada
+ficar só nela. O detalhe de cada item está mais abaixo, em "Revisão externa
+do commit 746ae74".
+
+**Bloco 2: feito, testado e no GitHub**
+
+| Item | Commit |
+|---|---|
+| 0, limpeza de cache sem `cache:clear` | `9ce9446` |
+| 1, texto do socket `:ro` | `cedd4c0` |
+| 2, versões exatas (Mautic 7.2.2, MariaDB 10.11.19, Traefik v3.7.16, Portainer 2.45.3) | `f5c8957` |
+| 3, rotação de log | `f07f749` |
+| 4, registro AAAA | `e91b157` |
+| 5, pergunta de versão (`--versao=`) | `e10d122` |
+| 6, teste fixo e workflow | `6cbd557`, `949bc7f` (bit de executável) |
+| ajuste: não prometer login em português | `d1f0793` |
+
+O workflow passou no GitHub em 2026-11-11 (rodada 43013774631). O `main`
+está protegido como descrito no item 6, no andamento do bloco 2.
+
+**Bloco 2, item 7 (rotina semanal): prompt escrito, rotina NÃO criada.**
+
+- Prompt em `rotinas/vigia-de-versoes.md`. O Fabio recebeu o texto para
+  revisão e ainda não deu o ok. Não criar antes do ok.
+- Decisões do Fabio: toda segunda às 8h07 de Brasília (cron em UTC:
+  `7 11 * * 1`); criar pelo `/schedule` depois do ok; se aparecer bloqueio
+  da organização, avisar o Fabio, que liga ("Scheduled tasks (Was Routines)"
+  em Organization settings → Capabilities → Remote sessions do Claude Team).
+- A rotina **não grava no cofre**: o pedido de atualização no GitHub é o
+  registro do trabalho dela. **Quando o Fabio aprovar um pedido junto com o
+  Claude, o Claude grava a linha da revisão dele no registro da semana**
+  (`wiki/semanas/.../fabio.md`, categoria Instalação, "revisão do Fabio").
+- **Bloqueio antes de criar: a conta do GitHub.** Conferido em 2026-11-11: a
+  organização `play-ahead` tem só dois membros, `play-ahead1` e
+  `brunaluizarocha27`, e **os dois são donos** (o cofre dizia que a Bruna
+  tinha escrita). A conta pessoal do Fabio não está na organização. A rotina
+  age com a conta do GitHub conectada no claude.ai; se for uma conta dona,
+  ela contorna a regra do teste. O que falta, do lado do Fabio: convidar a
+  conta pessoal dele como **membro** (não dono), no time `conteudo`, com
+  escrita no `playahead-installer`, e conectar essa conta no claude.ai. Para
+  ver qual conta está conectada hoje: claude.ai → Settings → Connectors →
+  GitHub, ou, no GitHub de cada conta, Settings → Applications → Authorized
+  GitHub Apps → "Claude".
+- O app "claude" está instalado na organização desde 2026-10-16 18:20, com
+  acesso aos 9 repositórios e escrita em conteúdo, pull requests, workflows
+  e actions. Quem usa: sessões do Claude Code na nuvem e, provavelmente, a
+  sincronização de plugins da organização a partir do `mods-claude` (não
+  confirmado). Nenhum workflow depende dele.
+- Rede das rotinas (pesquisado na documentação em 2026-10-27): o ambiente
+  padrão ("Trusted") já alcança `hub.docker.com`, `api.github.com` e
+  `github.com`. O proxy bloqueia GraphQL, então o `gh pr create` deve falhar;
+  o prompt manda abrir o pedido pela API REST. A conferir na primeira
+  execução.
+
+**Bloco 2, item 8 (modo de atualização): desenho aprovado, não começado.**
+
+Desenho aprovado pelo Fabio em 2026-10-27:
+
+- Ação explícita, com confirmação, nunca sozinha: `sudo bash mautic7.sh
+  --atualizar` e `sudo bash base.sh --atualizar` (Traefik e Portainer). Só
+  sobre instalação concluída (com a marca).
+- Leva para a versão **recomendada** do script, nunca para a mais nova.
+- Antes de trocar qualquer coisa: backup em
+  `/opt/playahead/mautic/backups/<data>/` com o `mysqldump` do banco
+  (conferido no fim: "Dump completed"), o compose, o `.env` e o `local.php`;
+  conferir o espaço em disco antes. A migração do banco não volta atrás.
+- Para cron e worker, baixa as imagens com progresso, regrava o compose a
+  partir do template, sobe a web (o entrypoint da imagem aplica as
+  migrações), espera `healthy`, sobe o resto, confere o roteamento e
+  registra a versão no `credenciais.txt`.
+- **Acréscimo do Fabio:** antes de regravar o compose, comparar com o
+  template da versão instalada. Se a pessoa mexeu nele, avisar na tela que a
+  alteração dela não vai junto e que o compose antigo ficou no backup.
+- Sem rollback automático; falhando, mostra os comandos para restaurar o
+  backup.
+- É a **única exceção** à regra de não sobrescrever o compose, e isso tem de
+  ficar escrito aqui com o porquê: a versão recomendada mora no template, e
+  é o único caminho para uma instalação antiga receber as correções do
+  compose (as duas "notas de atualização" deste documento, o `--time-limit` e
+  a rotação de log). O `.env` continua nunca sendo sobrescrito.
+- **A resolver no desenho:** trocar a imagem recria os containers, e temas e
+  plugins instalados pelo painel (`docroot/themes`, `docroot/plugins`,
+  `vendor`) moram na camada do container e se perdem. No mínimo, avisar.
+- O passo que recria containers deve rodar desligado da sessão
+  (`setsid`/`nohup`) ou aceitar a retomada como saída: no teste do item 3 a
+  conexão SSH caiu no meio do `up -d` e deixou a stack pela metade.
+
+Teste do item 8, aprovado pelo Fabio: na VPS de teste, recriar o estado
+antigo com o `dist/` do commit `cedd4c0` (Traefik v3.7.12, Portainer 2.45.0)
+e o Mautic fixado na 7.2.1. Atenção: o template daquele commit ainda usa
+`${MAUTIC_IMAGE:-mautic/mautic:7-apache}`, e o `mautic7.sh` gera o `.env` e
+sobe na mesma execução; para fixar a 7.2.1, exportar
+`MAUTIC_IMAGE=mautic/mautic:7.2.1-apache` no shell antes de rodar (o compose
+dá precedência à variável do shell) e depois gravar a mesma linha no `.env`
+para valer nas próximas subidas. **Antes de testar a atualização, conferir
+que subiram exatamente Traefik v3.7.12, Portainer 2.45.0 e Mautic 7.2.1.**
+Para não gastar emissão do Let's Encrypt com os mesmos nomes, dá para
+devolver ao volume do Traefik o `acme.json` guardado na VPS (ver abaixo). No
+fim, a VPS é destruída.
+
+**Falta ainda, além do item 8:**
+
+- Bloco 3, visual: moldura, contador de etapas e quadro final com as
+  credenciais. Não começado.
+- **Auditoria e ensaio do teste final**, citados pelo Fabio em 2026-11-11 como
+  passos antes do teste final dele. O conteúdo dos dois não foi definido nesta
+  conversa: combinar com ele.
+- Teste final do Fabio, numa VPS limpa de 2 GB, pelo menu: base e Mautic,
+  swap, Portainer abrindo sem token e com a senha do `credenciais.txt`, o menu
+  voltando para a lista, a marca `>` no resumo, o painel sem laço de
+  redirecionamento, o login funcionando (a tela de login sai em inglês, ver
+  "Login em inglês"), a segunda execução reconhecendo a instalação, o Ctrl-C,
+  a pergunta de versão, e o item 5 do teste de envio: SMTP do SES na porta
+  2587 no painel e um e-mail a um contato, conferido no log e não no
+  histórico. Só depois dele sai a tag `mautic7-v0.1.0`.
+- Achados a decidir, registrados mais abaixo: o aviso de VPS lenta durante a
+  instalação (SSH caindo com carga 13 em 1 vCPU) e o proxy de socket.
+- **Medição incompleta da renovação dos workers** (2026-10-27): a cada 5
+  minutos os 6 workers se renovam juntos. Na única renovação medida (18:57:30
+  UTC), a carga continuou caindo, de 1,5 para 0,7, sem pico. Só 23 das 72
+  amostras previstas foram gravadas; vale repetir uma medição mais longa.
+
+**Ambiente de teste**
+
+- VPS de teste na DigitalOcean: **201.79.41.0**, Ubuntu 24.04.5, 1 vCPU,
+  1967 MB de RAM, 30 GB de disco, nome
+  `mautic-teste-script-ubuntu-s5-1vcpu-2gb-30gb-mkc1`. Entrar com
+  `ssh root@201.79.41.0` usando a chave `~/.ssh/id_ed25519` do PC do Fabio
+  (`SHA256:EspOncNC6Ufl0Tq2DanIhLy70qiH/Vjw6vJlOA2GvxA`), a única autorizada; o
+  Fabio também entra pelo Termius com a mesma chave. Senha no SSH desligada.
+- **Estado em 2026-11-11:** base e Mautic instalados pelo
+  `testes/ponta-a-ponta.sh` de 2026-10-27, com os domínios **`mautic.ci.test`
+  e `portainer.ci.test`**, que só existem no `/etc/hosts` dela (127.0.0.1).
+  Os domínios `.demo` não estão servidos nela agora. Swap de 2 GB ativo.
+  Containers: Traefik v3.7.16, Portainer 2.45.3, MariaDB 10.11.19, Mautic
+  7.2.2. Em `/root`: `repo/` (cópia de `dist/` e `testes/` de 2026-10-27),
+  os scripts e os logs dos testes. Em `/var/backups/playahead/`: o
+  `acme-2026-10-27.json`, com os certificados dos nomes `.demo` emitidos em
+  2026-10-27.
+- DNS: `*.demo.agenciaalemdoobvio.com` aponta para 201.79.41.0 no Cloudflare,
+  sem proxy (nuvem cinza). Havia um registro próprio `portainer.demo` com o IP
+  da VPS anterior, e o Fabio o apagou em 2026-10-27; o curinga cobre os dois
+  nomes.
+- Para zerar a VPS sem recriá-la: `testes/vps/zerar-vps.sh` (destrutivo). Para
+  rodar o menu num terminal de verdade, respondendo as perguntas:
+  `testes/vps/menu-pty.py`.
+- `get.playahead.com.br` **ainda não está no ar**. Para testar, baixar de
+  `https://raw.githubusercontent.com/play-ahead/playahead-installer/main/dist/playahead.sh`.
+- Neste PC, os commits saem como `Fabio <admin@playahead.com.br>`, configurado
+  só neste repositório, e o push sai pela conta `play-ahead1`, dona da
+  organização, que contorna a regra do teste no `main`.
+
+**Armadilhas dos testes, aprendidas nesta conversa**
+
+- Numa VPS de 1 vCPU, comando longo (instalação, `docker compose up -d`) roda
+  desligado da sessão SSH (`setsid nohup ... &`) e é acompanhado por um laço
+  curto de conferência: a carga derruba o SSH, e o comando morre junto.
+- Bash em segundo plano ignora o SIGINT. Para simular uma queda, mate o grupo
+  de processos com SIGTERM; para simular Ctrl-C, use um pty.
+- `pkill -f` casa com a própria linha de comando da sessão SSH e a derruba.
+- Nomes de teste no `/etc/hosts` servem para o `getent` (A e AAAA) sem mexer
+  no DNS de verdade.
+- Let's Encrypt: no máximo 5 certificados iguais por semana para os mesmos
+  nomes. Reinstalar do zero com os nomes `.demo` gasta uma emissão; testes que
+  não precisam do certificado usam os domínios `.test` do teste fixo.
+- Teste que faz o instalador reprovar de propósito (como o worker parado) é o
+  que prova que o teste confere alguma coisa.
+
 **Cenário 1 validado de ponta a ponta** em 2026-09-12. A tag `mautic7-v0.1.0`
 fica para depois de as correções deste teste serem revalidadas, **e das cinco
 pendências do teste de envio abaixo**.
