@@ -317,8 +317,18 @@ if [[ -n "$backup" ]]; then
 		grep -q "linha acrescentada pelo teste" "${backup}/docker-compose.yml"
 	confere ".env e instruções de volta no backup" \
 		sh -c "[ -f '${backup}/.env' ] && [ -f '${backup}/COMO-RESTAURAR.txt' ]"
-	confere "backup legível só pelo root" \
-		sh -c "[ \"\$(stat -c %a '${backup}')\" = 700 ] && [ \"\$(stat -c %a '${backup}/banco.sql.gz')\" = 600 ]"
+	# A pasta e os arquivos com segredo não podem dar acesso a grupo
+	# nem a outros. Confere os bits, e não o número exato do modo: uma
+	# pasta pode herdar o setgid da pasta de cima sem que isso abra
+	# nada. Falhando, mostra o modo de cada um.
+	abertos="$(find "$backup" -maxdepth 0 -perm /077 2>/dev/null
+		find "${backup}/banco.sql.gz" "${backup}/.env" -perm /077 2>/dev/null)"
+	if [[ -z "$abertos" ]]; then
+		ok "backup sem acesso para grupo nem para outros"
+	else
+		falhou "backup com acesso além do root: $(stat -c '%a %U:%G %n' \
+			"$backup" "${backup}/banco.sql.gz" "${backup}/.env" 2>&1 | tr '\n' ' ')"
+	fi
 else
 	falhou "a atualização não deixou backup"
 fi
