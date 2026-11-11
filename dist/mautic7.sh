@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-11-11T13:19:48Z
+# Build:  2026-11-11T13:47:35Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -4811,6 +4811,18 @@ mautic_fazer_backup() {
 
 	mautic_atualizar_como_restaurar arquivo >"${PA_MAUTIC_BACKUP}/COMO-RESTAURAR.txt"
 
+	# Fecha o que foi criado, sem depender do umask. Medido na máquina
+	# do GitHub em 2026-11-11: com o umask em 077, o dump nasceu com
+	# modo 666 dentro da pasta 700, o que é o sinal de pasta com ACL
+	# padrão, onde o umask não vale. A pasta fechada já impedia o
+	# acesso; o chmod explícito tira a dependência. Só o primeiro
+	# nível e a configuração: os arquivos dos temas voltam para o
+	# container com o modo que tinham.
+	find "$PA_MAUTIC_BACKUP" -maxdepth 1 -exec chmod go-rwx {} +
+	if [[ -d "${PA_MAUTIC_BACKUP}/config" ]]; then
+		chmod -R go-rwx "${PA_MAUTIC_BACKUP}/config"
+	fi
+
 	# Só agora: este arquivo é a promessa de que o backup terminou.
 	{
 		printf 'backup=%s\n' "$PA_MAUTIC_BACKUP"
@@ -5246,7 +5258,7 @@ mautic_atualizar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-11-11T13:19:48Z"
+PA_BUILD="2026-11-11T13:47:35Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.

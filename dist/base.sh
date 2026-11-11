@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-11-11T13:19:48Z
+# Build:  2026-11-11T13:47:35Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -4252,6 +4252,10 @@ base_atualizar_backup() {
 
 	base_atualizar_como_restaurar arquivo >"${PA_BASE_BACKUP}/COMO-RESTAURAR.txt"
 
+	# Fecha o que foi criado, sem depender do umask: em pasta com ACL
+	# padrão ele não vale. Ver o comentário de mautic_fazer_backup.
+	chmod -R go-rwx "$PA_BASE_BACKUP"
+
 	umask "$mascara_antiga"
 
 	ui_ok "Backup completo em ${PA_BASE_BACKUP}"
@@ -4522,7 +4526,7 @@ base_atualizar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-11-11T13:19:48Z"
+PA_BUILD="2026-11-11T13:47:35Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 

@@ -397,6 +397,10 @@ base_atualizar_backup() {
 
 	base_atualizar_como_restaurar arquivo >"${PA_BASE_BACKUP}/COMO-RESTAURAR.txt"
 
+	# Fecha o que foi criado, sem depender do umask: em pasta com ACL
+	# padrão ele não vale. Ver o comentário de mautic_fazer_backup.
+	chmod -R go-rwx "$PA_BASE_BACKUP"
+
 	umask "$mascara_antiga"
 
 	ui_ok "Backup completo em ${PA_BASE_BACKUP}"
