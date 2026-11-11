@@ -483,6 +483,7 @@ o que saiu do `mautic7.sh` saiu porque a responsabilidade mudou de dono.
 | `--sem-portainer` | não instala o Portainer |
 | `--skip-dns-check` | pula a validação de DNS |
 | `--no-swap` | não cria swapfile |
+| `--atualizar` | atualiza o Traefik e o Portainer desta base; ver "Modo de atualização" |
 | `--yes` | não interativo: nenhuma pergunta, falha se faltar dado |
 | `--help` | lista as opções |
 | `--version` | imprime versão e data de build |
@@ -502,6 +503,7 @@ o que saiu do `mautic7.sh` saiu porque a responsabilidade mudou de dono.
 | `--versao=` | `recomendada` (padrão) ou `mais-nova`; ver "Política de versões" |
 | `--wizard` | não conclui a instalação, deixa o assistente web |
 | `--skip-dns-check` | pula a validação de DNS |
+| `--atualizar` | atualiza um Mautic já instalado; ver "Modo de atualização" |
 | `--yes` | não interativo: nenhuma pergunta, falha se faltar dado |
 | `--help` | lista as opções |
 | `--version` | imprime versão e data de build |
@@ -739,12 +741,180 @@ Este é um requisito de proteção, não de conveniência. Um script que não de
 nada raramente vira problema, jurídico ou de reputação.
 
 - Nunca sobrescrever `.env` existente.
+- Nunca sobrescrever o compose instalado, com uma exceção só: o modo de
+  atualização, que guarda o antigo no backup antes. Ver "Modo de
+  atualização".
 - Nunca executar `docker system prune` ou equivalente.
 - Nunca alterar configuração de Traefik que já está rodando sem avisar e pedir
   confirmação explícita.
 - Diante de instalação anterior parcial, parar e explicar, em vez de seguir.
 - Operações aditivas (criar swap, criar rede, criar diretório) são permitidas,
   desde que anunciadas e idempotentes.
+
+## Modo de atualização
+
+Implementado e testado em 2026-11-11 (item 8 do bloco 2). Desenho aprovado
+pelo Fabio em 2026-10-27; o que foi decidido na implementação está marcado.
+
+    sudo bash mautic7.sh --atualizar     Mautic e MariaDB
+    sudo bash base.sh --atualizar        Traefik e Portainer
+
+Ação pedida, com confirmação, nunca sozinha. Leva sempre para a versão
+**recomendada** do instalador que a pessoa baixou, nunca para a mais nova. Só
+combina com `--yes`: uma flag de instalação junto é sinal de engano, e o
+script para dizendo isso.
+
+### A ordem, e por que cada passo está onde está
+
+1. **Confere e planeja**, sem alterar nada. A versão em uso é lida de dentro
+   do container (`release_metadata.json` do Mautic, `select version()` do
+   banco), e não da tag da imagem: uma instalação antiga pode ter subido com
+   a tag flutuante `7-apache`, que não diz o número.
+2. **Mostra de qual versão para qual e pergunta.** O Enter vale "não": aqui
+   o engano custa o site fora do ar. O resumo sai sempre, inclusive com
+   `--yes`.
+3. **Baixa as imagens novas com o site ainda no ar.** Falhando aqui, nada
+   mudou.
+4. **Para o Mautic e faz o backup**, em
+   `/opt/playahead/mautic/backups/<data>/`, legível só por root: o dump do
+   banco (conferido até o "Dump completed"), o compose, o `.env`, o
+   `credenciais.txt`, o `local.php` e o `parameters_local.php`, e os temas e
+   plugins instalados pelo painel. **O Mautic para antes do dump, e não
+   depois**, para o backup ser o estado final: com o site no ar, o que
+   entrasse durante o download das imagens ficaria de fora de uma eventual
+   volta.
+5. **Só então regrava o compose e sobe a versão nova**: banco, depois a web
+   (o entrypoint da imagem aplica as migrações), depois cron e worker.
+6. **Confere**: versão por dentro do container, migrações em dia, workers
+   com `--time-limit`, roteamento e certificado. Regrava o
+   `credenciais.txt` com a versão nova, mantendo o e-mail e a senha.
+
+### A única exceção à regra de não sobrescrever o compose
+
+A versão recomendada mora no template, e a atualização é o único caminho
+para uma instalação antiga receber as correções do compose (o
+`--time-limit` dos workers, a rotação de log). O compose antigo vai para o
+backup antes. **O `.env` continua nunca sendo sobrescrito.** Por isso, se o
+`.env` fixa a imagem (`MAUTIC_IMAGE`, `MARIADB_IMAGE`) em outra versão, a
+atualização para e manda apagar a linha: ele vence o compose, e regravar o
+compose subiria a mesma versão de antes.
+
+**Compose alterado à mão (acréscimo do Fabio).** A instalação passou a
+gravar o sha256 do compose como o instalador o deixou, em
+`.compose.sha256`, na pasta de cada stack. Na atualização, se o arquivo não
+confere mais, a tela avisa antes da pergunta que a alteração não vai junto e
+onde o antigo fica guardado. Instalação anterior a esse registro recebe um
+aviso mais fraco ("não sei dizer se foi alterado"). **Decisão de
+implementação:** comparar com "o template da versão instalada" exigiria
+carregar os templates antigos dentro do script; o hash gravado na
+instalação responde a mesma pergunta com uma linha.
+
+### Sem volta automática, com volta escrita
+
+A migração do banco não desfaz, e um script que tentasse restaurar sozinho
+no meio de uma falha teria de adivinhar em que ponto parou. O que existe:
+
+- `COMO-RESTAURAR.txt` dentro de cada backup, com os comandos exatos.
+- Saindo com erro ou Ctrl-C **depois** do backup, os mesmos comandos
+  aparecem na tela, junto com o comando para continuar.
+- Saindo **antes** de qualquer troca (entre parar o Mautic e terminar o
+  backup), o script liga o Mautic de novo na versão de antes.
+- O dump leva `--add-drop-database --databases mautic`: restaurar apaga o
+  banco e o recria, e não deixa para trás tabela que a versão nova criou.
+
+**A armadilha do religar, medida em 2026-11-11:** um Ctrl-C no meio do
+`docker compose stop` interrompe o comando, mas não a parada, que continua
+valendo dentro do Docker. A primeira versão ligava os containers na hora, o
+`start` não tinha efeito, e eles caíam dez segundos depois, com a tela
+dizendo que tinham sido ligados. A saída agora espera a parada terminar e só
+então liga.
+
+### Queda do terminal: os dois mecanismos
+
+- **Os `docker compose up` e `stop` da troca rodam em sessão própria**
+  (`setsid --wait`, em `docker_compose_desligado`). Se o SSH cair, o comando
+  em andamento termina sozinho, em vez de deixar container antigo em
+  remoção e novo só criado, como no teste de 2026-10-27.
+- **A atualização é retomável.** No fim do backup nasce
+  `.atualizacao-em-andamento`, com a pasta do backup e as versões de antes.
+  Rodar `--atualizar` de novo segue de onde parou e **não refaz o backup**:
+  um segundo dump seria de um banco já pela metade.
+
+### Temas e plugins instalados pelo painel (decisão de implementação)
+
+O desenho pedia "no mínimo, avisar". Ficou assim:
+
+- Quem diz o que é extra é o `docker diff`, que lista o que o container tem
+  de diferente da imagem. Só pastas novas no primeiro nível de
+  `docroot/themes` e `docroot/plugins`.
+- **Temas voltam sozinhos**: vão para o backup, e depois da troca são
+  copiados para o container novo, com o dono devolvido ao `www-data`. São
+  só arquivos.
+- **Plugins não voltam**: o Marketplace instala pelo composer, com
+  dependências em `vendor/`, e copiar a pasta deixaria um plugin pela
+  metade. A tela lista os nomes antes e depois, e a cópia fica no backup.
+- Alteração feita dentro de um tema de fábrica não é tratada.
+
+### O que a atualização recusa
+
+| Situação | O que faz |
+|---|---|
+| Não há instalação, ou ela parou no meio | manda rodar sem `--atualizar` |
+| Versão em uso mais nova que a recomendada | para: seria voltar versão; pede o instalador mais recente |
+| Versão em uso de outra linha (Mautic 6, MariaDB 11) | para |
+| `.env` fixando a imagem em outra versão | para e manda apagar a linha |
+| Falta espaço para o backup e a imagem | para, com a conta na tela |
+| Nada a atualizar | diz isso e sai com 0 |
+
+### A base
+
+Mesmo desenho, mais simples: só mexe no Traefik e no Portainer que estão em
+`/opt/playahead` (o que não é nosso fica como está), a versão vem da tag
+(na base ela sempre foi exata), e o compose novo do Portainer é montado com
+o domínio, o entrypoint, o certresolver e a rede **lidos do compose
+instalado**: atualizar não é hora de mudar roteamento. O backup fica em
+`/opt/playahead/backups/base-<data>/`, com o `acme.json` e os dados do
+Portainer. O Docker não entra: ele chega pelo apt.
+
+### Testes, na VPS de 2 GB, em 2026-11-11
+
+Estado antigo recriado com o `dist/` do commit `cedd4c0`: Traefik v3.7.12,
+Portainer 2.45.0, sem rotação de log, sem `.compose.sha256`. Os certificados
+do Let's Encrypt foram devolvidos ao volume a partir da cópia de 27/10, para
+não gastar emissão.
+
+| Teste | Resultado |
+|---|---|
+| Base: v3.7.12 para v3.7.16, 2.45.0 para 2.45.3 | 22 s; mesmos certificados (hash igual, nenhuma emissão); mesmo login e mesma instância do Portainer; os dois com log `local` |
+| Base: seguir o `COMO-RESTAURAR.txt` | voltou a v3.7.12 e 2.45.0, com os dados e o login do Portainer |
+| Mautic 7.2.1 para 7.2.2, MariaDB 10.11.18 para 10.11.19 | 127 s; dados, senha do admin (`password_verify`) e 6 workers conferidos |
+| **Mautic 7.1.3 para 7.2.2, com migração de verdade** | 13 migrações aplicadas pela imagem (104 para 117 registradas, 125 para 127 tabelas); dados e senha intactos |
+| Tema e plugin criados no container antes | tema devolvido, dono `www-data`; plugin só no backup, com aviso |
+| Seguir o `COMO-RESTAURAR.txt` depois da migração | voltou à 7.1.3, com 104 migrações e 125 tabelas |
+| Queda do terminal (SIGHUP) na subida do banco | o instalador morreu; o `up -d` terminou sozinho |
+| Morte (SIGTERM) na subida do Mautic | a execução seguinte retomou, sem backup novo; o `up -d` tinha terminado |
+| Ctrl-C depois do backup | tela com o comando para continuar e os comandos para voltar |
+| Ctrl-C antes de qualquer troca | Mautic ligado de novo; os três containers no ar |
+| Enter na pergunta | nada alterado, nenhum backup criado |
+| Rodar de novo depois de atualizar | "Nada a atualizar", saída 0 |
+| `.env` fixando a imagem; em uso mais novo que o recomendado | para, com a mensagem certa, saída 1 |
+| Compose alterado à mão | aviso antes da pergunta; regravado; antigo no backup |
+
+**O que o teste não cobriu:** banco grande (o de teste tem 24 KB de dump; o
+tempo fora do ar cresce com o banco), plugin de verdade instalado pelo
+Marketplace, e falta de espaço em disco, que só foi lida no código.
+
+**Achado no caminho, que não é do instalador:** o Mautic 7.1.3 instalado
+hoje responde 500 na tela de login (erro de template,
+`OverrideIncludeExtension::includeWithEvent(): Return value must be of type
+string, Twig\Markup returned`), já antes de qualquer atualização. Não afeta
+ninguém, porque a 0.1.0 não foi publicada e a recomendada é a 7.2.2, mas é
+mais um motivo para não ficar na linha 7.1.
+
+O teste fixo do GitHub ganhou a conferência do modo de atualização: "nada a
+atualizar" numa instalação nova, e a atualização inteira sobre um compose
+alterado de propósito (backup, regravação, subida). Trocar de versão de
+verdade continua sendo teste de VPS.
 
 ## Licença e aviso legal
 
@@ -855,6 +1025,9 @@ namespace `/opt/playahead/` já abre espaço para os próximos instaladores.
     /opt/playahead/mautic/docker-compose.yml
     /opt/playahead/mautic/.env
     /opt/playahead/mautic/credenciais.txt      chmod 600
+    /opt/playahead/mautic/.instalacao-concluida
+    /opt/playahead/mautic/.compose.sha256      o compose como o instalador gravou
+    /opt/playahead/mautic/backups/             chmod 700, só depois de atualizar
 
 O template `templates/docker-compose-mautic7-playahead.yml` expõe
 `TRAEFIK_NETWORK`, `TRAEFIK_ENTRYPOINT` e `TRAEFIK_CERTRESOLVER` como variáveis
@@ -988,15 +1161,18 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
     lib/docker_instalar.sh  instalação do Docker             base
     lib/traefik_instalar.sh instalação do Traefik            base
     lib/portainer.sh        instalação do Portainer          base
+    lib/base_atualizar.sh   modo de atualização da base      base
     lib/base_main.sh        orquestrador da base             base
 
     lib/mautic.sh           .env, stack e regionalização     mautic7
+    lib/mautic_atualizar.sh modo de atualização do Mautic    mautic7
     lib/mautic_main.sh      orquestrador do Mautic           mautic7
 
     lib/menu_main.sh        orquestrador do menu             playahead
 
     testes/ponta-a-ponta.sh teste fixo: instala e confere   (não publicado)
     testes/trava-versoes.sh trava dos pedidos da rotina     (não publicado)
+    testes/vps/             apoio aos testes na VPS: zerar, rodar num pty
     rotinas/vigia-de-versoes.md
                             prompt da rotina semanal de versões
     .github/workflows/teste-instalador.yml
@@ -1813,59 +1989,60 @@ está protegido como descrito no item 6, no andamento do bloco 2.
   e actions. Quem usa: sessões do Claude Code na nuvem e, provavelmente, a
   sincronização de plugins da organização a partir do `mods-claude` (não
   confirmado). Nenhum workflow depende dele.
-- Rede das rotinas (pesquisado na documentação em 2026-10-27): o ambiente
-  padrão ("Trusted") já alcança `hub.docker.com`, `api.github.com` e
-  `github.com`. O proxy bloqueia GraphQL, então o `gh pr create` deve falhar;
-  o prompt manda abrir o pedido pela API REST. A conferir na primeira
-  execução.
+- **A rotina foi criada em 2026-11-11**, pelo `/schedule`, sem bloqueio
+  nenhum: "Vigia de versões do Play Ahead Installer",
+  `trig_01MaJdLuN8J7uFMv5P3nhDxD`, toda segunda às 8h07 de Brasília, em
+  https://claude.ai/code/routines/trig_01MaJdLuN8J7uFMv5P3nhDxD. Modelo
+  Sonnet 5.5, o padrão das rotinas. O prompt é o texto do
+  `rotinas/vigia-de-versoes.md`, colado inteiro: se o arquivo mudar, o
+  prompt da rotina precisa ser atualizado lá também.
+- **Criada sem conectores** (`clear_mcp_connections`), por decisão do Claude
+  na criação: a rotina lê texto de terceiros toda semana, e o trabalho dela
+  não precisa de Drive, Canva nem de nenhum outro conector da conta. Menos
+  alcance, menos estrago se um texto conseguir enganá-la.
+- **Primeira execução, disparada à mão no mesmo dia: funcionou.** Em 68
+  segundos ela leu as versões do código, consultou o Docker Hub e as
+  releases, e abriu o pedido 4, Traefik v3.7.16 para v3.7.18 (a v3.7.17
+  corrige o aviso GHSA-xv5x-242w-7hf7). Portainer, Mautic e MariaDB já
+  estavam na mais nova de cada linha. O que essa execução mostrou:
+  - O ambiente alcança `hub.docker.com`, `api.github.com` e `github.com`.
+    O pedido foi aberto pela ferramenta do GitHub da própria rotina, e não
+    pela API REST nem pelo `gh`.
+  - **A trava reprovou o primeiro commit dela, e com razão.** O `./build.sh`
+    faz `chmod +x` no `dist/`, e no git os três arquivos estavam como
+    `100644`, porque os commits saem do Windows. No Linux da rotina o build
+    virou o modo para `100755`, e mudança de modo não é troca de versão. A
+    rotina devolveu o modo e a trava passou. **Corrigido na origem:** os
+    três arquivos do `dist/` passaram a `100755` no git, que é o que o
+    build produz.
+  - **A lista de ferramentas da rotina não é uma cerca.** Ela foi criada
+    com seis ferramentas permitidas e, mesmo assim, usou a busca na web e as
+    ferramentas do GitHub, entre elas a de fazer merge. O que impede o
+    merge é o prompt, e o que limita o estrago é a regra do `main` (teste e
+    trava). Ver a auditoria de segurança.
+  - Depois de abrir o pedido, a sessão da rotina fica acordando a cada
+    resultado do teste. Foi assim que ela viu a trava reprovar e corrigiu.
+- **O pedido 4 espera a decisão do Fabio.** As três etapas passaram (trava,
+  `dist/` em dia, instalação de ponta a ponta com o Traefik v3.7.18). Pela
+  política de versões, quem aprova é o teste passar e o Fabio aceitar.
 
-**Bloco 2, item 8 (modo de atualização): desenho aprovado, não começado.**
+**Bloco 2, item 8 (modo de atualização): feito e testado em 2026-11-11.**
+Ver a seção "Modo de atualização", com o desenho, as decisões de
+implementação e a tabela de testes. O desenho aprovado pelo Fabio em
+2026-10-27 foi seguido; os três pontos que ele deixava em aberto ficaram
+assim:
 
-Desenho aprovado pelo Fabio em 2026-10-27:
+- comparar o compose com o da versão instalada: resolvido com o sha256
+  gravado na instalação (`.compose.sha256`);
+- temas e plugins instalados pelo painel: temas voltam sozinhos, plugins são
+  avisados e ficam no backup;
+- queda do terminal: os `docker compose` da troca rodam em sessão própria,
+  **e** a atualização é retomável.
 
-- Ação explícita, com confirmação, nunca sozinha: `sudo bash mautic7.sh
-  --atualizar` e `sudo bash base.sh --atualizar` (Traefik e Portainer). Só
-  sobre instalação concluída (com a marca).
-- Leva para a versão **recomendada** do script, nunca para a mais nova.
-- Antes de trocar qualquer coisa: backup em
-  `/opt/playahead/mautic/backups/<data>/` com o `mysqldump` do banco
-  (conferido no fim: "Dump completed"), o compose, o `.env` e o `local.php`;
-  conferir o espaço em disco antes. A migração do banco não volta atrás.
-- Para cron e worker, baixa as imagens com progresso, regrava o compose a
-  partir do template, sobe a web (o entrypoint da imagem aplica as
-  migrações), espera `healthy`, sobe o resto, confere o roteamento e
-  registra a versão no `credenciais.txt`.
-- **Acréscimo do Fabio:** antes de regravar o compose, comparar com o
-  template da versão instalada. Se a pessoa mexeu nele, avisar na tela que a
-  alteração dela não vai junto e que o compose antigo ficou no backup.
-- Sem rollback automático; falhando, mostra os comandos para restaurar o
-  backup.
-- É a **única exceção** à regra de não sobrescrever o compose, e isso tem de
-  ficar escrito aqui com o porquê: a versão recomendada mora no template, e
-  é o único caminho para uma instalação antiga receber as correções do
-  compose (as duas "notas de atualização" deste documento, o `--time-limit` e
-  a rotação de log). O `.env` continua nunca sendo sobrescrito.
-- **A resolver no desenho:** trocar a imagem recria os containers, e temas e
-  plugins instalados pelo painel (`docroot/themes`, `docroot/plugins`,
-  `vendor`) moram na camada do container e se perdem. No mínimo, avisar.
-- O passo que recria containers deve rodar desligado da sessão
-  (`setsid`/`nohup`) ou aceitar a retomada como saída: no teste do item 3 a
-  conexão SSH caiu no meio do `up -d` e deixou a stack pela metade.
+O teste foi além do combinado (Mautic 7.2.1): incluiu a 7.1.3, para passar
+por uma migração de banco de verdade, e a volta pelo backup depois dela.
 
-Teste do item 8, aprovado pelo Fabio: na VPS de teste, recriar o estado
-antigo com o `dist/` do commit `cedd4c0` (Traefik v3.7.12, Portainer 2.45.0)
-e o Mautic fixado na 7.2.1. Atenção: o template daquele commit ainda usa
-`${MAUTIC_IMAGE:-mautic/mautic:7-apache}`, e o `mautic7.sh` gera o `.env` e
-sobe na mesma execução; para fixar a 7.2.1, exportar
-`MAUTIC_IMAGE=mautic/mautic:7.2.1-apache` no shell antes de rodar (o compose
-dá precedência à variável do shell) e depois gravar a mesma linha no `.env`
-para valer nas próximas subidas. **Antes de testar a atualização, conferir
-que subiram exatamente Traefik v3.7.12, Portainer 2.45.0 e Mautic 7.2.1.**
-Para não gastar emissão do Let's Encrypt com os mesmos nomes, dá para
-devolver ao volume do Traefik o `acme.json` guardado na VPS (ver abaixo). No
-fim, a VPS é destruída.
-
-**Falta ainda, além do item 8:**
+**Falta ainda:**
 
 - Bloco 3, visual: moldura, contador de etapas e quadro final com as
   credenciais. Não começado.

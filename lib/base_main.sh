@@ -97,6 +97,13 @@ OPÇÕES
     --help                       mostra esta ajuda
     --version                    mostra a versão e a data do build
 
+ATUALIZAÇÃO
+    --atualizar                  leva o Traefik e o Portainer que esta
+                                 base instalou para as versões
+                                 recomendadas. Faz backup antes, mostra o
+                                 que vai mudar e pede confirmação.
+                                 Só combina com --yes.
+
 EXEMPLOS
     sudo bash base.sh
 
@@ -105,6 +112,8 @@ EXEMPLOS
     sudo bash base.sh --yes \
         --acme-email=voce@exemplo.com.br \
         --portainer-domain=painel.exemplo.com.br
+
+    sudo bash base.sh --atualizar
 
 DOCUMENTAÇÃO
     https://github.com/play-ahead/playahead-installer
@@ -120,6 +129,7 @@ main_parse_flags() {
 
 	for arg in "$@"; do
 		case "$arg" in
+			--atualizar) PA_ATUALIZAR=1 ;;
 			--acme-email=*) PA_EMAIL_ACME="${arg#*=}" ;;
 			--portainer-domain=*)
 				PA_PORTAINER_DOMINIO="${arg#*=}"
@@ -144,6 +154,27 @@ main_parse_flags() {
 				;;
 		esac
 	done
+
+	# A atualização não decide nada de novo: usa o que a instalação já
+	# decidiu. Uma flag de instalação junto com --atualizar é sinal de
+	# engano, e seguir em silêncio deixaria a pessoa achando que ela
+	# teve efeito.
+	if [[ "$PA_ATUALIZAR" -eq 1 ]]; then
+		for arg in "$@"; do
+			case "$arg" in
+				--atualizar | --yes | -y) ;;
+				*)
+					ui_fatal \
+						"A opção ${arg%%=*} não combina com --atualizar." \
+						"A atualização usa o que a instalação já decidiu e leva o" \
+						"Traefik e o Portainer para as versões recomendadas." \
+						"Rode só com:" \
+						"" \
+						"    sudo bash ${0} --atualizar"
+					;;
+			esac
+		done
+	fi
 
 	return 0
 }
@@ -443,6 +474,17 @@ main() {
 		"Para continuar, rode o mesmo comando de novo: a base" \
 		"reaproveita o que já foi instalado e segue do ponto que faltou."
 	ui_cabecalho
+
+	# A atualização tem fluxo próprio. Das checagens de máquina ela só
+	# precisa do bash e do root: o piso de RAM e de disco da instalação
+	# não vale para uma máquina que já está em uso.
+	if [[ "$PA_ATUALIZAR" -eq 1 ]]; then
+		ui_secao "Conferindo o servidor"
+		checks_bash
+		checks_root
+		base_atualizar
+		return 0
+	fi
 
 	checks_sistema
 	base_detectar

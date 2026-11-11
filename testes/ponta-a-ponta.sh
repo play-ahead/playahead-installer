@@ -30,7 +30,11 @@
 #   - a instalação do Docker e o swap, quando a máquina já vem com
 #     Docker e muita memória, como a do GitHub (cenário 1.5, 16 GB);
 #   - o menu, que exige terminal;
-#   - o envio de e-mail de verdade.
+#   - o envio de e-mail de verdade;
+#   - a troca de versão de verdade no modo de atualização. Aqui a
+#     atualização roda sobre a mesma versão, com o compose alterado
+#     de propósito: prova o backup, a regravação e a subida, mas não
+#     a migração do banco entre duas versões.
 # ============================================================
 
 set -euo pipefail
@@ -259,6 +263,113 @@ if bash dist/mautic7.sh --yes >"${LOGS}/mautic-de-novo.log" 2>&1 &&
 	ok "mautic7.sh de novo: saiu com 0 dizendo que a instalação existe"
 else
 	falhou "mautic7.sh de novo não reconheceu a instalação"
+fi
+
+# ------------------------------------------------------------
+passo "Modo de atualização: nada a fazer numa instalação nova"
+# ------------------------------------------------------------
+
+if bash dist/mautic7.sh --atualizar --yes >"${LOGS}/mautic-atualizar-nada.log" 2>&1 &&
+	grep -q "Nada a atualizar" "${LOGS}/mautic-atualizar-nada.log"; then
+	ok "mautic7.sh --atualizar: nada a atualizar, saiu com 0"
+else
+	falhou "mautic7.sh --atualizar não reconheceu a instalação em dia"
+fi
+
+if bash dist/base.sh --atualizar --yes >"${LOGS}/base-atualizar-nada.log" 2>&1 &&
+	grep -q "Nada a atualizar" "${LOGS}/base-atualizar-nada.log"; then
+	ok "base.sh --atualizar: nada a atualizar, saiu com 0"
+else
+	falhou "base.sh --atualizar não reconheceu a base em dia"
+fi
+
+confere "nenhum backup criado sem atualização" \
+	sh -c "[ ! -d /opt/playahead/mautic/backups ] && [ ! -d /opt/playahead/backups ]"
+
+# ------------------------------------------------------------
+passo "Modo de atualização: compose alterado é regravado, com backup"
+# ------------------------------------------------------------
+#
+# Trocar de versão de verdade exigiria instalar uma versão antiga
+# antes, e isso é teste de VPS. O que dá para provar aqui é o caminho
+# inteiro da atualização sobre o mesmo banco: para, faz o dump,
+# guarda o compose antigo, regrava o novo, sobe e confere. A linha
+# acrescentada ao compose é o que faz a atualização ter o que fazer.
+
+printf '# linha acrescentada pelo teste\n' >>/opt/playahead/mautic/docker-compose.yml
+
+if bash dist/mautic7.sh --atualizar --yes >"${LOGS}/mautic-atualizar.log" 2>&1; then
+	ok "mautic7.sh --atualizar saiu com 0"
+else
+	falhou "mautic7.sh --atualizar saiu com $?"
+	tail -n 40 "${LOGS}/mautic-atualizar.log"
+fi
+
+confere "a tela avisou que o compose tinha sido alterado" \
+	grep -q "foi alterado depois da instalação" "${LOGS}/mautic-atualizar.log"
+
+backup="$(find /opt/playahead/mautic/backups -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n 1)"
+if [[ -n "$backup" ]]; then
+	ok "backup em ${backup}"
+	confere "dump do banco completo (Dump completed)" \
+		sh -c "gunzip -c '${backup}/banco.sql.gz' | tail -n 1 | grep -q 'Dump completed'"
+	confere "compose antigo guardado, com a linha do teste" \
+		grep -q "linha acrescentada pelo teste" "${backup}/docker-compose.yml"
+	confere ".env e instruções de volta no backup" \
+		sh -c "[ -f '${backup}/.env' ] && [ -f '${backup}/COMO-RESTAURAR.txt' ]"
+	confere "backup legível só pelo root" \
+		sh -c "[ \"\$(stat -c %a '${backup}')\" = 700 ] && [ \"\$(stat -c %a '${backup}/banco.sql.gz')\" = 600 ]"
+else
+	falhou "a atualização não deixou backup"
+fi
+
+confere "compose regravado, sem a linha do teste" \
+	sh -c "! grep -q 'linha acrescentada pelo teste' /opt/playahead/mautic/docker-compose.yml"
+confere "registro do compose confere com o arquivo" \
+	sh -c "cd /opt/playahead/mautic && sha256sum --status -c .compose.sha256"
+confere "nenhuma atualização ficou em andamento" \
+	test ! -e /opt/playahead/mautic/.atualizacao-em-andamento
+confere ".env intocado pela atualização" \
+	sh -c "cmp -s /opt/playahead/mautic/.env '${backup}/.env'"
+
+for c in mautic-mariadb-1 mautic-mautic_web-1 mautic-mautic_cron-1 mautic-mautic_worker-1; do
+	estado="$(docker inspect -f '{{.State.Status}}{{if .State.Health}} {{.State.Health.Status}}{{end}}' "$c" 2>/dev/null || echo ausente)"
+	case "$estado" in
+		"running" | "running healthy") ok "depois da atualização, ${c}: ${estado}" ;;
+		*) falhou "depois da atualização, ${c}: ${estado}" ;;
+	esac
+done
+
+medida="$(curl -skL --max-redirs 10 --max-time 30 \
+	--resolve "${DOMINIO_MAUTIC}:443:127.0.0.1" \
+	-o /dev/null -w '%{http_code} %{url_effective}' \
+	"https://${DOMINIO_MAUTIC}/" 2>/dev/null || true)"
+if [[ "$medida" == "200 https://${DOMINIO_MAUTIC}/s/login" ]]; then
+	ok "Mautic no ar depois da atualização (${medida})"
+else
+	falhou "Mautic depois da atualização: ${medida:-sem resposta}"
+fi
+
+printf '# linha acrescentada pelo teste\n' >>/opt/playahead/traefik/docker-compose.yml
+
+if bash dist/base.sh --atualizar --yes >"${LOGS}/base-atualizar.log" 2>&1; then
+	ok "base.sh --atualizar saiu com 0"
+else
+	falhou "base.sh --atualizar saiu com $?"
+	tail -n 40 "${LOGS}/base-atualizar.log"
+fi
+
+confere "backup da base com o compose antigo do Traefik" \
+	sh -c "grep -q 'linha acrescentada pelo teste' /opt/playahead/backups/base-*/traefik/docker-compose.yml"
+confere "compose do Traefik regravado" \
+	sh -c "! grep -q 'linha acrescentada pelo teste' /opt/playahead/traefik/docker-compose.yml"
+
+codigo="$(curl -skL --max-time 30 --resolve "${DOMINIO_PORTAINER}:443:127.0.0.1" \
+	-o /dev/null -w '%{http_code}' "https://${DOMINIO_PORTAINER}/" 2>/dev/null || true)"
+if [[ "$codigo" == "200" ]]; then
+	ok "Portainer no ar depois da atualização da base"
+else
+	falhou "Portainer depois da atualização da base: ${codigo:-sem resposta}"
 fi
 
 # ------------------------------------------------------------

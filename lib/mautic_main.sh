@@ -139,6 +139,7 @@ main_parse_flags() {
 
 	for arg in "$@"; do
 		case "$arg" in
+			--atualizar) PA_ATUALIZAR=1 ;;
 			--domain=*) PA_DOMINIO="${arg#*=}" ;;
 			--admin-email=*) PA_EMAIL_ADMIN="${arg#*=}" ;;
 			--traefik-network=*) PA_TRAEFIK_NETWORK="${arg#*=}" ;;
@@ -173,6 +174,21 @@ main_parse_flags() {
 				;;
 		esac
 	done
+
+	# A atualização não decide nada de novo: domínio, Traefik, idioma
+	# e versão vêm da instalação que já existe. Uma flag de instalação
+	# junto com --atualizar é sinal de engano, e seguir em silêncio
+	# deixaria a pessoa achando que ela teve efeito.
+	if [[ "$PA_ATUALIZAR" -eq 1 ]]; then
+		for arg in "$@"; do
+			case "$arg" in
+				--atualizar | --yes | -y) ;;
+				*)
+					ui_fatal 						"A opção ${arg%%=*} não combina com --atualizar." 						"A atualização usa o que a instalação já decidiu e leva o" 						"Mautic para a versão recomendada. Rode só com:" 						"" 						"    sudo bash ${0} --atualizar"
+					;;
+			esac
+		done
+	fi
 
 	# Origem das flags, para a tabela de confirmação do cenário 2
 	# não dizer "não encontrado" sobre algo que a pessoa informou.
@@ -274,6 +290,16 @@ main_checar_instalacao_anterior() {
 			ui_vazio
 			ui_info "As credenciais estão em:"
 			ui_detalhe "$PA_MAUTIC_CREDENCIAIS"
+			ui_vazio
+			if [[ -f "$PA_MAUTIC_ATUALIZANDO" ]]; then
+				ui_aviso "Há uma atualização que parou no meio."
+				ui_detalhe "Para continuar de onde ela parou:"
+				ui_detalhe "sudo bash ${0} --atualizar"
+			else
+				ui_info "Para levar este Mautic à versão recomendada deste"
+				ui_info "instalador, com backup antes:"
+				ui_detalhe "sudo bash ${0} --atualizar"
+			fi
 			ui_vazio
 			exit 0
 			;;
@@ -716,6 +742,19 @@ main() {
 		"Para continuar, rode o mesmo comando de novo: o instalador" \
 		"retoma de onde parou, sem perguntar o domínio de novo."
 	ui_cabecalho
+
+	# A atualização tem fluxo próprio. Das checagens de máquina ela só
+	# precisa do bash e do root: o piso de RAM e de disco da instalação
+	# não vale para uma máquina que já roda o Mautic, e o espaço que a
+	# atualização precisa é conferido por ela, com a conta do backup.
+	if [[ "$PA_ATUALIZAR" -eq 1 ]]; then
+		ui_secao "Conferindo o servidor"
+		checks_bash
+		checks_root
+		mautic_checar_base
+		mautic_atualizar
+		return 0
+	fi
 
 	checks_sistema
 

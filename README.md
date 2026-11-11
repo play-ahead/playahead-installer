@@ -115,6 +115,7 @@ qual usar. Ver "E-mail (SMTP)".
     /opt/playahead/mautic/docker-compose.yml
     /opt/playahead/mautic/.env
     /opt/playahead/mautic/credenciais.txt
+    /opt/playahead/mautic/backups/          só depois de uma atualização
 
 O `credenciais.txt` guarda o login do admin e as credenciais do banco, com
 permissão restrita ao root. Ele **não é apagado** ao final: se você fechar o
@@ -132,6 +133,54 @@ A única situação em que ele para é quando encontra uma instalação pela met
 seguir em frente geraria um erro de autenticação difícil de diagnosticar, então
 ele prefere explicar e sair.
 
+## Atualizar
+
+Cada instalador traz as versões que a Play Ahead testou. Para levar uma
+instalação que já existe até elas, baixe o instalador de novo, leia e rode com
+`--atualizar`:
+
+    curl -sL https://get.playahead.com.br/mautic7 -o mautic7.sh
+    less mautic7.sh
+    sudo bash mautic7.sh --atualizar
+
+A base (Traefik e Portainer) se atualiza do mesmo jeito, com o `base.sh`:
+
+    sudo bash base.sh --atualizar
+
+O que a atualização faz, nesta ordem:
+
+1. Mostra de qual versão para qual vai, e pergunta se pode. O Enter vale "não".
+2. Baixa as imagens novas, com o site ainda no ar.
+3. Para o Mautic e faz o backup: o banco inteiro, o `docker-compose.yml`, o
+   `.env`, a configuração e os temas e plugins instalados pelo painel.
+4. Só então troca a versão. O Mautic novo aplica as migrações do banco sozinho.
+5. Confere se o site abre e diz onde o backup ficou.
+
+O que você precisa saber antes:
+
+- **O site fica fora do ar durante a troca.** Alguns minutos; com banco grande,
+  mais. Atualizar a base tira todos os sites da VPS do ar por alguns segundos.
+- **Não há volta automática.** A migração do banco não desfaz. O caminho de
+  volta é o backup, e os comandos para restaurar ficam no arquivo
+  `COMO-RESTAURAR.txt`, dentro da pasta do backup. Se a atualização sair com
+  erro, os mesmos comandos aparecem na tela.
+- **O `docker-compose.yml` é regravado.** É a única situação em que o
+  instalador sobrescreve esse arquivo, porque a versão mora nele. Se você o
+  alterou à mão, a alteração não vai junto: o instalador avisa antes, e o
+  arquivo antigo fica no backup. O `.env` nunca é tocado.
+- **Plugins instalados pelo Marketplace precisam ser reinstalados.** Eles moram
+  dentro do container, que é recriado. O instalador lista os nomes e guarda uma
+  cópia no backup. Os temas enviados pelo painel são devolvidos sozinhos.
+- **Se o terminal cair no meio**, rode o mesmo comando de novo: a atualização
+  continua de onde parou e não refaz o backup.
+- A atualização leva sempre para a versão recomendada do instalador que você
+  baixou, nunca para uma mais nova. Se o que está instalado já é mais novo que
+  ela, o instalador para e pede a versão mais recente dele.
+
+Os backups ficam em `/opt/playahead/mautic/backups/` e em
+`/opt/playahead/backups/`, legíveis só pelo root. O instalador não apaga backup:
+quando tiver certeza de que está tudo certo, apague a pasta para liberar espaço.
+
 ## Opções
 
 Da base:
@@ -141,6 +190,7 @@ Da base:
     --sem-portainer              não instala o Portainer
     --skip-dns-check             pula a validação de DNS
     --no-swap                    não cria arquivo de swap
+    --atualizar                  atualiza o Traefik e o Portainer (ver "Atualizar")
     --yes                        não interativo, sem nenhuma pergunta
     --help                       lista todas as opções
     --version                    mostra a versão e a data do build
@@ -155,8 +205,11 @@ Do instalador do Mautic:
     --no-certresolver            para quem termina o SSL fora da VPS
     --idioma=CODIGO              idioma do painel (padrão pt_BR)
     --fuso=FUSO                  fuso horário (padrão America/Sao_Paulo)
+    --versao=recomendada         instala a versão testada pela Play Ahead (padrão)
+    --versao=mais-nova           instala a mais nova do Mautic 7, sem teste
     --wizard                     não conclui a instalação, deixa o assistente web
     --skip-dns-check             pula a validação de DNS
+    --atualizar                  atualiza um Mautic já instalado (ver "Atualizar")
     --yes                        não interativo, sem nenhuma pergunta
     --help                       lista todas as opções
     --version                    mostra a versão e a data do build

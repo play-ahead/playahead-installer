@@ -61,6 +61,9 @@ PA_MAUTIC_CREDENCIAIS="${PA_MAUTIC_DIR}/credenciais.txt"
 # teste de SMTP e credenciais. Ver mautic_detectar_estado.
 PA_MAUTIC_MARCA="${PA_MAUTIC_DIR}/.instalacao-concluida"
 
+# Preenchida pelo modo de atualização; vai para o credenciais.txt.
+PA_MAUTIC_NOTA_ATUALIZACAO=""
+
 # Volume do banco. Ele sobrevive a `docker compose down`, então é o
 # que distingue "nunca instalado" de "instalado e derrubado".
 PA_MAUTIC_VOLUME_BANCO="playahead_mautic_mariadb"
@@ -369,24 +372,54 @@ mautic_gravar_compose() {
 		return 0
 	fi
 
-	if declare -F mautic_template_embutido >/dev/null; then
-		mautic_template_embutido >"$PA_MAUTIC_COMPOSE"
-	else
-		if [[ ! -f "$template" ]]; then
-			ui_fatal \
-				"Não encontrei o template do compose em ${template}" \
-				"Rodando a partir do repositório, execute na raiz dele." \
-				"Rodando o instalador publicado, o template deveria estar" \
-				"embutido. Sinal de build quebrado; baixe de novo."
-		fi
-
-		cp "$template" "$PA_MAUTIC_COMPOSE"
-	fi
+	mautic_escrever_template "$PA_MAUTIC_COMPOSE" "$template"
 
 	[[ -z "$PA_TRAEFIK_CERTRESOLVER" ]] && mautic_compose_sem_certresolver
 	mautic_compose_definir_imagem
+	mautic_compose_registrar_hash
 
 	ui_ok "docker-compose.yml gravado em ${PA_MAUTIC_DIR}"
+}
+
+# mautic_escrever_template <destino> <caminho_template>
+#
+# Grava o template do compose em <destino>, sem nenhum ajuste. Usada
+# pela instalação e pelo modo de atualização, que gera o compose
+# novo num arquivo ao lado antes de trocar.
+mautic_escrever_template() {
+	local destino="$1"
+	local template="$2"
+
+	if declare -F mautic_template_embutido >/dev/null; then
+		mautic_template_embutido >"$destino"
+		return 0
+	fi
+
+	if [[ ! -f "$template" ]]; then
+		ui_fatal \
+			"Não encontrei o template do compose em ${template}" \
+			"Rodando a partir do repositório, execute na raiz dele." \
+			"Rodando o instalador publicado, o template deveria estar" \
+			"embutido. Sinal de build quebrado; baixe de novo."
+	fi
+
+	cp "$template" "$destino"
+}
+
+# mautic_compose_registrar_hash
+#
+# O sha256 do compose como o instalador o gravou, para o modo de
+# atualização saber se a pessoa mexeu nele. Ver
+# docker_compose_registrar_hash.
+mautic_compose_registrar_hash() {
+	docker_compose_registrar_hash "$PA_MAUTIC_DIR"
+}
+
+# mautic_compose_situacao
+#
+# Ecoa um de: intacto, alterado, sem-registro.
+mautic_compose_situacao() {
+	docker_compose_situacao "$PA_MAUTIC_DIR"
 }
 
 # mautic_compose_sem_certresolver
@@ -403,22 +436,27 @@ mautic_gravar_compose() {
 # continuar conferindo o template embutido byte a byte. Se a linha
 # não estiver lá no formato esperado, para em vez de seguir com o
 # label errado.
+#
+# O arquivo é o compose instalado, a não ser que venha outro: o modo
+# de atualização aplica o mesmo ajuste no compose novo, antes de
+# colocá-lo no lugar.
 mautic_compose_sem_certresolver() {
+	local arquivo="${1:-$PA_MAUTIC_COMPOSE}"
 	local label='traefik.http.routers.playahead-mautic.tls.certresolver='
 
-	if ! grep -q -- "$label" "$PA_MAUTIC_COMPOSE"; then
+	if ! grep -q -- "$label" "$arquivo"; then
 		ui_fatal \
 			"Não achei o label de certresolver no compose para retirar." \
 			"Sinal de que o template mudou e esta função não acompanhou."
 	fi
 
 	sed -i "s|^\( *\)- \"${label}.*\"\$|\1# Sem certresolver: o TLS é terminado fora desta VPS.|" \
-		"$PA_MAUTIC_COMPOSE"
+		"$arquivo"
 
-	if grep -q -- "$label" "$PA_MAUTIC_COMPOSE"; then
+	if grep -q -- "$label" "$arquivo"; then
 		ui_fatal \
 			"Não consegui retirar o label de certresolver do compose." \
-			"Confira ${PA_MAUTIC_COMPOSE} antes de rodar de novo."
+			"Confira ${arquivo} antes de rodar de novo."
 	fi
 }
 
@@ -1362,7 +1400,10 @@ mautic_gravar_credenciais() {
 		printf '  Mautic %s\n' "$(mautic_descrever_versao)"
 		printf '  imagem: %s\n' "$PA_MAUTIC_IMAGEM"
 		printf '  banco:  %s\n' "$PA_MARIADB_IMAGEM"
-		printf '  instalador: %s %s\n\n' "$PA_FERRAMENTA" "$PA_VERSAO"
+		printf '  instalador: %s %s\n' "$PA_FERRAMENTA" "$PA_VERSAO"
+		[[ -n "$PA_MAUTIC_NOTA_ATUALIZACAO" ]] &&
+			printf '  %s\n' "$PA_MAUTIC_NOTA_ATUALIZACAO"
+		printf '\n'
 
 		printf 'ADMIN\n'
 		printf '  e-mail: %s\n' "$email_admin"
