@@ -155,6 +155,12 @@ main_parse_flags() {
 		esac
 	done
 
+	# Tudo que veio por flag passa por validador antes de ser usado.
+	checks_exigir_flag --acme-email "$PA_EMAIL_ACME" checks_validar_email \
+		"voce@suaempresa.com.br"
+	checks_exigir_flag --portainer-domain "$PA_PORTAINER_DOMINIO" checks_validar_dominio \
+		"painel.suaempresa.com.br"
+
 	# A atualização não decide nada de novo: usa o que a instalação já
 	# decidiu. Uma flag de instalação junto com --atualizar é sinal de
 	# engano, e seguir em silêncio deixaria a pessoa achando que ela

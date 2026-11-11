@@ -762,6 +762,54 @@ checks_validar_email() {
 	return 0
 }
 
+# checks_validar_nome <valor>
+#
+# Nome de rede, de entrypoint ou de certresolver do Traefik. Esses
+# três vão parar no .env, em label de container e em YAML, e por
+# isso só aceitam letra, número, ponto, hífen e sublinhado. Não
+# imprime nada: quem chama sabe de onde o valor veio e diz o que
+# fazer.
+checks_validar_nome() {
+	[[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$ ]]
+}
+
+# checks_validar_idioma <codigo>
+#
+# Código de idioma no formato do manifesto oficial do Mautic: pt_BR,
+# es, fil, zh-Hans.
+checks_validar_idioma() {
+	[[ "$1" =~ ^[a-z]{2,3}([_-][A-Za-z]{2,8})?$ ]]
+}
+
+# checks_validar_fuso <fuso>
+#
+# Nome de fuso do banco de fusos: America/Sao_Paulo, UTC, Etc/GMT+3,
+# America/Argentina/Buenos_Aires.
+checks_validar_fuso() {
+	[[ "$1" =~ ^[A-Za-z][A-Za-z0-9_+-]{1,31}(/[A-Za-z0-9_+-]{1,31}){0,2}$ ]]
+}
+
+# checks_exigir_flag <flag> <valor> <validador> <exemplo>
+#
+# Valor que veio por flag passa pelo mesmo validador da pergunta, e
+# valor inválido para o script antes de qualquer outra coisa. Até
+# 2026-11-11 só a resposta digitada era validada: o que vinha por
+# flag seguia direto para o .env, para o compose e para a linha de
+# comando do mautic:install. Achado da auditoria de segurança.
+#
+# Valor vazio passa: flag ausente não é erro aqui.
+checks_exigir_flag() {
+	local flag="$1" valor="$2" validador="$3" exemplo="$4"
+
+	[[ -n "$valor" ]] || return 0
+	"$validador" "$valor" && return 0
+
+	ui_fatal \
+		"O valor de ${flag} não é aceito." \
+		"Exemplo do que se espera: ${flag}=${exemplo}" \
+		"Nada foi alterado nesta máquina."
+}
+
 # ------------------------------------------------------------
 # Orquestração
 # ------------------------------------------------------------
