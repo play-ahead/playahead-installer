@@ -576,3 +576,5 @@ done
 if [[ "$modo" == "--check" ]] && [[ "$defasados" -eq 1 ]]; then
 	erro "dist/ está defasado em relação a lib/; rode ./build.sh"
 fi
+
+# linha de teste da trava
