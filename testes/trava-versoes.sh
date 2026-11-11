@@ -19,7 +19,11 @@
 #   - nos três arquivos de lib/ que guardam versão, só a linha da
 #     variável e o bloco de comentário logo acima dela;
 #   - no template do compose, só as linhas que trazem a imagem;
-#   - o CLAUDE.md, onde as versões são citadas;
+#   - no CLAUDE.md, só o número de versão e a data dentro de linhas
+#     que já existem. Linha nova, linha apagada e texto trocado são
+#     reprovados: o CLAUDE.md é instrução para as próximas execuções
+#     da rotina e para o Claude deste projeto, e um pedido que
+#     pudesse escrever nele à vontade deixaria uma ordem plantada;
 #   - o dist/, que o build regenera. Ele não é conferido aqui: o
 #     outro workflow roda ./build.sh --check, e como este script
 #     não deixa o pedido mexer no build.sh nem no workflow, um
@@ -27,7 +31,9 @@
 #
 # O número novo tem de casar com o padrão exato da ferramenta, com
 # o nome oficial da imagem e na mesma linha principal: Traefik v3,
-# Portainer 2, Mautic 7 (-apache) e MariaDB 10.11.
+# Portainer 2, Mautic 7 (-apache) e MariaDB 10.11. E não pode ser
+# menor que o atual: voltar versão traria de volta as falhas que a
+# versão atual corrigiu.
 #
 # Este script roda a partir do main, e não do pedido (o workflow
 # usa pull_request_target), para que o pedido não consiga trocar a
@@ -111,6 +117,15 @@ done < <(git diff --raw --no-renames "$BASE" "$PEDIDO")
 if [[ "${#ALTERADOS[@]}" -eq 0 && "$FALHAS" -eq 0 ]]; then
 	ok "o pedido não altera nenhum arquivo"
 fi
+
+# Um byte nulo no meio do arquivo faz o git tratá-lo como binário e
+# responder "Binary files differ", sem linha nenhuma. As conferências
+# abaixo leem linhas: sem elas, aprovariam o que não viram.
+while IFS=$'\t' read -r mais menos caminho; do
+	if [[ "$mais" == "-" || "$menos" == "-" ]]; then
+		falhou "${caminho}: o git vê o arquivo como binário; não há como conferir"
+	fi
+done < <(git diff --numstat --no-renames "$BASE" "$PEDIDO")
 
 foi_alterado() {
 	local a
@@ -221,32 +236,76 @@ for entrada in "${VARIAVEIS[@]}"; do
 		falhou "${arquivo}: ${var} tem de aparecer uma vez só"
 		continue
 	fi
-	if [[ "$linhas" =~ ^${var}=\"(${padrao})\"$ ]]; then
-		ok "${var} = ${BASH_REMATCH[1]}"
-	else
+	if ! [[ "$linhas" =~ ^${var}=\"(${padrao})\"$ ]]; then
 		falhou "${var}: valor fora do padrão aceito (${linhas})"
+		continue
 	fi
+	novo="${BASH_REMATCH[1]}"
+
+	# Não pode voltar versão. O valor de antes vem do commit base.
+	antes="$(git show "${BASE}:${arquivo}" | sed -n "s/^${var}=\"\(.*\)\"\$/\1/p" | head -n 1)"
+	if [[ -n "$antes" && "$antes" != "$novo" ]] &&
+		[[ "$(printf '%s\n%s\n' "$antes" "$novo" | sort -V | tail -n 1)" != "$novo" ]]; then
+		falhou "${var}: ${novo} é menor que o atual, ${antes}"
+		continue
+	fi
+
+	ok "${var} = ${novo}"
 done
 
 # ------------------------------------------------------------
 # 4. No template, só as linhas da imagem
 # ------------------------------------------------------------
 
+# linhas_do_diff <arquivo>
+#
+# As linhas acrescentadas e removidas, com o sinal na frente, e nada
+# do cabeçalho. O cabeçalho do diff acaba no primeiro "@@": pular
+# toda linha que começa com "+++" ou "---" deixaria passar uma linha
+# nova que começasse com "++".
+linhas_do_diff() {
+	git diff -U0 --no-renames "$BASE" "$PEDIDO" -- "$1" |
+		awk '/^@@/ { corpo = 1; next } corpo && /^[+-]/'
+}
+
 if foi_alterado "$TEMPLATE"; then
 	ruim=0
 	while IFS= read -r linha; do
-		case "$linha" in
-		'+++'* | '---'*) continue ;;
-		'+'* | '-'*) ;;
-		*) continue ;;
-		esac
 		if ! [[ "${linha:1}" =~ $LINHAS_TEMPLATE ]]; then
 			falhou "${TEMPLATE}: altera linha que não é de imagem: ${linha:0:70}"
 			ruim=1
 		fi
-	done < <(git diff -U0 --no-renames "$BASE" "$PEDIDO" -- "$TEMPLATE")
+	done < <(linhas_do_diff "$TEMPLATE")
 	if [[ "$ruim" -eq 0 ]]; then
 		ok "${TEMPLATE}: só as linhas da imagem"
+	fi
+fi
+
+# ------------------------------------------------------------
+# 5. No CLAUDE.md, só número de versão e data em linha que já existe
+# ------------------------------------------------------------
+
+# sem_versoes
+#
+# Troca cada número de versão e cada data por um marcador. Se o que
+# sobra das linhas removidas é igual ao que sobra das acrescentadas,
+# o pedido só trocou números.
+sem_versoes() {
+	sed -E \
+		-e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}/DATA/g' \
+		-e 's/v?[0-9]+\.[0-9]+\.[0-9]+(-apache)?/VERSAO/g'
+}
+
+if foi_alterado "CLAUDE.md"; then
+	removidas="$(linhas_do_diff CLAUDE.md | grep '^-' | cut -c2- | sem_versoes || true)"
+	acrescentadas="$(linhas_do_diff CLAUDE.md | grep '^+' | cut -c2- | sem_versoes || true)"
+
+	if [[ "$removidas" == "$acrescentadas" ]]; then
+		ok "CLAUDE.md: só números de versão e datas, em linhas que já existiam"
+	else
+		falhou "CLAUDE.md: muda mais que número de versão e data"
+		diff <(printf '%s\n' "$removidas") <(printf '%s\n' "$acrescentadas") |
+			grep '^[<>]' | head -n 6 | cut -c1-110 | sed 's/^/             /'
 	fi
 fi
 

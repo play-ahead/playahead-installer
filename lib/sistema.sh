@@ -254,8 +254,13 @@ sistema_apt_trava_ocupada() {
 # linhas do apt: a mensagem antiga mandava conferir a conexão em
 # qualquer caso, e a trava não tem nada a ver com a conexão.
 sistema_apt() {
+	# Sem plano B com nome fixo em /tmp: um nome previsível, gravado
+	# por root, é convite para link simbólico.
 	local saida
-	saida="$(mktemp)" || saida="/tmp/playahead_apt.$$"
+	if ! saida="$(mktemp)"; then
+		ui_aviso "Não consegui criar um arquivo temporário. Costuma ser disco cheio."
+		return 1
+	fi
 
 	local decorrido=0
 	local avisou=0

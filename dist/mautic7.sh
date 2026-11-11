@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-11-11T13:50:48Z
+# Build:  2026-11-11T14:07:03Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -1240,7 +1240,9 @@ checks_ip_publico() {
 
 	ip="$(curl -fsS --max-time 10 https://api.ipify.org 2>/dev/null || true)"
 
-	if [[ -z "$ip" ]]; then
+	# A resposta vem de um serviço de terceiro e vai para a tela e
+	# para comparações: só serve se for um IPv4, e nada além dele.
+	if [[ ! "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
 		ui_aviso "Não consegui descobrir o IP público desta máquina."
 		return 1
 	fi
@@ -3095,6 +3097,14 @@ mautic_descartar_cache() {
 # limpar não muda nada na tela. Foi exatamente o que fez o painel
 # nascer em inglês com o idioma correto salvo.
 #
+# E sempre depois de recriar o container da web. A imagem traz um
+# cache já compilado, de quando ela foi construída, sem site_url
+# nenhum. Com ele o cookie de sessão sai sem a marca "secure", porque
+# o Mautic decide isso na compilação, olhando se o site_url começa
+# com https. Medido em 2026-11-11: depois de uma atualização, que
+# recria o container, o cookie saía sem "secure"; refeito o cache,
+# passou a sair com ela.
+#
 # Não recria o container: temas e plugins instalados pelo painel
 # moram na camada dele (docroot/themes, docroot/plugins, vendor), e
 # se perderiam. Logo depois de instalar não haveria o que perder,
@@ -3210,10 +3220,30 @@ mautic_subir_banco() {
 #
 # Espera o healthcheck do mautic_web, que o template passou a ter
 # depois do teste. Medido lá: healthy em 45s.
+#
+# Enquanto o Mautic não está instalado, ele sobe SEM rota no Traefik
+# (PLAYAHEAD_PUBLICAR=false, lido pelo label traefik.enable do
+# compose). Achado da auditoria de segurança de 2026-11-11: do
+# instante em que o container sobe até o mautic:install terminar, o
+# assistente web do Mautic respondia no domínio público, com os dados
+# do banco já preenchidos pelas variáveis de ambiente. Quem chegasse
+# primeiro criava o administrador, e há robôs que acompanham os
+# registros públicos de certificados novos justamente para isso. A
+# instalação inteira acontece por dentro do container, e a rota só é
+# ligada depois, em mautic_subir_resto.
+#
+# Com --wizard não há como: quem conclui a instalação é a pessoa,
+# pelo navegador. O aviso disso sai no main_instalar.
 mautic_subir_web() {
 	ui_passo "Subindo o Mautic"
 
-	mautic_compose up -d mautic_web >/dev/null 2>&1 ||
+	local publicar="true"
+	if [[ "${PA_WIZARD:-0}" -eq 0 ]] && ! mautic_site_url_gravado; then
+		publicar="false"
+		ui_detalhe "Sem endereço público até a instalação terminar."
+	fi
+
+	PLAYAHEAD_PUBLICAR="$publicar" mautic_compose up -d mautic_web >/dev/null 2>&1 ||
 		ui_fatal \
 			"Falha ao subir o mautic_web." \
 			"Veja o log:" \
@@ -3235,20 +3265,32 @@ mautic_subir_web() {
 # subiriam antes de o banco estar instalado e ficariam em laço de
 # erro, queimando CPU e poluindo o log justamente na hora em que
 # a pessoa está olhando a tela.
+#
+# É também aqui que o Mautic ganha o endereço público: o `up -d` sem
+# PLAYAHEAD_PUBLICAR recria o container da web com a rota do Traefik
+# ligada (ver mautic_subir_web). Container recriado volta com o cache
+# que veio na imagem, e por isso a limpeza de cache vem depois desta
+# função, e não antes.
 mautic_subir_resto() {
-	ui_passo "Subindo o agendador e os workers"
+	ui_passo "Publicando o Mautic e subindo o agendador e os workers"
 
 	mautic_compose up -d >/dev/null 2>&1 ||
 		ui_fatal \
 			"Falha ao subir cron e worker." \
-			"O Mautic já está no ar; isto afeta campanhas e envios." \
+			"O Mautic já está instalado; isto afeta campanhas e envios." \
 			"Veja o log:" \
 			"" \
 			"    cd ${PA_MAUTIC_DIR} && docker compose logs mautic_cron"
 
-	ui_ok "Agendador e workers no ar"
+	ui_aguardar_ate "Aguardando o Mautic responder" 300 \
+		mautic_container_saudavel mautic_web ||
+		ui_fatal \
+			"O Mautic não voltou depois de ganhar o endereço público." \
+			"Veja o log:" \
+			"" \
+			"    cd ${PA_MAUTIC_DIR} && docker compose logs mautic_web"
 
-	mautic_conferir_workers
+	ui_ok "Mautic, agendador e workers no ar"
 }
 
 # mautic_workers_com_limite
@@ -3569,6 +3611,8 @@ mautic_instalar_idioma() {
 	esac
 
 	ui_passo "Instalando o idioma ${codigo}"
+	ui_detalhe "O pacote vem de language-packs.mautic.com, o servidor de"
+	ui_detalhe "idiomas do Mautic. Nada desta máquina é enviado."
 
 	if ! mautic_idioma_existe "$codigo"; then
 		ui_aviso "\"${codigo}\" não está na lista oficial de idiomas."
@@ -3592,11 +3636,27 @@ mautic_instalar_idioma() {
 		return 1
 	fi
 
-	if ! mautic_php_stdin "PA_ZIP=${zip}" <<'PHP' >/dev/null 2>&1; then
+	# Antes de extrair, confere o que o zip traz. O pacote oficial só
+	# tem uma pasta, com o código do idioma. Um zip com outra coisa
+	# (um .htaccess na raiz, um caminho com "..") poderia desligar a
+	# proteção de docroot/translations ou gravar fora dela, então é
+	# recusado inteiro.
+	if ! mautic_php_stdin "PA_ZIP=${zip}" "PA_IDIOMA=${codigo}" <<'PHP' >/dev/null 2>&1; then
 <?php
 $zip = new ZipArchive();
 if ($zip->open(getenv('PA_ZIP')) !== true) {
     exit(1);
+}
+$pasta = getenv('PA_IDIOMA') . '/';
+for ($i = 0; $i < $zip->numFiles; $i++) {
+    $nome = $zip->getNameIndex($i);
+    if ($nome === false
+        || strncmp($nome, $pasta, strlen($pasta)) !== 0
+        || strpos($nome, '..') !== false
+        || strpos($nome, '\\') !== false
+        || strtolower(basename($nome)) === '.htaccess') {
+        exit(1);
+    }
 }
 $ok = $zip->extractTo('docroot/translations/');
 $zip->close();
@@ -3705,16 +3765,16 @@ PHP
 
 # mautic_regionalizar <idioma> <fuso>
 #
-# Pacote de idioma, configuração e cache, nesta ordem. O cache no
-# fim não é detalhe: é o passo que faz os dois primeiros
-# aparecerem na tela.
+# Pacote de idioma e configuração. Os dois só aparecem na tela depois
+# de o cache ser refeito, e isso fica para o main_instalar, depois de
+# o container ganhar o endereço público: recriar o container devolve
+# o cache que veio na imagem, e limpar antes seria trabalho perdido.
 mautic_regionalizar() {
 	local idioma="$1"
 	local fuso="$2"
 
 	mautic_instalar_idioma "$idioma" || idioma="en_US"
 	mautic_gravar_config "$idioma" "$fuso" || true
-	mautic_limpar_cache || true
 }
 
 # ------------------------------------------------------------
@@ -4082,8 +4142,15 @@ mautic_verificar_roteamento() {
 
 	ui_passo "Conferindo se o domínio abre o Mautic"
 
+	# Sem plano B com nome fixo em /tmp: um nome previsível, gravado
+	# por root, é convite para link simbólico. Sem arquivo temporário
+	# não há conferência, e isso é dito.
 	local corpo
-	corpo="$(mktemp)" || corpo="/tmp/playahead_verificacao.$$"
+	if ! corpo="$(mktemp)"; then
+		ui_aviso "Não consegui criar um arquivo temporário para a conferência."
+		ui_detalhe "Costuma ser disco cheio. Abra no navegador: https://${dominio}"
+		return 1
+	fi
 
 	local codigo="" url_final="" saltos="" medida=""
 	local rc=0
@@ -4848,6 +4915,12 @@ mautic_backup_extras() {
 		docker cp "${id}:${PA_MAUTIC_DOCROOT}/${origem}/${nome}" "${destino}/" >/dev/null 2>&1 ||
 			return 1
 	done
+
+	# O que sai do container chega aqui como arquivo de root. Um
+	# arquivo com setuid ou setgid deixado num tema por um Mautic
+	# comprometido viraria programa de root no host e, na devolução,
+	# no container novo. Tira as duas marcas de tudo.
+	chmod -R u-s,g-s "$destino" 2>/dev/null || true
 }
 
 # mautic_fazer_backup
@@ -5156,6 +5229,12 @@ mautic_atualizar_subir() {
 
 	mautic_atualizar_devolver_temas
 
+	# O container novo vem com o cache que veio na imagem, compilado
+	# sem o site_url. Refazer o cache é o que devolve o idioma, o fuso
+	# e o cookie de sessão com "secure". Ver mautic_limpar_cache.
+	ui_passo "Refazendo o cache do Mautic"
+	mautic_limpar_cache || true
+
 	ui_passo "Subindo o agendador e os workers"
 	mautic_compose_desligado up -d ||
 		ui_fatal \
@@ -5349,7 +5428,7 @@ mautic_atualizar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-11-11T13:50:48Z"
+PA_BUILD="2026-11-11T14:07:03Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
@@ -5968,6 +6047,9 @@ main_instalar() {
 		ui_ok "Instalação por linha de comando pulada por --wizard"
 		ui_detalhe "Conclua pelo navegador; as credenciais do banco estão"
 		ui_detalhe "no bloco final e em ${PA_MAUTIC_CREDENCIAIS}."
+		ui_aviso "Conclua o assistente web assim que este instalador terminar."
+		ui_detalhe "Até lá ele fica aberto na internet, e quem abrir o endereço"
+		ui_detalhe "primeiro cria o administrador."
 
 		# Com --wizard o pacote de idioma entra, mas a configuração
 		# não: quem completa o assistente reescreve o local.php no
@@ -5999,6 +6081,16 @@ main_instalar() {
 	fi
 
 	mautic_subir_resto
+
+	# Depois de publicar, e não antes: o container recriado volta com
+	# o cache que veio na imagem. É este passo que faz o idioma e o
+	# fuso aparecerem, e o cookie de sessão sair com "secure". Com
+	# --wizard fica de fora: ainda não há site_url para compilar.
+	if [[ "$PA_WIZARD" -eq 0 ]]; then
+		mautic_limpar_cache || true
+	fi
+
+	mautic_conferir_workers
 
 	# Antes das credenciais, porque o resultado vai para o arquivo.
 	mautic_testar_smtp
@@ -6222,6 +6314,12 @@ services:
       MYSQL_USER: mautic
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      # O root do banco só entra de dentro do próprio container. Sem
+      # isto a imagem cria root@%, que aceita conexão de qualquer
+      # container da rede. Ninguém aqui usa o root pela rede: o Mautic
+      # usa o usuário mautic, e o backup da atualização roda dentro do
+      # container do banco. Só vale para banco criado do zero.
+      MARIADB_ROOT_HOST: localhost
       TZ: America/Sao_Paulo
 
     command:
@@ -6354,7 +6452,13 @@ services:
       # O valor da regra PRECISA estar entre crases (exigência do Traefik)
       # ----------------------------------------------------------
 
-      - "traefik.enable=true"
+      # "true", a não ser durante a instalação. O instalador sobe o
+      # Mautic com PLAYAHEAD_PUBLICAR=false enquanto ele não está
+      # instalado: sem isso, o assistente web fica aberto na internet
+      # por um ou dois minutos, com os dados do banco já preenchidos,
+      # e quem chegasse primeiro criaria o administrador. Terminada a
+      # instalação, o container é recriado com a rota ligada.
+      - "traefik.enable=${PLAYAHEAD_PUBLICAR:-true}"
 
       - "traefik.http.routers.playahead-mautic.rule=Host(`${MAUTIC_DOMAIN}`)"
 
@@ -6365,6 +6469,23 @@ services:
       - "traefik.http.routers.playahead-mautic.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
 
       - "traefik.http.services.playahead-mautic.loadbalancer.server.port=80"
+
+      # Dois cuidados aplicados pelo Traefik antes de o pedido chegar
+      # ao Mautic:
+      #
+      # HSTS: o navegador que já abriu este endereço por HTTPS não
+      # volta a tentar HTTP, nem na primeira requisição de uma visita
+      # nova. Um ano, só para este domínio (sem subdomínios).
+      #
+      # Cabeçalho "Forwarded" removido: o Mautic confia no proxy para
+      # saber o IP e o protocolo do visitante, e o Traefik informa isso
+      # pelos X-Forwarded-*, que ele mesmo regrava. O "Forwarded" ele
+      # deixa passar como veio. Medido em 2026-11-11: qualquer pedido
+      # com esse cabeçalho recebia erro 500, inclusive no pixel e no
+      # mtc.js, porque os dois cabeçalhos se contradiziam.
+      - "traefik.http.middlewares.playahead-mautic-seguranca.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.playahead-mautic-seguranca.headers.customRequestHeaders.Forwarded="
+      - "traefik.http.routers.playahead-mautic.middlewares=playahead-mautic-seguranca"
 
       - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik_public}"
 

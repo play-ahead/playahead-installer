@@ -592,6 +592,12 @@ mautic_backup_extras() {
 		docker cp "${id}:${PA_MAUTIC_DOCROOT}/${origem}/${nome}" "${destino}/" >/dev/null 2>&1 ||
 			return 1
 	done
+
+	# O que sai do container chega aqui como arquivo de root. Um
+	# arquivo com setuid ou setgid deixado num tema por um Mautic
+	# comprometido viraria programa de root no host e, na devolução,
+	# no container novo. Tira as duas marcas de tudo.
+	chmod -R u-s,g-s "$destino" 2>/dev/null || true
 }
 
 # mautic_fazer_backup
@@ -899,6 +905,12 @@ mautic_atualizar_subir() {
 	fi
 
 	mautic_atualizar_devolver_temas
+
+	# O container novo vem com o cache que veio na imagem, compilado
+	# sem o site_url. Refazer o cache é o que devolve o idioma, o fuso
+	# e o cookie de sessão com "secure". Ver mautic_limpar_cache.
+	ui_passo "Refazendo o cache do Mautic"
+	mautic_limpar_cache || true
 
 	ui_passo "Subindo o agendador e os workers"
 	mautic_compose_desligado up -d ||

@@ -384,7 +384,9 @@ checks_ip_publico() {
 
 	ip="$(curl -fsS --max-time 10 https://api.ipify.org 2>/dev/null || true)"
 
-	if [[ -z "$ip" ]]; then
+	# A resposta vem de um serviço de terceiro e vai para a tela e
+	# para comparações: só serve se for um IPv4, e nada além dele.
+	if [[ ! "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
 		ui_aviso "Não consegui descobrir o IP público desta máquina."
 		return 1
 	fi

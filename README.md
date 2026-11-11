@@ -345,12 +345,25 @@ perguntar antes.
 O script não coleta nem envia nenhuma informação. Não há telemetria, contagem de
 instalações nem registro de IP.
 
-O teste de SMTP do fim da instalação abre uma conexão com o servidor do Amazon
-SES (`email-smtp.us-east-1.amazonaws.com`) e fecha, sem enviar nada. A tela
-avisa quando isso acontece.
+Para instalar, ele precisa falar com estes servidores, e nenhum é da Play
+Ahead:
 
-O e-mail pedido durante a instalação é usado apenas para emitir o certificado
-SSL e vai para a Let's Encrypt, não para a Play Ahead.
+- `download.docker.com`: os pacotes do Docker e a chave que os assina. A
+  impressão digital da chave é conferida antes de ser aceita.
+- Docker Hub (`hub.docker.com` e o registro de imagens): as imagens do Traefik,
+  do Portainer, do MariaDB e do Mautic, e a lista pública de versões do
+  Mautic 7.
+- `language-packs.mautic.com`: a lista de idiomas e o pacote do idioma do
+  painel.
+- `email-smtp.us-east-1.amazonaws.com`, do Amazon SES: o teste de SMTP do fim
+  da instalação abre uma conexão e fecha, sem enviar nada.
+- `api.ipify.org`: só quando a VPS está atrás de NAT e o IP público não aparece
+  na placa de rede.
+- Let's Encrypt: recebe o domínio e o e-mail que você informou, para emitir o
+  certificado SSL. O e-mail vai para a Let's Encrypt, não para a Play Ahead.
+
+A tela avisa de cada consulta. O que esses servidores veem é o IP da VPS, como
+em qualquer download.
 
 Se quiser receber avisos de novas versões, correções e conteúdos da Play Ahead
 sobre automação de marketing, a inscrição é voluntária em
