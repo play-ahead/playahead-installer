@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-27T19:02:57Z
+# Build:  2026-11-11T12:36:31Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -898,7 +898,7 @@ ui_mascarar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-27T19:02:57Z"
+PA_BUILD="2026-11-11T12:36:31Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Menu de instaladores"
 
@@ -1336,7 +1336,7 @@ menu_conteudo_base() {
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-10-27T18:56:36Z
+# Build:  2026-11-11T12:36:31Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -4373,7 +4373,7 @@ traefik_mostrar_log_acme() {
 # Versão fixa da linha v3, nunca `latest`. Política de versões do
 # CLAUDE.md: o proxy recebe as correções da própria linha.
 #
-# v3.7.16 é a última da 3.7 em 2026-10-27, conferida no Docker Hub
+# v3.7.16 é a última da 3.7 em 2026-11-11, conferida no Docker Hub
 # e no GitHub. As quatro versões depois da v3.7.12, que o script
 # usava até então, trazem avisos de segurança.
 PA_TRAEFIK_VERSAO="v3.7.16"
@@ -5144,7 +5144,7 @@ portainer_bloco_final() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-10-27T18:56:36Z"
+PA_BUILD="2026-11-11T12:36:31Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 

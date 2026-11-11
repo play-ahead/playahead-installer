@@ -20,7 +20,7 @@
 # Versão fixa da linha v3, nunca `latest`. Política de versões do
 # CLAUDE.md: o proxy recebe as correções da própria linha.
 #
-# v3.7.16 é a última da 3.7 em 2026-10-27, conferida no Docker Hub
+# v3.7.16 é a última da 3.7 em 2026-11-11, conferida no Docker Hub
 # e no GitHub. As quatro versões depois da v3.7.12, que o script
 # usava até então, trazem avisos de segurança.
 PA_TRAEFIK_VERSAO="v3.7.16"
