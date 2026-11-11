@@ -89,6 +89,14 @@ jobs:
       - name: Instalar a base e o Mautic e conferir
         run: sudo bash testes/ponta-a-ponta.sh
 
+      - name: Liberar os logs para o artefato
+        if: always()
+        # O teste grava os logs com umask 077, legíveis só pelo root,
+        # porque eles trazem a tela final com as senhas. O passo
+        # seguinte não roda como root. Aqui as senhas são as
+        # descartáveis desta máquina, que deixa de existir no fim.
+        run: sudo chmod -R a+rX /tmp/teste-instalador || true
+
       - name: Guardar os logs
         if: always()
         # actions/upload-artifact v7.0.2
