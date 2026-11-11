@@ -17,7 +17,7 @@
 # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-11-11T13:47:35Z
+# Build:  2026-11-11T13:50:48Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -1618,6 +1618,54 @@ checks_validar_email() {
 	return 0
 }
 
+# checks_validar_nome <valor>
+#
+# Nome de rede, de entrypoint ou de certresolver do Traefik. Esses
+# três vão parar no .env, em label de container e em YAML, e por
+# isso só aceitam letra, número, ponto, hífen e sublinhado. Não
+# imprime nada: quem chama sabe de onde o valor veio e diz o que
+# fazer.
+checks_validar_nome() {
+	[[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$ ]]
+}
+
+# checks_validar_idioma <codigo>
+#
+# Código de idioma no formato do manifesto oficial do Mautic: pt_BR,
+# es, fil, zh-Hans.
+checks_validar_idioma() {
+	[[ "$1" =~ ^[a-z]{2,3}([_-][A-Za-z]{2,8})?$ ]]
+}
+
+# checks_validar_fuso <fuso>
+#
+# Nome de fuso do banco de fusos: America/Sao_Paulo, UTC, Etc/GMT+3,
+# America/Argentina/Buenos_Aires.
+checks_validar_fuso() {
+	[[ "$1" =~ ^[A-Za-z][A-Za-z0-9_+-]{1,31}(/[A-Za-z0-9_+-]{1,31}){0,2}$ ]]
+}
+
+# checks_exigir_flag <flag> <valor> <validador> <exemplo>
+#
+# Valor que veio por flag passa pelo mesmo validador da pergunta, e
+# valor inválido para o script antes de qualquer outra coisa. Até
+# 2026-11-11 só a resposta digitada era validada: o que vinha por
+# flag seguia direto para o .env, para o compose e para a linha de
+# comando do mautic:install. Achado da auditoria de segurança.
+#
+# Valor vazio passa: flag ausente não é erro aqui.
+checks_exigir_flag() {
+	local flag="$1" valor="$2" validador="$3" exemplo="$4"
+
+	[[ -n "$valor" ]] || return 0
+	"$validador" "$valor" && return 0
+
+	ui_fatal \
+		"O valor de ${flag} não é aceito." \
+		"Exemplo do que se espera: ${flag}=${exemplo}" \
+		"Nada foi alterado nesta máquina."
+}
+
 # ------------------------------------------------------------
 # Orquestração
 # ------------------------------------------------------------
@@ -2754,11 +2802,15 @@ mautic_ler_credenciais() {
 # Último recurso para o e-mail do admin na retomada, quando o
 # mautic:install terminou e o credenciais.txt não chegou a ser
 # gravado. O banco precisa estar de pé.
+#
+# A senha vai por MYSQL_PWD, e não por -p: argumento de linha de
+# comando aparece na lista de processos do host, inclusive o de
+# processo que roda dentro de container.
 mautic_email_admin_do_banco() {
 	# A variável é expandida dentro do container, não aqui.
 	# shellcheck disable=SC2016
 	mautic_compose exec -T mariadb sh -c \
-		'mariadb -N -umautic -p"$MYSQL_PASSWORD" mautic -e "select email from users order by id limit 1"' \
+		'MYSQL_PWD="$MYSQL_PASSWORD" mariadb -N -umautic mautic -e "select email from users order by id limit 1"' \
 		2>/dev/null | head -n 1 || true
 }
 
@@ -2973,7 +3025,7 @@ mautic_console() {
 		php -d date.timezone=UTC bin/console "$@" >/dev/null 2>&1
 }
 
-# mautic_php_stdin
+# mautic_php_stdin [VARIAVEL=valor]...
 #
 # Roda, como www-data, um script PHP vindo do stdin desta função.
 #
@@ -2981,9 +3033,22 @@ mautic_console() {
 # por bash, ssh, docker exec, sh e php, e cada camada come uma
 # barra invertida. Alimentar por stdin atravessa todas elas sem
 # escape nenhum.
+#
+# Valor que vem de fora (idioma, fuso) entra por variável de
+# ambiente, e o PHP lê com getenv(). Nunca colado dentro do código:
+# até 2026-11-11 o idioma e o fuso eram interpolados no texto do
+# script, e um --fuso com aspa simples virava código PHP executado
+# no container e gravado no config/local.php. Achado da auditoria
+# de segurança.
 mautic_php_stdin() {
-	mautic_compose exec -T -u www-data -w "$PA_MAUTIC_WORKDIR" mautic_web \
-		php /dev/stdin
+	local variaveis=() par
+
+	for par in "$@"; do
+		variaveis+=(-e "$par")
+	done
+
+	mautic_compose exec -T -u www-data -w "$PA_MAUTIC_WORKDIR" \
+		${variaveis[@]+"${variaveis[@]}"} mautic_web php /dev/stdin
 }
 
 # mautic_corrigir_dono
@@ -3512,8 +3577,13 @@ mautic_instalar_idioma() {
 		return 1
 	fi
 
+	# Nome com um trecho aleatório: o /tmp do container é de todos os
+	# processos dele, e um nome fixo poderia ser ocupado antes.
+	local zip
+	zip="/tmp/pa-idioma.$(openssl rand -hex 8).zip"
+
 	if ! mautic_compose exec -T -u www-data mautic_web \
-		curl -fsSL --max-time 90 -o /tmp/pa-idioma.zip \
+		curl -fsSL --max-time 90 -o "$zip" \
 		"${PA_MAUTIC_LANG_BASE}${codigo}.zip" >/dev/null 2>&1; then
 
 		ui_aviso "Não consegui baixar o pacote de idioma ${codigo}."
@@ -3522,10 +3592,10 @@ mautic_instalar_idioma() {
 		return 1
 	fi
 
-	if ! mautic_php_stdin <<'PHP' >/dev/null 2>&1; then
+	if ! mautic_php_stdin "PA_ZIP=${zip}" <<'PHP' >/dev/null 2>&1; then
 <?php
 $zip = new ZipArchive();
-if ($zip->open('/tmp/pa-idioma.zip') !== true) {
+if ($zip->open(getenv('PA_ZIP')) !== true) {
     exit(1);
 }
 $ok = $zip->extractTo('docroot/translations/');
@@ -3535,12 +3605,12 @@ PHP
 		ui_aviso "Baixei o pacote de idioma mas não consegui extrair."
 		ui_detalhe "Seguindo em inglês."
 		mautic_compose exec -T -u www-data mautic_web \
-			rm -f /tmp/pa-idioma.zip >/dev/null 2>&1 || true
+			rm -f "$zip" >/dev/null 2>&1 || true
 		return 1
 	fi
 
 	mautic_compose exec -T -u www-data mautic_web \
-		rm -f /tmp/pa-idioma.zip >/dev/null 2>&1 || true
+		rm -f "$zip" >/dev/null 2>&1 || true
 
 	ui_ok "Idioma ${codigo} instalado"
 }
@@ -3565,42 +3635,63 @@ mautic_gravar_config() {
 
 	ui_passo "Gravando idioma e fuso na configuração"
 
-	if ! mautic_php_stdin <<PHP
+	# Heredoc citado: nada do bash entra no texto do PHP. O idioma e
+	# o fuso chegam por variável de ambiente, e o próprio PHP recusa o
+	# que não tiver cara de código de idioma e de fuso, para o valor
+	# nunca virar outra coisa dentro do local.php.
+	if ! mautic_php_stdin "PA_IDIOMA=${idioma}" "PA_FUSO=${fuso}" <<'PHP'
 <?php
-\$arquivo = 'config/local.php';
-\$valores = [
-    'locale'           => '${idioma}',
-    'default_timezone' => '${fuso}',
+$arquivo = 'config/local.php';
+$valores = [
+    'locale'           => (string) getenv('PA_IDIOMA'),
+    'default_timezone' => (string) getenv('PA_FUSO'),
 ];
 
-\$texto = file_get_contents(\$arquivo);
-if (\$texto === false) {
-    exit(1);
-}
-
-foreach (\$valores as \$chave => \$valor) {
-    \$padrao = "/('" . preg_quote(\$chave, '/') . "'\s*=>\s*)'[^']*'/";
-    \$novo = preg_replace(\$padrao, '\$1' . "'" . \$valor . "'", \$texto, 1, \$trocas);
-
-    if (\$trocas > 0) {
-        \$texto = \$novo;
-        continue;
-    }
-
-    \$texto = preg_replace(
-        '/\n\);\s*\$/',
-        "\n\t'" . \$chave . "' => '" . \$valor . "',\n);\n",
-        \$texto,
-        1,
-        \$trocas
-    );
-
-    if (\$trocas === 0) {
+foreach ($valores as $valor) {
+    if (!preg_match('/^[A-Za-z0-9_+\/-]{2,64}$/', $valor)) {
         exit(1);
     }
 }
 
-exit(file_put_contents(\$arquivo, \$texto) === false ? 1 : 0);
+$texto = file_get_contents($arquivo);
+if ($texto === false) {
+    exit(1);
+}
+
+foreach ($valores as $chave => $valor) {
+    $padrao = "/('" . preg_quote($chave, '/') . "'\s*=>\s*)'[^']*'/";
+    $novo = preg_replace_callback(
+        $padrao,
+        function ($m) use ($valor) {
+            return $m[1] . "'" . $valor . "'";
+        },
+        $texto,
+        1,
+        $trocas
+    );
+
+    if ($trocas > 0) {
+        $texto = $novo;
+        continue;
+    }
+
+    $linha = "\n\t'" . $chave . "' => '" . $valor . "',\n);\n";
+    $texto = preg_replace_callback(
+        '/\n\);\s*$/',
+        function () use ($linha) {
+            return $linha;
+        },
+        $texto,
+        1,
+        $trocas
+    );
+
+    if ($trocas === 0) {
+        exit(1);
+    }
+}
+
+exit(file_put_contents($arquivo, $texto) === false ? 1 : 0);
 PHP
 	then
 		ui_aviso "Não consegui gravar idioma e fuso na configuração."
@@ -5258,7 +5349,7 @@ mautic_atualizar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-11-11T13:47:35Z"
+PA_BUILD="2026-11-11T13:50:48Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
@@ -5415,6 +5506,20 @@ main_parse_flags() {
 			esac
 		done
 	fi
+
+	# Tudo que veio por flag passa por validador antes de ser usado.
+	checks_exigir_flag --domain "$PA_DOMINIO" checks_validar_dominio \
+		"mautic.suaempresa.com.br"
+	checks_exigir_flag --admin-email "$PA_EMAIL_ADMIN" checks_validar_email \
+		"voce@suaempresa.com.br"
+	checks_exigir_flag --traefik-network "$PA_TRAEFIK_NETWORK" checks_validar_nome \
+		"traefik_public"
+	checks_exigir_flag --traefik-entrypoint "$PA_TRAEFIK_ENTRYPOINT" checks_validar_nome \
+		"websecure"
+	checks_exigir_flag --traefik-certresolver "$PA_TRAEFIK_CERTRESOLVER" checks_validar_nome \
+		"letsencrypt"
+	checks_exigir_flag --idioma "$PA_IDIOMA" checks_validar_idioma "pt_BR"
+	checks_exigir_flag --fuso "$PA_FUSO" checks_validar_fuso "America/Sao_Paulo"
 
 	# Origem das flags, para a tabela de confirmação do cenário 2
 	# não dizer "não encontrado" sobre algo que a pessoa informou.
@@ -5694,6 +5799,16 @@ main_perguntar() {
 	mautic_escolher_versao
 }
 
+# main_validar_nome_traefik <valor>
+#
+# Validador das três perguntas de correção do Traefik.
+main_validar_nome_traefik() {
+	checks_validar_nome "$1" && return 0
+
+	ui_aviso "Use só letras, números, ponto, hífen e sublinhado."
+	return 1
+}
+
 # main_confirmar_traefik
 #
 # Mostra o que foi detectado, com a origem de cada valor, e pede
@@ -5717,13 +5832,16 @@ main_confirmar_traefik() {
 	ui_info "Informe os valores corretos. Enter mantém o detectado."
 
 	ui_perguntar PA_TRAEFIK_NETWORK \
-		"Rede do Traefik" "${PA_TRAEFIK_NETWORK:-traefik_public}"
+		"Rede do Traefik" "${PA_TRAEFIK_NETWORK:-traefik_public}" \
+		main_validar_nome_traefik
 	ui_perguntar PA_TRAEFIK_ENTRYPOINT \
-		"Entrypoint HTTPS" "${PA_TRAEFIK_ENTRYPOINT:-websecure}"
+		"Entrypoint HTTPS" "${PA_TRAEFIK_ENTRYPOINT:-websecure}" \
+		main_validar_nome_traefik
 
 	if ui_confirmar "Este Traefik emite certificado (Let's Encrypt)?" 1; then
 		ui_perguntar PA_TRAEFIK_CERTRESOLVER \
-			"Nome do certresolver" "${PA_TRAEFIK_CERTRESOLVER:-letsencrypt}"
+			"Nome do certresolver" "${PA_TRAEFIK_CERTRESOLVER:-letsencrypt}" \
+			main_validar_nome_traefik
 	else
 		PA_TRAEFIK_CERTRESOLVER=""
 		ui_detalhe "O label de certresolver será omitido."

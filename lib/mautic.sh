@@ -273,11 +273,15 @@ mautic_ler_credenciais() {
 # Último recurso para o e-mail do admin na retomada, quando o
 # mautic:install terminou e o credenciais.txt não chegou a ser
 # gravado. O banco precisa estar de pé.
+#
+# A senha vai por MYSQL_PWD, e não por -p: argumento de linha de
+# comando aparece na lista de processos do host, inclusive o de
+# processo que roda dentro de container.
 mautic_email_admin_do_banco() {
 	# A variável é expandida dentro do container, não aqui.
 	# shellcheck disable=SC2016
 	mautic_compose exec -T mariadb sh -c \
-		'mariadb -N -umautic -p"$MYSQL_PASSWORD" mautic -e "select email from users order by id limit 1"' \
+		'MYSQL_PWD="$MYSQL_PASSWORD" mariadb -N -umautic mautic -e "select email from users order by id limit 1"' \
 		2>/dev/null | head -n 1 || true
 }
 
@@ -492,7 +496,7 @@ mautic_console() {
 		php -d date.timezone=UTC bin/console "$@" >/dev/null 2>&1
 }
 
-# mautic_php_stdin
+# mautic_php_stdin [VARIAVEL=valor]...
 #
 # Roda, como www-data, um script PHP vindo do stdin desta função.
 #
@@ -500,9 +504,22 @@ mautic_console() {
 # por bash, ssh, docker exec, sh e php, e cada camada come uma
 # barra invertida. Alimentar por stdin atravessa todas elas sem
 # escape nenhum.
+#
+# Valor que vem de fora (idioma, fuso) entra por variável de
+# ambiente, e o PHP lê com getenv(). Nunca colado dentro do código:
+# até 2026-11-11 o idioma e o fuso eram interpolados no texto do
+# script, e um --fuso com aspa simples virava código PHP executado
+# no container e gravado no config/local.php. Achado da auditoria
+# de segurança.
 mautic_php_stdin() {
-	mautic_compose exec -T -u www-data -w "$PA_MAUTIC_WORKDIR" mautic_web \
-		php /dev/stdin
+	local variaveis=() par
+
+	for par in "$@"; do
+		variaveis+=(-e "$par")
+	done
+
+	mautic_compose exec -T -u www-data -w "$PA_MAUTIC_WORKDIR" \
+		${variaveis[@]+"${variaveis[@]}"} mautic_web php /dev/stdin
 }
 
 # mautic_corrigir_dono
@@ -1031,8 +1048,13 @@ mautic_instalar_idioma() {
 		return 1
 	fi
 
+	# Nome com um trecho aleatório: o /tmp do container é de todos os
+	# processos dele, e um nome fixo poderia ser ocupado antes.
+	local zip
+	zip="/tmp/pa-idioma.$(openssl rand -hex 8).zip"
+
 	if ! mautic_compose exec -T -u www-data mautic_web \
-		curl -fsSL --max-time 90 -o /tmp/pa-idioma.zip \
+		curl -fsSL --max-time 90 -o "$zip" \
 		"${PA_MAUTIC_LANG_BASE}${codigo}.zip" >/dev/null 2>&1; then
 
 		ui_aviso "Não consegui baixar o pacote de idioma ${codigo}."
@@ -1041,10 +1063,10 @@ mautic_instalar_idioma() {
 		return 1
 	fi
 
-	if ! mautic_php_stdin <<'PHP' >/dev/null 2>&1; then
+	if ! mautic_php_stdin "PA_ZIP=${zip}" <<'PHP' >/dev/null 2>&1; then
 <?php
 $zip = new ZipArchive();
-if ($zip->open('/tmp/pa-idioma.zip') !== true) {
+if ($zip->open(getenv('PA_ZIP')) !== true) {
     exit(1);
 }
 $ok = $zip->extractTo('docroot/translations/');
@@ -1054,12 +1076,12 @@ PHP
 		ui_aviso "Baixei o pacote de idioma mas não consegui extrair."
 		ui_detalhe "Seguindo em inglês."
 		mautic_compose exec -T -u www-data mautic_web \
-			rm -f /tmp/pa-idioma.zip >/dev/null 2>&1 || true
+			rm -f "$zip" >/dev/null 2>&1 || true
 		return 1
 	fi
 
 	mautic_compose exec -T -u www-data mautic_web \
-		rm -f /tmp/pa-idioma.zip >/dev/null 2>&1 || true
+		rm -f "$zip" >/dev/null 2>&1 || true
 
 	ui_ok "Idioma ${codigo} instalado"
 }
@@ -1084,42 +1106,63 @@ mautic_gravar_config() {
 
 	ui_passo "Gravando idioma e fuso na configuração"
 
-	if ! mautic_php_stdin <<PHP
+	# Heredoc citado: nada do bash entra no texto do PHP. O idioma e
+	# o fuso chegam por variável de ambiente, e o próprio PHP recusa o
+	# que não tiver cara de código de idioma e de fuso, para o valor
+	# nunca virar outra coisa dentro do local.php.
+	if ! mautic_php_stdin "PA_IDIOMA=${idioma}" "PA_FUSO=${fuso}" <<'PHP'
 <?php
-\$arquivo = 'config/local.php';
-\$valores = [
-    'locale'           => '${idioma}',
-    'default_timezone' => '${fuso}',
+$arquivo = 'config/local.php';
+$valores = [
+    'locale'           => (string) getenv('PA_IDIOMA'),
+    'default_timezone' => (string) getenv('PA_FUSO'),
 ];
 
-\$texto = file_get_contents(\$arquivo);
-if (\$texto === false) {
-    exit(1);
-}
-
-foreach (\$valores as \$chave => \$valor) {
-    \$padrao = "/('" . preg_quote(\$chave, '/') . "'\s*=>\s*)'[^']*'/";
-    \$novo = preg_replace(\$padrao, '\$1' . "'" . \$valor . "'", \$texto, 1, \$trocas);
-
-    if (\$trocas > 0) {
-        \$texto = \$novo;
-        continue;
-    }
-
-    \$texto = preg_replace(
-        '/\n\);\s*\$/',
-        "\n\t'" . \$chave . "' => '" . \$valor . "',\n);\n",
-        \$texto,
-        1,
-        \$trocas
-    );
-
-    if (\$trocas === 0) {
+foreach ($valores as $valor) {
+    if (!preg_match('/^[A-Za-z0-9_+\/-]{2,64}$/', $valor)) {
         exit(1);
     }
 }
 
-exit(file_put_contents(\$arquivo, \$texto) === false ? 1 : 0);
+$texto = file_get_contents($arquivo);
+if ($texto === false) {
+    exit(1);
+}
+
+foreach ($valores as $chave => $valor) {
+    $padrao = "/('" . preg_quote($chave, '/') . "'\s*=>\s*)'[^']*'/";
+    $novo = preg_replace_callback(
+        $padrao,
+        function ($m) use ($valor) {
+            return $m[1] . "'" . $valor . "'";
+        },
+        $texto,
+        1,
+        $trocas
+    );
+
+    if ($trocas > 0) {
+        $texto = $novo;
+        continue;
+    }
+
+    $linha = "\n\t'" . $chave . "' => '" . $valor . "',\n);\n";
+    $texto = preg_replace_callback(
+        '/\n\);\s*$/',
+        function () use ($linha) {
+            return $linha;
+        },
+        $texto,
+        1,
+        $trocas
+    );
+
+    if ($trocas === 0) {
+        exit(1);
+    }
+}
+
+exit(file_put_contents($arquivo, $texto) === false ? 1 : 0);
 PHP
 	then
 		ui_aviso "Não consegui gravar idioma e fuso na configuração."

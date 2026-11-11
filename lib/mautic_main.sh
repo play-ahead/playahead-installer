@@ -190,6 +190,20 @@ main_parse_flags() {
 		done
 	fi
 
+	# Tudo que veio por flag passa por validador antes de ser usado.
+	checks_exigir_flag --domain "$PA_DOMINIO" checks_validar_dominio \
+		"mautic.suaempresa.com.br"
+	checks_exigir_flag --admin-email "$PA_EMAIL_ADMIN" checks_validar_email \
+		"voce@suaempresa.com.br"
+	checks_exigir_flag --traefik-network "$PA_TRAEFIK_NETWORK" checks_validar_nome \
+		"traefik_public"
+	checks_exigir_flag --traefik-entrypoint "$PA_TRAEFIK_ENTRYPOINT" checks_validar_nome \
+		"websecure"
+	checks_exigir_flag --traefik-certresolver "$PA_TRAEFIK_CERTRESOLVER" checks_validar_nome \
+		"letsencrypt"
+	checks_exigir_flag --idioma "$PA_IDIOMA" checks_validar_idioma "pt_BR"
+	checks_exigir_flag --fuso "$PA_FUSO" checks_validar_fuso "America/Sao_Paulo"
+
 	# Origem das flags, para a tabela de confirmação do cenário 2
 	# não dizer "não encontrado" sobre algo que a pessoa informou.
 	#
@@ -468,6 +482,16 @@ main_perguntar() {
 	mautic_escolher_versao
 }
 
+# main_validar_nome_traefik <valor>
+#
+# Validador das três perguntas de correção do Traefik.
+main_validar_nome_traefik() {
+	checks_validar_nome "$1" && return 0
+
+	ui_aviso "Use só letras, números, ponto, hífen e sublinhado."
+	return 1
+}
+
 # main_confirmar_traefik
 #
 # Mostra o que foi detectado, com a origem de cada valor, e pede
@@ -491,13 +515,16 @@ main_confirmar_traefik() {
 	ui_info "Informe os valores corretos. Enter mantém o detectado."
 
 	ui_perguntar PA_TRAEFIK_NETWORK \
-		"Rede do Traefik" "${PA_TRAEFIK_NETWORK:-traefik_public}"
+		"Rede do Traefik" "${PA_TRAEFIK_NETWORK:-traefik_public}" \
+		main_validar_nome_traefik
 	ui_perguntar PA_TRAEFIK_ENTRYPOINT \
-		"Entrypoint HTTPS" "${PA_TRAEFIK_ENTRYPOINT:-websecure}"
+		"Entrypoint HTTPS" "${PA_TRAEFIK_ENTRYPOINT:-websecure}" \
+		main_validar_nome_traefik
 
 	if ui_confirmar "Este Traefik emite certificado (Let's Encrypt)?" 1; then
 		ui_perguntar PA_TRAEFIK_CERTRESOLVER \
-			"Nome do certresolver" "${PA_TRAEFIK_CERTRESOLVER:-letsencrypt}"
+			"Nome do certresolver" "${PA_TRAEFIK_CERTRESOLVER:-letsencrypt}" \
+			main_validar_nome_traefik
 	else
 		PA_TRAEFIK_CERTRESOLVER=""
 		ui_detalhe "O label de certresolver será omitido."
