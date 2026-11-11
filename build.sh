@@ -86,6 +86,7 @@ PA_LIBS_base=(
 	traefik_instalar
 	cenario
 	portainer
+	base_atualizar
 	base_main
 )
 
@@ -97,6 +98,7 @@ PA_LIBS_mautic7=(
 	traefik
 	cenario
 	mautic
+	mautic_atualizar
 	mautic_main
 )
 

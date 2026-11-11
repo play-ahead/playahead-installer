@@ -89,3 +89,75 @@ docker_compose_versao() {
 	docker compose version --short 2>/dev/null ||
 		printf 'desconhecida\n'
 }
+
+# ------------------------------------------------------------
+# Apoio ao modo de atualização
+#
+# Usado pelos dois instaladores, cada um para as suas stacks.
+# ------------------------------------------------------------
+
+# docker_versao_maior <a> <b>
+#
+# Verdadeiro quando a é mais nova que b. Compara como versão, e não
+# como texto: 3.7.9 é menor que 3.7.16. Um "v" na frente é ignorado.
+docker_versao_maior() {
+	local uma="${1#v}" outra="${2#v}"
+	[[ "$uma" != "$outra" ]] &&
+		[[ "$(printf '%s\n%s\n' "$uma" "$outra" | sort -V | tail -n 1)" == "$uma" ]]
+}
+
+# docker_compose_desligado <pasta> <argumentos...>
+#
+# Roda `docker compose` da pasta numa sessão própria (setsid), sem
+# saída na tela.
+#
+# Medido em 2026-10-27: a conexão SSH caiu no meio de um `up -d`, o
+# comando morreu junto e a stack ficou pela metade, com container
+# antigo em remoção e novo só criado. Numa sessão própria o comando
+# termina mesmo que o terminal caia, e a execução seguinte encontra
+# a troca feita.
+docker_compose_desligado() {
+	local pasta="$1"
+	shift
+
+	if command -v setsid >/dev/null 2>&1; then
+		(cd "$pasta" && setsid --wait docker compose "$@" </dev/null >/dev/null 2>&1)
+	else
+		(cd "$pasta" && docker compose "$@" >/dev/null 2>&1)
+	fi
+}
+
+# docker_imagem_do_servico <pasta> <servico>
+#
+# A imagem do container do serviço, parado ou não. Nada quando o
+# container não existe.
+docker_imagem_do_servico() {
+	local id
+	id="$(cd "$1" && docker compose ps -aq "$2" 2>/dev/null | head -n 1)" || true
+	[[ -n "$id" ]] || return 0
+	docker inspect --format '{{.Config.Image}}' "$id" 2>/dev/null || true
+}
+
+# docker_compose_registrar_hash <pasta>
+#
+# Guarda o sha256 do compose como o instalador o gravou. É o que
+# permite ao modo de atualização dizer, antes de regravar o arquivo,
+# se a pessoa mexeu nele: a alteração dela não vai junto, e ela
+# precisa saber disso antes.
+docker_compose_registrar_hash() {
+	(cd "$1" && sha256sum docker-compose.yml >.compose.sha256) || true
+}
+
+# docker_compose_situacao <pasta>
+#
+# Ecoa um de: intacto, alterado, sem-registro. O último é o de
+# instalação feita antes de este registro existir.
+docker_compose_situacao() {
+	if [[ ! -f "${1}/.compose.sha256" ]]; then
+		printf 'sem-registro\n'
+	elif (cd "$1" && sha256sum --status -c .compose.sha256) 2>/dev/null; then
+		printf 'intacto\n'
+	else
+		printf 'alterado\n'
+	fi
+}

@@ -284,6 +284,7 @@ portainer_instalar() {
 		ui_ok "Compose do Portainer já existe; mantido como está"
 	else
 		portainer_gerar_compose "$compose"
+		docker_compose_registrar_hash "$PA_PORTAINER_DIR"
 		ui_ok "Compose gravado em ${compose}"
 	fi
 

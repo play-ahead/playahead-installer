@@ -120,6 +120,7 @@ traefik_instalar() {
 		ui_detalhe "Não sobrescrito, conforme a regra de nada destrutivo."
 	else
 		traefik_gerar_compose "$compose"
+		docker_compose_registrar_hash "$PA_TRAEFIK_DIR"
 		ui_ok "Compose gravado em ${compose}"
 	fi
 
