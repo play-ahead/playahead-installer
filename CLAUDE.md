@@ -2235,8 +2235,10 @@ compose.
   inacessível avisa e segue; no fluxo real de perguntas, a escolha aparece
   marcada no resumo e o "não" no "Posso começar?" sai sem criar nada.
   `--versao=ultima` para com a mensagem dos dois valores válidos.
-- **Item 6, teste fixo e workflow: teste feito em 2026-10-27; o workflow
-  ainda não rodou no GitHub.**
+- **Item 6, teste fixo e workflow: feito. Teste na VPS em 2026-10-27; o
+  workflow passou no GitHub em 2026-11-11** (rodada 43013774631: "dist em
+  dia e shellcheck" em 9 s, "instalação de ponta a ponta" em 6min23s, todas
+  as conferências ok).
   - `testes/ponta-a-ponta.sh` roda o `dist/base.sh` e o `dist/mautic7.sh`
     com `--yes` e `--skip-dns-check`, com `mautic.ci.test` e
     `portainer.ci.test` no `/etc/hosts` apontando para 127.0.0.1, e confere:
@@ -2266,7 +2268,32 @@ compose.
     artefato; as senhas neles são as descartáveis da máquina do teste.
   - Na máquina do GitHub o Docker já vem instalado e há 16 GB de RAM: o
     teste lá passa pelo cenário 1.5 e não cobre a instalação do Docker nem
-    o swap. Esses dois continuam dependendo da VPS.
+    o swap. Esses dois continuam dependendo da VPS. Confirmado no log da
+    rodada: Docker 28.0.4 e Compose 2.38.2 já instalados, swap já ativo,
+    15983 MB de RAM.
+  - **A primeira rodada falhou com "Permission denied" no `./build.sh`.**
+    Os commits saem do Windows, e o `build.sh` e o teste estavam no git como
+    `100644`, sem o bit de executável. Corrigido com `git update-index
+    --chmod=+x` (commit `949bc7f`). Vale para quem clona no Linux também.
+    Arquivo novo que precise rodar com `./` tem de ganhar o bit do mesmo
+    jeito.
+
+**Proteção do `main` (2026-11-11, opção A do Fabio).** Duas regras do
+GitHub (rulesets) no `main`:
+
+- "main: sem force push nem exclusão": bloqueia `non_fast_forward` e
+  `deletion` para todos, **sem exceção**, nem para os donos da organização.
+- "main: exige o teste do instalador": exige as duas etapas do workflow
+  passando ("dist em dia e shellcheck" e "instalação de ponta a ponta"),
+  **com exceção para os donos da organização** (`OrganizationAdmin`). É o
+  que deixa os commits diretos feitos pela conta `play-ahead1` continuarem
+  funcionando. Um pedido de atualização de quem não é dono só entra com o
+  teste passando.
+
+Conferido em 2026-11-11: a organização tem dois membros, `play-ahead1` e
+`brunaluizarocha27`, e os dois são donos. Uma rotina que aja com qualquer um
+deles contorna a segunda regra. Para a rotina não ter esse poder, ela
+precisa de uma conta que não seja dona (ver item 7).
 
 **Achado no teste do item 2, a decidir:** durante o download e a subida do
 banco, numa VPS de 1 vCPU, a carga média chegou a 13, e o SSH ficou sem
