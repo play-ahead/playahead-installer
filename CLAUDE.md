@@ -428,7 +428,7 @@ errado, por decisão do Fabio: o Let's Encrypt tenta o IPv6 primeiro quando
 ele existe, e quem visita pelo IPv6 cai no outro servidor.
 
 - Os IPv6 do domínio vêm de `getent ahostsv6`, **tirando os `::ffff:`**: sem
-  AAAA, o `getent` devolve o IPv4 disfarçado (`::ffff:201.79.41.0`, medido na
+  AAAA, o `getent` devolve o IPv4 disfarçado (`::ffff:` seguido do IPv4, medido na
   VPS), e isso não é registro AAAA.
 - Os da VPS vêm de `ip -6 addr show scope global`. A VPS de teste da
   DigitalOcean não tinha IPv6 nenhum; para ela, qualquer AAAA está errado.
@@ -916,6 +916,129 @@ atualizar" numa instalação nova, e a atualização inteira sobre um compose
 alterado de propósito (backup, regravação, subida). Trocar de versão de
 verdade continua sendo teste de VPS.
 
+## Auditoria de segurança (2026-11-11)
+
+Pedida pelo Fabio antes do teste final. Duas auditorias independentes, ao
+mesmo tempo, uma com o Fable 5.2 e outra com o Opus 5.5, cada uma num agente
+novo, que não viu o trabalho do projeto nem a outra auditoria. As duas só
+leram: o repositório, o GitHub pelo `gh` e a VPS de teste. O Opus entrou
+porque os pedidos de cibersegurança que os filtros do Fable sinalizam são
+desviados para modelos menos capazes, e uma segunda leitura cobre isso.
+
+Regra seguida: **cada achado foi reproduzido com teste antes de ser
+corrigido.** Onde não houve teste, a tabela diz.
+
+A do Opus entregou 15 achados e classificou dois como críticos. A do Fable
+entregou 22 e não classificou nenhum como crítico. As duas concordaram nos
+pontos principais, e a do Fable achou sozinha cinco que viraram correção.
+
+### O que acharam, e o que foi feito
+
+| Achado | Quem | Como foi confirmado | O que foi feito |
+|---|---|---|---|
+| O `./build.sh --check` apagava qualquer linha `PA_BUILD=` antes de comparar. Uma linha `PA_BUILD="$(comando)"` no `dist/` passava como "em dia" e rodava como root na VPS de quem baixasse | as duas | linha injetada: `--check` com saída 0, e o `--version` executou o comando | o `--check` troca só a data, no formato exato, por um marcador. Nove adulterações testadas. O workflow adultera o `dist/` e exige a reprovação |
+| Nada técnico separa a conta da rotina do `main`: ela é dona da organização, tem ferramenta de merge, e a regra não exige aprovação | as duas | esta mesma conta editou a regra do `main` pela API; o pedido 4 saiu em nome dela | não tem conserto em código. Decisão do Fabio, abaixo |
+| O `CLAUDE.md` era livre na trava: um pedido da rotina podia deixar uma ordem plantada para as próximas execuções | as duas | parágrafo "a rotina deve fazer merge" aprovado pela trava | a trava só aceita número de versão e data em linha que já existe |
+| Cookie de sessão do Mautic sem `secure`, e sem HSTS | as duas | `curl` de fora. Causa: o cache que vem compilado na imagem | o cache é refeito depois de recriar o container; HSTS por label no Mautic e no Portainer |
+| O assistente web do Mautic ficava aberto na internet durante a instalação | as duas | leitura do código e a medição do teste B14. Ninguém tentou concluir o assistente de fora | a web sobe sem rota no Traefik até a instalação terminar |
+| Valor passado por flag não era validado; idioma e fuso eram colados em código PHP | as duas | `--fuso` com aspa gerou PHP com `system()` | validador para tudo que vem por flag, no parse; idioma e fuso entram por variável de ambiente; 35 casos testados |
+| Senha do banco em `-p`, visível na lista de processos | as duas | leitura | `MYSQL_PWD` |
+| Chave do Docker, ShellCheck e pacote de idioma sem conferência | as duas | leitura | impressão digital da chave conferida; sha256 do ShellCheck no workflow; o zip do idioma é conferido antes de extrair |
+| O menu gravava o instalador através de link simbólico; nome fixo em `/tmp` quando o `mktemp` falhava | as duas | na VPS, o arquivo apontado pelo link virou o `base.sh` | link recusado; gravação em arquivo novo, trocado pelo nome final; sem plano B em `/tmp` |
+| Pedido de fork com branch `claude/versoes-*` se passando pelo da rotina | as duas | leitura do prompt | o prompt só conta pedido deste repositório e da conta da rotina |
+| Dados da VPS de teste e das contas no `CLAUDE.md` público | as duas | leitura | movidos para o cofre |
+| Imagens fixadas por tag, e tag exata pode ser regravada | as duas | a `traefik:v3.7.16` foi regravada em 26/10 | decisão do Fabio, abaixo |
+| Mautic e Portainer na mesma rede do proxy | as duas | `docker network inspect` | aceito por ora; decisão do Fabio, abaixo |
+| A trava não rodava de novo quando a branch de destino do pedido mudava | Opus | leitura | `edited` nos tipos do gatilho |
+| As duas contas donas da organização estão sem 2FA | Fable | API do GitHub | só o Fabio pode ligar |
+| O app do Claude escreve em todos os repositórios da organização | Fable | API do GitHub | decisão do Fabio, abaixo |
+| O cabeçalho `Forwarded` de qualquer visitante derrubava o Mautic com erro 500, inclusive o pixel e o `mtc.js` | Fable | de fora: 200 sem o cabeçalho, 500 com ele | o Traefik remove o cabeçalho; conferido depois: 200 |
+| A trava aceitava voltar versão | Fable | `7.0.0-apache` aprovada | versão menor que a atual é reprovada |
+| A trava deixava passar linha começando com `++` e arquivo com byte nulo | Fable | os dois aprovados | corrigido; 37 casos testados |
+| `root@%` no banco | Fable | consulta ao banco | `MARIADB_ROOT_HOST: localhost`, em banco novo |
+| Arquivo setuid num tema viria para o backup como root | Fable, como suspeita | não testado | o backup tira setuid e setgid do que vem do container |
+| Logs do teste fixo legíveis por todos | Fable | leitura | `umask 077` no teste |
+| Seção de privacidade do README incompleta | Fable | leitura | completada, com os seis servidores consultados |
+| O motivo anotado para adiar o proxy de socket não se sustenta: a detecção do Traefik roda no host, e não pelo socket dele | Fable | leitura | registrado; decisão do Fabio, abaixo |
+
+Um achado veio do próprio teste, e não das auditorias: na máquina do GitHub
+o dump do backup nasceu com modo 666, com o `umask` em 077. Ver as
+armadilhas.
+
+**Um ponto que as auditorias deixaram em aberto, e que foi medido:** o
+Traefik descarta os `X-Forwarded-*` forjados por um visitante. Um container
+de teste atrás dele recebeu o IP e o protocolo de verdade, e não os
+enviados. O `trusted_proxies` em `0.0.0.0/0` continua certo atrás do nosso
+Traefik. Num Traefik de terceiro configurado para confiar em quem chega
+(`forwardedHeaders.insecure`), não.
+
+O que as duas conferiram e acharam certo: só 22, 80 e 443 em escuta; banco,
+Portainer e API do Docker sem porta publicada; segredos com 600 e backups
+com 700; TLS 1.0 e 1.1 recusados; ações do workflow fixadas por commit; o
+workflow com `pull_request_target` não executa código do pedido; a senha do
+admin no `argv`, aceita e documentada.
+
+### O que ficou para o Fabio decidir
+
+São decisões que mudam o que ele já tinha decidido, ou que só ele pode
+executar. Estão na ordem do risco.
+
+1. **A conta da rotina, ou a aprovação obrigatória.** Em 2026-11-11, antes
+   das auditorias, o Fabio decidiu não exigir aprovação e não dar conta
+   própria à rotina. As duas auditorias dizem que isso deixa o `main` sem
+   barreira técnica contra a conta da rotina: ela é dona, então pode até
+   mudar a regra. O que segura hoje é o prompt, a trava (para a branch de
+   nome certo) e o teste. As saídas possíveis, que se somam: uma conta só
+   para a rotina, membro e não dona; exigir uma aprovação no `main`, de
+   quem não abriu o pedido.
+2. **2FA nas duas contas donas**, e exigir 2FA na organização. Uma senha
+   vazada de qualquer uma das duas dá o `main`.
+3. **Restringir o app do Claude** aos repositórios que precisam dele. Hoje
+   ele escreve em todos, com permissão sobre workflows e webhooks.
+4. **Publicar a partir de uma tag, e não do `main`.** O
+   `get.playahead.com.br` ainda não existe: apontá-lo para a tag
+   (`mautic7-v0.1.0`) faz um merge deixar de ser publicação imediata.
+5. **Digest junto com a tag das imagens.** Muda a mecânica da política de
+   versões: a rotina e a trava passam a trocar o digest também. Sem ele, a
+   imagem que passou no teste pode não ser a que a VPS baixa depois.
+6. **Proxy de socket no Traefik.** O Traefik é a peça que lê todo o tráfego
+   da internet, e tem o socket do Docker. Um proxy que só deixa ler
+   containers e redes limita o estrago. Custa mais um container e mais uma
+   imagem de terceiro para vigiar.
+7. **Rede própria para o Portainer**, e lista de IPs que podem abri-lo. Um
+   Mautic comprometido alcança o Portainer por dentro, sem passar pelo
+   Traefik. Hoje a proteção é a senha de 28 caracteres, a mesma que protege
+   o acesso por fora. Separar exige o Traefik em duas redes, e a detecção
+   das ferramentas passaria a ver duas candidatas e a perguntar.
+8. **Leitura de segredos e proteção de push** do GitHub, desligadas neste
+   repositório público.
+
+### Decisões tomadas na correção, e o motivo
+
+- **HSTS de um ano, só para o domínio**, sem subdomínios e sem a lista de
+  pré-carga dos navegadores: o instalador não sabe o que mais a pessoa tem
+  no domínio dela.
+- **Sem bloqueio de iframe no Mautic.** Os formulários do Mautic são
+  embutidos em outros sites por iframe, e o cabeçalho que a auditoria
+  sugeriu os quebraria. O Portainer já manda o dele.
+- **O cabeçalho `Server` do Apache e o `nosniff` ficaram de fora.** O ganho
+  é pequeno, e mexer no tipo de conteúdo de uma aplicação que serve
+  JavaScript de rastreio para outros sites pede teste que não foi feito.
+- **A validação das flags fica no parse**, antes de qualquer coisa. Valor
+  recusado para o script dizendo qual flag e dando um exemplo.
+- **Sem `gpg` na máquina, a conferência da chave do Docker é pulada e dita
+  na tela.** Instalar mais um pacote só para conferir traria outro ponto de
+  falha na instalação.
+- **O `CLAUDE.md` continua na lista da trava**, como o Fabio pediu, mas só
+  para número de versão e data.
+
+### O que ainda não foi auditado
+
+O visual (bloco 3) ainda não existia. Depois dele, as duas auditorias são
+repetidas só no que mudar. A configuração da rotina no claude.ai não é
+visível para um agente de auditoria: as duas usaram o arquivo do prompt e
+os fatos medidos na primeira execução.
+
 ## Licença e aviso legal
 
 Licença MIT. Arquivo `LICENSE` na raiz do repositório. Sem licença explícita,
@@ -1052,6 +1175,13 @@ Ajustes do template, aplicados e validados em VPS:
 - **`--time-limit=300` nos workers**, por troca de linha no `entrypoint` do
   `mautic_worker`. Sem isso o SMTP trocado no painel não chega ao worker.
   Ver o item 1 das pendências do teste de envio.
+- **`traefik.enable` segue `PLAYAHEAD_PUBLICAR`**, para o Mautic subir sem
+  rota durante a instalação. Ver "Ordem de subida".
+- **Middleware `playahead-mautic-seguranca`**, por label: HSTS de um ano, só
+  para o domínio, e remoção do cabeçalho `Forwarded` do visitante. Ver
+  "Auditoria de segurança".
+- **`MARIADB_ROOT_HOST: localhost`**: o root do banco só entra de dentro do
+  container. Só vale para banco criado do zero.
 - **Log com rotação nos quatro serviços** (`logging: driver: local`, 20 MB
   × 5 arquivos, comprimidos), como nos composes do Traefik e do Portainer.
   Ver o item 3 do bloco 2.
@@ -1098,13 +1228,31 @@ presente só na web produziria e-mail em inglês sem nenhum aviso.
 Em três tempos, não um `up -d` só:
 
 1. `up -d mariadb`, esperar ficar `healthy`
-2. `up -d mautic_web`, esperar o Apache responder dentro do container, e então
-   rodar o `mautic:install` (ou pular, com `--wizard`)
-3. `up -d` completo, subindo cron e worker
+2. `up -d mautic_web`, **sem rota no Traefik**, esperar o Apache responder
+   dentro do container, e então rodar o `mautic:install` (ou pular, com
+   `--wizard`)
+3. `up -d` completo: a web ganha a rota e sobem cron e worker
+4. limpeza de cache, com a web já no container definitivo
 
-Motivo: com `depends_on: service_started`, cron e worker sobem antes de o banco
-estar instalado e ficam em laço de erro, queimando CPU e poluindo o log
-justamente na hora em que a pessoa está olhando a tela.
+Motivo dos tempos: com `depends_on: service_started`, cron e worker sobem
+antes de o banco estar instalado e ficam em laço de erro, queimando CPU e
+poluindo o log justamente na hora em que a pessoa está olhando a tela.
+
+**Sem rota até a instalação terminar (2026-11-11, achado das duas
+auditorias).** Do instante em que o container da web subia até o
+`mautic:install` terminar, o assistente web do Mautic respondia no domínio
+público, com os dados do banco já preenchidos pelas variáveis de ambiente.
+Quem chegasse primeiro criava o administrador, e há robôs que acompanham os
+registros públicos de certificados novos para isso. O label
+`traefik.enable` do template passou a ler `PLAYAHEAD_PUBLICAR` (padrão
+`true`), e o instalador sobe a web com `false` enquanto o `local.php` não
+tem `site_url`. O `up -d` do passo 3, sem a variável, recria o container
+com a rota ligada. Com `--wizard` não há como esconder: quem conclui é a
+pessoa, pelo navegador, e a tela avisa para concluir logo.
+
+**A limpeza de cache vem depois do passo 3, e não antes.** Container
+recriado volta com o cache que veio na imagem: ver "A imagem traz um cache
+compilado", nas armadilhas.
 
 ## Armadilhas já confirmadas na documentação oficial
 
@@ -1140,6 +1288,27 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
   376, porque o fim do horário de verão em 2019 tirou BRT e BRST do banco de
   fusos. Rodar o instalador com `-d date.timezone=UTC`. O assistente web não é
   afetado. Verificado na imagem, não na documentação.
+
+- **A imagem traz um cache compilado, feito sem `site_url`.** Medido em
+  2026-11-11: o `var/cache/prod` da imagem `7.2.2-apache` tem a data em que
+  a imagem foi construída, e o Symfony em produção não confere se o cache
+  está em dia. O Mautic decide na compilação se o cookie de sessão leva
+  `secure`, olhando se o `site_url` começa com `https`
+  (`app/config/config.php`). Com o cache da imagem, o cookie sai sem
+  `secure`. Todo container recriado (atualização, `up -d` depois de mudar o
+  compose, `--force-recreate`) volta para esse cache. Por isso o instalador
+  e a atualização refazem o cache depois de recriar a web, e a receita de
+  limpar o cache vale também depois de recriar o container à mão.
+- **O Mautic quebra com o cabeçalho `Forwarded`.** O `TrustMiddleware`
+  confia no conjunto padrão de cabeçalhos do Symfony, que inclui o
+  `Forwarded` (RFC 7239). O Traefik regrava os `X-Forwarded-*`, mas deixa o
+  `Forwarded` do visitante passar. Os dois se contradizem e o Symfony
+  responde 500 (`ConflictingHeadersException`), em qualquer URL, inclusive
+  no pixel e no `mtc.js`. Medido de fora em 2026-11-11. O template remove o
+  cabeçalho no Traefik.
+- **`umask` não vale em pasta com ACL padrão.** Na máquina do GitHub, com o
+  `umask` em 077, o dump do backup nasceu com modo 666. Arquivo com segredo
+  leva `chmod` explícito depois de criado, sempre.
 
 ## Estrutura pretendida
 
@@ -1610,7 +1779,7 @@ A verificação de roteamento do Portainer passou a seguir redirecionamentos e
 exigir 200, como a do Mautic. Ela aceitava 307, e o 307 era exatamente o sintoma
 do problema: o redirecionamento para `/timeout.html`.
 
-Validado na VPS 142.93.201.114, recriando só o Portainer (container, volume de
+Validado na VPS de teste da época, recriando só o Portainer (container, volume de
 dados e compose):
 
 | Conferência | Resultado |
@@ -1676,7 +1845,7 @@ dentro do `Host()`, produzindo 404 sem nada no log.
 
 ## Laço de redirecionamento: o proxy confiável
 
-Diagnosticado em 2026-09-30, na VPS 142.93.201.114. O site não abria:
+Diagnosticado em 2026-09-30, na VPS de teste da época. O site não abria:
 `ERR_TOO_MANY_REDIRECTS`, e `curl -sIL` devolvia `301` com `location` para o
 próprio endereço, sem fim.
 
@@ -2044,11 +2213,13 @@ por uma migração de banco de verdade, e a volta pelo backup depois dela.
 
 **Falta ainda:**
 
-- Bloco 3, visual: moldura, contador de etapas e quadro final com as
-  credenciais. Não começado.
-- **Auditoria e ensaio do teste final**, citados pelo Fabio em 2026-11-11 como
-  passos antes do teste final dele. O conteúdo dos dois não foi definido nesta
-  conversa: combinar com ele.
+- Bloco 3, visual: três versões do cabeçalho e do menu foram mostradas ao
+  Fabio em 2026-11-11, capturadas de um terminal de verdade. Ele escolhe; só
+  depois o visual é aplicado em tudo.
+- Depois do visual: repetir as duas auditorias só no que mudou, e o ensaio
+  do teste final, numa instalação do zero na VPS de teste.
+- **Decisões que são do Fabio**, saídas das auditorias: ver "O que ficou
+  para o Fabio decidir", em "Auditoria de segurança".
 - Teste final do Fabio, numa VPS limpa de 2 GB, pelo menu: base e Mautic,
   swap, Portainer abrindo sem token e com a senha do `credenciais.txt`, o menu
   voltando para a lista, a marca `>` no resumo, o painel sem laço de
@@ -2057,8 +2228,8 @@ por uma migração de banco de verdade, e a volta pelo backup depois dela.
   a pergunta de versão, e o item 5 do teste de envio: SMTP do SES na porta
   2587 no painel e um e-mail a um contato, conferido no log e não no
   histórico. Só depois dele sai a tag `mautic7-v0.1.0`.
-- Achados a decidir, registrados mais abaixo: o aviso de VPS lenta durante a
-  instalação (SSH caindo com carga 13 em 1 vCPU) e o proxy de socket.
+- Achado a decidir, registrado mais abaixo: o aviso de VPS lenta durante a
+  instalação (SSH caindo com carga 13 em 1 vCPU).
 - **Medição incompleta da renovação dos workers** (2026-10-27): a cada 5
   minutos os 6 workers se renovam juntos. Na única renovação medida (18:57:30
   UTC), a carga continuou caindo, de 1,5 para 0,7, sem pico. Só 23 das 72
@@ -2066,35 +2237,23 @@ por uma migração de banco de verdade, e a volta pelo backup depois dela.
 
 **Ambiente de teste**
 
-- VPS de teste na DigitalOcean: **201.79.41.0**, Ubuntu 24.04.5, 1 vCPU,
-  1967 MB de RAM, 30 GB de disco, nome
-  `mautic-teste-script-ubuntu-s5-1vcpu-2gb-30gb-mkc1`. Entrar com
-  `ssh root@201.79.41.0` usando a chave `~/.ssh/id_ed25519` do PC do Fabio
-  (`SHA256:EspOncNC6Ufl0Tq2DanIhLy70qiH/Vjw6vJlOA2GvxA`), a única autorizada; o
-  Fabio também entra pelo Termius com a mesma chave. Senha no SSH desligada.
-- **Estado em 2026-11-11:** base e Mautic instalados pelo
-  `testes/ponta-a-ponta.sh` de 2026-10-27, com os domínios **`mautic.ci.test`
-  e `portainer.ci.test`**, que só existem no `/etc/hosts` dela (127.0.0.1).
-  Os domínios `.demo` não estão servidos nela agora. Swap de 2 GB ativo.
-  Containers: Traefik v3.7.16, Portainer 2.45.3, MariaDB 10.11.19, Mautic
-  7.2.2. Em `/root`: `repo/` (cópia de `dist/` e `testes/` de 2026-10-27),
-  os scripts e os logs dos testes. Em `/var/backups/playahead/`: o
-  `acme-2026-10-27.json`, com os certificados dos nomes `.demo` emitidos em
-  2026-10-27.
-- DNS: `*.demo.agenciaalemdoobvio.com` aponta para 201.79.41.0 no Cloudflare,
-  sem proxy (nuvem cinza). Havia um registro próprio `portainer.demo` com o IP
-  da VPS anterior, e o Fabio o apagou em 2026-10-27; o curinga cobre os dois
-  nomes.
+- **Os dados de acesso à VPS de teste saíram deste arquivo em 2026-11-11**
+  (endereço, chave e estado dela). As duas auditorias apontaram o mesmo:
+  este repositório é público, e isso é reconhecimento de graça. Eles estão
+  no cofre da Play Ahead, na nota `wiki/tecnologia/projetos-software.md`.
+- A VPS de teste é descartável, de 1 vCPU e 2 GB, e é destruída depois do
+  teste final.
+- Os testes com certificado de verdade usam um domínio com curinga apontado
+  para ela; os que não precisam de certificado usam `mautic.ci.test` e
+  `portainer.ci.test`, que só existem no `/etc/hosts`.
 - Para zerar a VPS sem recriá-la: `testes/vps/zerar-vps.sh` (destrutivo). Para
-  rodar o menu num terminal de verdade, respondendo as perguntas:
-  `testes/vps/menu-pty.py`.
+  rodar um comando num terminal de verdade, respondendo as perguntas:
+  `testes/vps/pty-rodar.py`. O `testes/vps/menu-pty.py` é o mais antigo, só
+  para o menu.
 - `get.playahead.com.br` **ainda não está no ar**. Para testar, baixar de
   `https://raw.githubusercontent.com/play-ahead/playahead-installer/main/dist/playahead.sh`.
-- Neste PC, os commits saem como `Fabio <admin@playahead.com.br>`, configurado
-  só neste repositório, e o push sai pela conta `play-ahead1`, dona da
-  organização. Desde 2026-11-11 ela não contorna mais a regra do teste: o
-  trabalho vai em branch e entra no `main` por pedido de atualização, com o
-  teste passando (ver "Proteção do `main`").
+- O trabalho vai em branch e entra no `main` por pedido de atualização, com
+  o teste passando (ver "Proteção do `main`").
 
 **Armadilhas dos testes, aprendidas nesta conversa**
 
@@ -2137,7 +2296,7 @@ porque não tinha entrado no git. Cinco problemas, resolvidos nesta ordem:
    roda `messenger:consume` sem `--time-limit`, e o processo vive para sempre
    com o DSN que leu ao nascer.
 
-   **Resolvido em 2026-10-20**, medido na VPS 142.93.201.114 (Mautic 7.1.2),
+   **Resolvido em 2026-10-20**, medido na VPS de teste da época (Mautic 7.1.2),
    com DSN falso no painel e e-mail enviado a um contato pela tela do
    contato, que passa pela fila. O host tentado foi lido no log:
 
@@ -2190,7 +2349,7 @@ porque não tinha entrado no git. Cinco problemas, resolvidos nesta ordem:
    2587. Registrar no `credenciais.txt` e no README, junto com o procedimento
    correto depois de alterar a configuração de e-mail.
 
-   **Resolvido em 2026-10-20.** Medido na VPS 142.93.201.114 contra
+   **Resolvido em 2026-10-20.** Medido na VPS de teste da época contra
    `email-smtp.us-east-1.amazonaws.com`: 25, 465 e 587 não respondem (a
    conexão não é recusada, fica sem resposta até o timeout); 2465 e 2587
    conectam na hora.
@@ -2675,6 +2834,12 @@ workflow `.github/workflows/trava-versoes.yml`: pedido vindo de uma branch
 
 - só oito arquivos podem mudar: os três de `lib/` que guardam versão, o
   template do compose, o `CLAUDE.md` e os três de `dist/`;
+- **no `CLAUDE.md`, só número de versão e data em linha que já existe**
+  (desde a auditoria de 2026-11-11). Antes o arquivo inteiro era livre, e
+  ele é instrução para as próximas execuções da rotina e para o Claude
+  deste projeto: um pedido podia deixar uma ordem plantada;
+- versão menor que a atual é reprovada, e arquivo que o git vê como
+  binário também;
 - em `lib/`, só a linha da variável e o bloco de comentário colado acima
   dela. Comentário em outro ponto do arquivo não passa: dentro de um
   heredoc, linha que começa com `#` é conteúdo de arquivo gerado;
