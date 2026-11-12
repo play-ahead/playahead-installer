@@ -906,11 +906,13 @@ mautic_atualizar_subir() {
 
 	mautic_atualizar_devolver_temas
 
-	# O container novo vem com o cache que veio na imagem, compilado
-	# sem o site_url. Refazer o cache é o que devolve o idioma, o fuso
-	# e o cookie de sessão com "secure". Ver mautic_limpar_cache.
-	ui_passo "Refazendo o cache do Mautic"
-	mautic_limpar_cache || true
+	# O container novo já montou o cache dele ao subir, com o endereço
+	# do site, o idioma e o fuso. Só reinicia de novo quando voltou
+	# algum tema: não foi medido se o Mautic guarda a lista de temas
+	# no cache, e reiniciar custa menos de um minuto e tira a dúvida.
+	if [[ "${#PA_MAUTIC_TEMAS_EXTRAS[@]}" -gt 0 ]]; then
+		mautic_limpar_cache || true
+	fi
 
 	ui_passo "Subindo o agendador e os workers"
 	mautic_compose_desligado up -d ||

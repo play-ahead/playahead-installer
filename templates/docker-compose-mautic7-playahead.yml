@@ -65,6 +65,9 @@
 #    b) pelo assistente web, acessando o domínio no navegador
 #       (host do banco: mariadb)
 # 6) docker compose up -d            # sobe cron e worker
+# 7) docker compose restart mautic_web
+#    Refaz o cache do Mautic, agora com o endereço do site. Sem
+#    isso o cookie de login sai sem a marca "secure".
 # ============================================================
 
 services:
@@ -134,6 +137,36 @@ services:
       options:
         max-size: "20m"
         max-file: "5"
+
+    # Toda vez que este container sobe, o cache compilado do Mautic é
+    # jogado fora antes de o Apache começar a atender, e o entrypoint
+    # original monta outro, inteiro, antes de liberar o site.
+    #
+    # Dois motivos. A imagem traz um cache pronto, de quando ela foi
+    # construída, sem o endereço deste site: com ele o cookie de login
+    # sai sem a marca "secure". E limpar o cache com o site no ar não é
+    # seguro: se o container reinicia enquanto um visitante está
+    # remontando o cache, ele fica pela metade e o painel responde erro
+    # 500 até alguém limpar de novo. Aqui não há visitante: o Apache
+    # ainda não subiu.
+    #
+    # Por isso, limpar o cache do Mautic é reiniciar este serviço:
+    #
+    #     docker compose restart mautic_web
+    #
+    # Não apaga nada além do cache. Temas e plugins instalados pelo
+    # painel moram em outras pastas e ficam como estão.
+    #
+    # O chown devolve a pasta var/ ao www-data. Um comando de console
+    # rodado como root deixa arquivos de root ali, e o Mautic, que roda
+    # como www-data, passa a responder erro 500.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        cd /var/www/html/var/cache && rm -rf prod pro_ pro~ prod.velho
+        chown -R www-data:www-data /var/www/html/var
+        exec /entrypoint.sh
 
     depends_on:
       mariadb:

@@ -522,87 +522,59 @@ mautic_php_stdin() {
 		${variaveis[@]+"${variaveis[@]}"} mautic_web php /dev/stdin
 }
 
-# mautic_corrigir_dono
-#
-# Devolve var/ inteiro para www-data, como root.
-#
-# É a recuperação de quem já rodou console como root e caiu no
-# 500. Reparar o dono é melhor que apagar: o cache se refaz
-# sozinho, e nada mais em var/ precisa morrer por causa disso.
-mautic_corrigir_dono() {
-	mautic_compose exec -T mautic_web \
-		chown -R www-data:www-data "${PA_MAUTIC_WORKDIR}/var" >/dev/null 2>&1
-}
-
-# mautic_descartar_cache
-#
-# Tira o cache do caminho sem disputar a pasta com o site, como
-# www-data. Mesmo comando da receita do credenciais.txt e do README.
-#
-# Por que não o cache:clear: medido em 2026-10-27, numa VPS de 2 GB
-# com Mautic 7.2.2, ele levou 37 s e falhou com "Failed to remove
-# directory var/cache/prod: Directory not empty". Enquanto ele
-# apaga, o Apache continua atendendo (healthcheck, robôs no domínio
-# público) e recria arquivos ali dentro. Rodado de novo à mão, parou
-# no meio, deixou o cache em pedaços (prod, pro_ e pro~) e o site
-# passou a responder 500.
-#
-# O mv é atômico: a pasta sai do caminho de uma vez, a próxima
-# requisição monta outra do zero, e o rm apaga uma pasta que
-# ninguém mais usa. O pro_ e o pro~ são sobras de um cache:clear
-# interrompido.
-mautic_descartar_cache() {
-	# A expansão acontece dentro do container, não aqui.
-	# shellcheck disable=SC2016
-	mautic_compose exec -T -u www-data -w "${PA_MAUTIC_WORKDIR}/var/cache" mautic_web \
-		sh -c 'mv prod "prod.descartar.$$" 2>/dev/null; rm -rf prod.descartar.* pro_ pro~' \
-		>/dev/null 2>&1
-}
-
 # mautic_limpar_cache
+#
+# Limpar o cache do Mautic é reiniciar a web. O compose manda o
+# container jogar o cache fora toda vez que sobe, antes de o Apache
+# atender, e o entrypoint da imagem monta outro inteiro: é ele que
+# roda o console para conferir as migrações, e o console monta o
+# cache que não encontra.
 #
 # Sempre depois de mexer em config/local.php: o Mautic guarda a
 # configuração compilada no cache, então gravar idioma ou fuso sem
 # limpar não muda nada na tela. Foi exatamente o que fez o painel
 # nascer em inglês com o idioma correto salvo.
 #
-# E sempre depois de recriar o container da web. A imagem traz um
-# cache já compilado, de quando ela foi construída, sem site_url
-# nenhum. Com ele o cookie de sessão sai sem a marca "secure", porque
-# o Mautic decide isso na compilação, olhando se o site_url começa
-# com https. Medido em 2026-11-11: depois de uma atualização, que
-# recria o container, o cookie saía sem "secure"; refeito o cache,
-# passou a sair com ela.
+# Depois de recriar o container não é preciso: ele já nasce sem o
+# cache que veio na imagem.
+#
+# Até 2026-11-11 esta função tirava a pasta do cache com o site no ar
+# (mv e rm) e reiniciava em seguida. Por que deixou de ser assim:
+#
+#   - O restart não chega ao Apache. O processo 1 do container é um
+#     bash, que ignora o sinal de parada da imagem (SIGWINCH). O
+#     Apache segue atendendo por 10 segundos e então é morto. Um
+#     pedido que estivesse remontando o cache nesse intervalo morria
+#     no meio.
+#   - O Symfony grava o container e só depois gera o resto, como os
+#     proxies do Doctrine. Morrendo entre as duas coisas, o cache
+#     fica pela metade para sempre: o container já existe, ninguém
+#     termina o trabalho, e a tela de login responde 500. Medido numa
+#     instalação limpa com o domínio recebendo pedidos: 3 dos 102
+#     proxies. Reproduzido de propósito, matando o Apache no instante
+#     em que o container é gravado.
+#   - O cache:warmup não conserta esse estado. Ele para com
+#     "DoctrineMetadataCacheWarmer must load metadata first".
+#   - O mv nem era atômico, como se dizia aqui. A pasta prod vem
+#     dentro da imagem, e o overlay2 do Docker não renomeia pasta
+#     que veio da imagem: o mv copia tudo e apaga a original.
+#
+# O cache:clear também não serve: medido em 2026-10-27, ele falhou
+# com "Failed to remove directory var/cache/prod: Directory not
+# empty" e deixou o site em 500. É a mesma disputa pela pasta.
 #
 # Não recria o container: temas e plugins instalados pelo painel
 # moram na camada dele (docroot/themes, docroot/plugins, vendor), e
-# se perderiam. Logo depois de instalar não haveria o que perder,
-# mas a função é a mesma da receita que a pessoa usa meses depois, e
-# um caminho só é um caminho testado.
+# se perderiam.
 mautic_limpar_cache() {
-	# O chown antes cobre o caso de o cache já ter sido sujado por
-	# root em alguma execução anterior. Sem ele, o rm falha com
-	# "Permission denied" nos arquivos de root.
-	#
-	# Ele não derruba a função: com o site no ar, um arquivo do cache
-	# pode sumir no meio da varredura, e o chown sai com erro sem que
-	# nada esteja errado. Num teste sob carga, em 2026-10-27, uma
-	# rodada morreu calada aqui. Se o dono estiver mesmo errado, o rm
-	# abaixo falha e o aviso sai.
-	mautic_corrigir_dono || true
-
-	if ! mautic_descartar_cache; then
-		ui_aviso "Não consegui limpar o cache."
-		ui_detalhe "O Mautic pode demorar a refletir idioma e fuso."
+	if ! mautic_compose restart mautic_web >/dev/null 2>&1; then
+		ui_aviso "Não consegui reiniciar o Mautic para refazer o cache."
+		ui_detalhe "O painel pode demorar a refletir idioma e fuso."
 		ui_detalhe "A receita para fazer à mão está em ${PA_MAUTIC_CREDENCIAIS}."
 		return 1
 	fi
 
-	# Reinicia só a web, para nada em memória sobreviver ao cache
-	# novo. Cron e worker não precisam: processos curtos, e os
-	# workers se renovam sozinhos a cada 5 minutos.
-	mautic_compose restart mautic_web >/dev/null 2>&1 || true
-	ui_aguardar_ate "Cache limpo; aguardando o Mautic voltar" 180 \
+	ui_aguardar_ate "Aguardando o Mautic voltar com o cache novo" 300 \
 		mautic_container_saudavel mautic_web || return 1
 }
 
@@ -737,11 +709,19 @@ mautic_subir_web() {
 #
 # É também aqui que o Mautic ganha o endereço público: o `up -d` sem
 # PLAYAHEAD_PUBLICAR recria o container da web com a rota do Traefik
-# ligada (ver mautic_subir_web). Container recriado volta com o cache
-# que veio na imagem, e por isso a limpeza de cache vem depois desta
-# função, e não antes.
+# ligada (ver mautic_subir_web).
+#
+# O container novo joga fora o cache que veio na imagem e monta outro
+# antes de atender, já com o endereço do site, o idioma e o fuso. É
+# isso que faz o painel abrir em português e o cookie de login sair
+# com "secure". Quando o `up -d` não recria a web, que é o caso de
+# uma retomada com o Mautic já publicado, o que a retomada acabou de
+# gravar só aparece depois de reiniciar, e a função reinicia.
 mautic_subir_resto() {
 	ui_passo "Publicando o Mautic e subindo o agendador e os workers"
+
+	local web_antes web_depois
+	web_antes="$(mautic_compose ps -q mautic_web 2>/dev/null || true)"
 
 	mautic_compose up -d >/dev/null 2>&1 ||
 		ui_fatal \
@@ -751,6 +731,8 @@ mautic_subir_resto() {
 			"" \
 			"    cd ${PA_MAUTIC_DIR} && docker compose logs mautic_cron"
 
+	web_depois="$(mautic_compose ps -q mautic_web 2>/dev/null || true)"
+
 	ui_aguardar_ate "Aguardando o Mautic responder" 300 \
 		mautic_container_saudavel mautic_web ||
 		ui_fatal \
@@ -758,6 +740,11 @@ mautic_subir_resto() {
 			"Veja o log:" \
 			"" \
 			"    cd ${PA_MAUTIC_DIR} && docker compose logs mautic_web"
+
+	# Com --wizard fica de fora: ainda não há site_url para compilar.
+	if [[ "${PA_WIZARD:-0}" -eq 0 && -n "$web_antes" && "$web_antes" == "$web_depois" ]]; then
+		mautic_limpar_cache || true
+	fi
 
 	ui_ok "Mautic, agendador e workers no ar"
 }
@@ -1039,7 +1026,7 @@ mautic_instalar() {
 #
 # O Mautic nasce em inglês e com o fuso que o processo do
 # instalador usou. Os dois se resolvem depois da instalação, e os
-# dois precisam de cache limpo para aparecer na tela.
+# dois precisam de cache refeito para aparecer na tela.
 # ------------------------------------------------------------
 
 # mautic_idioma_existe <codigo>
@@ -1235,9 +1222,9 @@ PHP
 # mautic_regionalizar <idioma> <fuso>
 #
 # Pacote de idioma e configuração. Os dois só aparecem na tela depois
-# de o cache ser refeito, e isso fica para o main_instalar, depois de
-# o container ganhar o endereço público: recriar o container devolve
-# o cache que veio na imagem, e limpar antes seria trabalho perdido.
+# de o cache ser refeito, e quem refaz é o mautic_subir_resto: o
+# container que ganha o endereço público nasce sem o cache da imagem
+# e monta outro, já com o que foi gravado aqui.
 mautic_regionalizar() {
 	local idioma="$1"
 	local fuso="$2"
@@ -1551,20 +1538,15 @@ mautic_gravar_credenciais() {
 		printf ' LIMPAR O CACHE\n'
 		printf '============================================================\n\n'
 		printf 'Limpar cache é a primeira coisa que se tenta quando algo\n'
-		printf 'estranho acontece. Faça num horário de pouco movimento\n'
-		printf '(o site sai do ar por menos de um minuto), nesta ordem:\n\n'
+		printf 'estranho acontece. Nesta instalação, limpar o cache do\n'
+		printf 'Mautic é reiniciar o serviço da web:\n\n'
 		printf '  cd %s\n' "$PA_MAUTIC_DIR"
-		printf '  docker compose exec mautic_web \\\n'
-		printf '    chown -R www-data:www-data /var/www/html/var\n'
-		printf '  docker compose exec -u www-data -w /var/www/html/var/cache \\\n'
-		# As aspas simples são do comando que a pessoa vai colar.
-		# shellcheck disable=SC2016
-		printf '    mautic_web sh -c %s\n' "'mv prod prod.velho; rm -rf prod.velho pro_ pro~'"
 		printf '  docker compose restart mautic_web\n\n'
-		printf 'O primeiro comando devolve os arquivos para o www-data (só\n'
-		printf 'root consegue). O segundo tira o cache do caminho de uma\n'
-		printf 'vez e o apaga, como www-data. O terceiro reinicia o site,\n'
-		printf 'que monta um cache novo sozinho em menos de um minuto.\n\n'
+		printf 'Ao subir, o container joga o cache fora e monta outro\n'
+		printf 'inteiro antes de voltar a atender. Leva cerca de um minuto,\n'
+		printf 'e o site fica fora do ar nesse tempo: faça num horário de\n'
+		printf 'pouco movimento. Temas e plugins instalados pelo painel não\n'
+		printf 'são tocados.\n\n'
 		printf 'Não use o cache:clear. Medido: com o site no ar, ele disputa\n'
 		printf 'a pasta com o próprio Mautic, falha no meio e pode deixar o\n'
 		printf 'site em erro 500.\n\n'
@@ -1575,7 +1557,8 @@ mautic_gravar_credenciais() {
 		printf '%s. Sem ele o comando roda como root, deixa arquivos\n' "-u www-data"
 		printf 'de root no cache, e o Mautic passa a responder 500. Foi\n'
 		printf 'medido: 30.737 arquivos de root e o site fora do ar. Se isso\n'
-		printf 'já aconteceu, a receita acima também recupera.\n'
+		printf 'já aconteceu, reiniciar também recupera: ao subir, o\n'
+		printf 'container devolve os arquivos ao www-data.\n'
 	} >"$PA_MAUTIC_CREDENCIAIS"
 
 	umask "$mascara_antiga"

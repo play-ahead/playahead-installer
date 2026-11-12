@@ -203,6 +203,25 @@ confere "credenciais.txt com chmod 600" \
 confere "credenciais.txt diz a versão instalada" \
 	grep -q "Mautic ${versao_mautic} " /opt/playahead/mautic/credenciais.txt
 
+# conferir_cache_mautic <quando>
+#
+# O cache do Mautic tem de estar inteiro. Um cache montado pela metade
+# tem o container do Symfony e quase nenhum proxy do Doctrine (3 de
+# 102, medido em 2026-11-11), e a tela de login responde 500. Usada
+# depois da instalação, do reinício e da atualização.
+conferir_cache_mautic() {
+	local quando="$1" proxies
+	proxies="$(docker exec mautic-mautic_web-1 sh -c \
+		'ls /var/www/html/var/cache/prod/doctrine/orm/Proxies 2>/dev/null | wc -l' 2>/dev/null || true)"
+	if [[ "${proxies:-0}" -ge 50 ]]; then
+		ok "${quando}: cache inteiro (${proxies} proxies do Doctrine)"
+	else
+		falhou "${quando}: cache pela metade (${proxies:-0} proxies do Doctrine)"
+	fi
+}
+
+conferir_cache_mautic "depois de instalar"
+
 # ------------------------------------------------------------
 passo "Workers"
 # ------------------------------------------------------------
@@ -336,6 +355,68 @@ else
 fi
 
 # ------------------------------------------------------------
+passo "Reiniciar a web refaz o cache"
+# ------------------------------------------------------------
+#
+# Limpar o cache do Mautic é reiniciar a web: o container joga o cache
+# fora ao subir e monta outro antes de atender. Aqui o cache é
+# estragado de propósito (sem os proxies do Doctrine, como fica um
+# cache montado pela metade) e tem de voltar inteiro depois do
+# reinício. Um arquivo de root em var/ confere que o dono é devolvido.
+
+docker exec mautic-mautic_web-1 sh -c '
+	rm -rf /var/www/html/var/cache/prod/doctrine/orm/Proxies
+	touch /var/www/html/var/cache/prod/de-root /var/www/html/var/de-root' >/dev/null 2>&1 || true
+
+if (cd /opt/playahead/mautic && docker compose restart mautic_web) >"${LOGS}/reinicio-web.log" 2>&1; then
+	ok "docker compose restart mautic_web saiu com 0"
+else
+	falhou "docker compose restart mautic_web saiu com $?"
+fi
+
+voltou=0
+for _ in $(seq 1 120); do
+	if [[ "$(docker inspect -f '{{.State.Health.Status}}' mautic-mautic_web-1 2>/dev/null || true)" == "healthy" ]]; then
+		voltou=1
+		break
+	fi
+	sleep 2
+done
+if [[ "$voltou" -eq 1 ]]; then
+	ok "a web voltou a ficar healthy"
+else
+	falhou "a web não ficou healthy em 4 minutos depois do reinício"
+fi
+
+conferir_cache_mautic "depois de reiniciar"
+
+if docker exec mautic-mautic_web-1 test -e /var/www/html/var/cache/prod/de-root; then
+	falhou "o cache antigo sobreviveu ao reinício"
+else
+	ok "o cache antigo foi jogado fora no reinício"
+fi
+
+dono="$(docker exec mautic-mautic_web-1 stat -c '%U' /var/www/html/var/de-root 2>/dev/null || true)"
+if [[ "$dono" == "www-data" ]]; then
+	ok "arquivo de root em var/ voltou para o www-data"
+else
+	falhou "arquivo de root em var/ ficou com ${dono:-dono desconhecido}"
+fi
+docker exec mautic-mautic_web-1 rm -f /var/www/html/var/de-root >/dev/null 2>&1 || true
+
+medida="$(
+	curl -skL --max-redirs 10 --max-time 60 --resolve "${DOMINIO_MAUTIC}:443:127.0.0.1" \
+		-o /dev/null -w '%{http_code} %{url_effective}' "https://${DOMINIO_MAUTIC}/" 2>/dev/null || true
+)"
+if [[ "$medida" == "200 https://${DOMINIO_MAUTIC}/s/login" ]]; then
+	ok "Mautic no ar depois do reinício (${medida})"
+else
+	falhou "Mautic depois do reinício: ${medida:-sem resposta}"
+fi
+
+conferir_seguranca_mautic "depois de reiniciar"
+
+# ------------------------------------------------------------
 passo "Segunda execução não reinstala"
 # ------------------------------------------------------------
 
@@ -439,9 +520,10 @@ else
 	falhou "Mautic depois da atualização: ${medida:-sem resposta}"
 fi
 
-# A atualização recria o container, que volta com o cache da imagem.
-# Sem refazer o cache, o cookie de sessão sairia sem secure.
+# A atualização recria o container. Se ele atendesse com o cache que
+# veio na imagem, o cookie de sessão sairia sem secure.
 conferir_seguranca_mautic "depois de atualizar"
+conferir_cache_mautic "depois de atualizar"
 
 printf '# linha acrescentada pelo teste\n' >>/opt/playahead/traefik/docker-compose.yml
 
