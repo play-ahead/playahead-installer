@@ -823,7 +823,7 @@ checks_exigir_flag() {
 # dependem do cenário detectado e do domínio informado, e são
 # chamadas pelo orquestrador mais adiante.
 checks_sistema() {
-	ui_secao "Conferindo o servidor"
+	ui_etapa "Conferindo o servidor"
 
 	checks_bash
 	checks_root

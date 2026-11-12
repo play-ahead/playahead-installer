@@ -14,10 +14,9 @@
 # PLAY AHEAD INSTALLER
 # Base: Docker, Traefik e Portainer
 # https://playahead.com.br
-# Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: 0.1.0
-# Build:  2026-11-11T14:07:03Z
+# Build:  2026-11-12T14:27:10Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -69,14 +68,122 @@ set -euo pipefail
 # for decidido, é o único ponto que precisa mudar.
 # ============================================================
 
+# ============================================================
+# TEMA
+#
+# A cara do instalador está toda neste bloco: o logo, as cores, os
+# símbolos, a moldura e o formato dos títulos. Trocar o visual é
+# mexer só aqui. O resto do arquivo desenha a tela a partir destas
+# variáveis, e nenhuma outra lib escolhe cor ou caractere.
+#
+# Há outros dois temas prontos em docs/visual/, cada um com este
+# mesmo bloco preenchido de outro jeito. Para trocar, copie o bloco
+# de lá por cima deste, do "TEMA" ao "FIM DO TEMA", e rode
+# ./build.sh. Para ver um tema na tela sem instalar nada:
+#
+#     bash docs/visual/previa.sh docs/visual/tema-1-marca-na-moldura.sh
+#
+# Tema em uso: 2, letras em bloco entre duas linhas.
+# ============================================================
+
+# O logo, como aparece na tela. Está escrito com os mesmos caracteres
+# que vão para o terminal, para quem lê este arquivo antes de rodar
+# ver o desenho, e não uma lista de códigos.
+PA_TEMA_LOGO=(
+	'█▀█ █   █▀█ █ █   █▀█ █ █ █▀▀ █▀█ █▀▄'
+	'█▀▀ █   █▀█ ▀█▀   █▀█ █▀█ █▀▀ █▀█ █ █'
+	'▀   ▀▀▀ ▀ ▀  ▀    ▀ ▀ ▀ ▀ ▀▀▀ ▀ ▀ ▀▀'
+)
+
+# O nome por extenso, para o tema em que o logo é um desenho e o nome
+# precisa vir escrito ao lado. Aqui o logo já é o nome.
+PA_TEMA_NOME=""
+
+# Como o logo é apresentado:
+#   linhas   entre uma linha em cima e outra embaixo
+#   caixa    dentro de uma moldura fechada, com o nome ao lado
+#   barra    com uma barra vertical à esquerda
+PA_TEMA_CABECALHO="linhas"
+
+# O quadro final, com o endereço e as senhas: "linhas" ou "caixa".
+PA_TEMA_QUADRO="linhas"
+
+# Largura do que é desenhado, sem a margem. Com a margem e as bordas
+# cabe nas 80 colunas de um terminal padrão.
+PA_TEMA_LARGURA=68
+
+# Margens, em colunas: onde começam as linhas e as molduras, os
+# títulos, e o que acontece dentro de cada etapa. O detalhe de cada
+# coisa fica duas colunas depois.
+PA_TEMA_MARGEM_MOLDURA=2
+PA_TEMA_MARGEM_TITULO=3
+PA_TEMA_MARGEM_ITEM=3
+
+# Título de etapa. {n} é o número da etapa e {t} o total. O que vem
+# antes do título sai na cor da marca; o que vem depois, apagado. O
+# teste fixo lê estas duas linhas para conferir o contador.
+PA_TEMA_ETAPA_ANTES="[{n}/{t}] "
+PA_TEMA_ETAPA_DEPOIS=""
+
+# 1 para passar uma linha embaixo do título de etapa.
+PA_TEMA_ETAPA_LINHA=0
+
+# Título sem número: o que vem antes dele, e se leva linha embaixo.
+PA_TEMA_SECAO_ANTES=""
+PA_TEMA_SECAO_LINHA=1
+
+# Lista do menu: o número de cada item ({n}), e se a lista fecha com
+# outra linha.
+PA_TEMA_LISTA_NUMERO="{n}"
+PA_TEMA_LISTA_FECHA=1
+
+# Símbolos: o passo em andamento, os três resultados, e a marca do
+# que veio da pessoa na tela de confirmação.
+PA_TEMA_SIMBOLO_PASSO="›"
+PA_TEMA_SIMBOLO_OK="✓"
+PA_TEMA_SIMBOLO_AVISO="!"
+PA_TEMA_SIMBOLO_ERRO="✗"
+PA_TEMA_SIMBOLO_INFORMADO=">"
+
+# Peças das linhas e da moldura. Os cantos na ordem: de cima à
+# esquerda, de cima à direita, de baixo à esquerda, de baixo à
+# direita.
+PA_TEMA_TRACO="─"
+PA_TEMA_LADO="│"
+PA_TEMA_CANTOS=("┌" "┐" "└" "┘")
+PA_TEMA_BARRA="▌"
+
+# Cores, em códigos ANSI: o que vai entre "ESC[" e "m". São poucas de
+# propósito. A da marca fica só na identidade: o logo, as linhas do
+# cabeçalho, o contador de etapas e os números do menu. Verde,
+# amarelo e vermelho dizem o resultado de cada passo, e mais nada. O
+# resto é texto normal, em negrito ou apagado.
+#
+# A cor da marca e o cinza do texto apagado só existem na paleta de
+# 256 cores. Terminal que não a anuncia recebe as "BASICA", das 8
+# cores. Sem terminal, ou com NO_COLOR, não sai cor nenhuma.
+PA_TEMA_COR_MARCA="38;5;135"
+PA_TEMA_COR_MARCA_BASICA="0;35"
+PA_TEMA_COR_FRACA="38;5;245"
+PA_TEMA_COR_FRACA_BASICA="0;90"
+PA_TEMA_COR_OK="0;32"
+PA_TEMA_COR_AVISO="0;33"
+PA_TEMA_COR_ERRO="1;31"
+PA_TEMA_COR_DESTAQUE="1"
+
+# ============================================================
+# FIM DO TEMA
+# ============================================================
+
 # ------------------------------------------------------------
 # Estado
 # ------------------------------------------------------------
 
-# Preenchidas por ui_init. Vazias por padrão para que o arquivo
-# funcione mesmo se alguém esquecer de inicializar.
+# Preenchidas por ui_init, a partir das cores do tema. Vazias por
+# padrão para que o arquivo funcione mesmo se alguém esquecer de
+# inicializar, e para a saída sem terminal não levar código nenhum.
 PA_COR_RESET=""
-PA_COR_TITULO=""
+PA_COR_MARCA=""
 PA_COR_OK=""
 PA_COR_AVISO=""
 PA_COR_ERRO=""
@@ -89,8 +196,40 @@ PA_INTERATIVO=0
 # Modo do terminal, guardado pelo ui_init e devolvido no EXIT.
 PA_TERMINAL_MODO=""
 
-# Largura dos blocos e separadores.
-PA_LARGURA=64
+# Contador de etapas. Cada instalador diz o total com ui_etapas, e
+# cada ui_etapa avança um. Com o total em zero, que é o caso do menu,
+# ui_etapa vira um título sem número.
+PA_UI_ETAPAS_TOTAL=0
+PA_UI_ETAPA_N=0
+
+# As margens do tema, já em espaços, e a largura das linhas. Quem
+# preenche é ui_tema_aplicar.
+PA_UI_M_MOLDURA=""
+PA_UI_M_TITULO=""
+PA_UI_M_ITEM=""
+PA_UI_M_DETALHE=""
+PA_UI_LARGURA_LINHA=0
+
+# ui_tema_aplicar
+#
+# Calcula o que é derivado do tema. Roda quando este arquivo é
+# carregado e de novo no ui_init, para valer também quando um tema é
+# carregado por cima deste, como faz o docs/visual/previa.sh.
+ui_tema_aplicar() {
+	printf -v PA_UI_M_MOLDURA '%*s' "$PA_TEMA_MARGEM_MOLDURA" ''
+	printf -v PA_UI_M_TITULO '%*s' "$PA_TEMA_MARGEM_TITULO" ''
+	printf -v PA_UI_M_ITEM '%*s' "$PA_TEMA_MARGEM_ITEM" ''
+	printf -v PA_UI_M_DETALHE '%*s' "$((PA_TEMA_MARGEM_ITEM + 2))" ''
+
+	# As linhas que separam as etapas fecham na mesma coluna do
+	# cabeçalho. Na caixa isso inclui as duas bordas.
+	PA_UI_LARGURA_LINHA="$PA_TEMA_LARGURA"
+	if [[ "$PA_TEMA_CABECALHO" == "caixa" ]]; then
+		PA_UI_LARGURA_LINHA=$((PA_TEMA_LARGURA + 2))
+	fi
+}
+
+ui_tema_aplicar
 
 # Coluna onde os valores do resumo começam, em caracteres.
 PA_RESUMO_COLUNA=20
@@ -111,14 +250,25 @@ PA_RESUMO_COLUNA=20
 ui_init() {
 	local nao_interativo="${1:-0}"
 
+	ui_tema_aplicar
+
 	if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != "dumb" ]]; then
-		PA_COR_RESET=$'\033[0m'
-		PA_COR_TITULO=$'\033[1;36m'
-		PA_COR_OK=$'\033[0;32m'
-		PA_COR_AVISO=$'\033[0;33m'
-		PA_COR_ERRO=$'\033[1;31m'
-		PA_COR_FRACA=$'\033[0;90m'
-		PA_COR_DESTAQUE=$'\033[1m'
+		local esc=$'\033['
+		PA_COR_RESET="${esc}0m"
+		PA_COR_OK="${esc}${PA_TEMA_COR_OK}m"
+		PA_COR_AVISO="${esc}${PA_TEMA_COR_AVISO}m"
+		PA_COR_ERRO="${esc}${PA_TEMA_COR_ERRO}m"
+		PA_COR_DESTAQUE="${esc}${PA_TEMA_COR_DESTAQUE}m"
+
+		# A cor da marca só existe na paleta de 256 cores. Terminal
+		# que não a anuncia recebe a das 8 cores básicas.
+		if [[ "${TERM}" == *256color* ]]; then
+			PA_COR_MARCA="${esc}${PA_TEMA_COR_MARCA}m"
+			PA_COR_FRACA="${esc}${PA_TEMA_COR_FRACA}m"
+		else
+			PA_COR_MARCA="${esc}${PA_TEMA_COR_MARCA_BASICA}m"
+			PA_COR_FRACA="${esc}${PA_TEMA_COR_FRACA_BASICA}m"
+		fi
 	fi
 
 	if [[ "$nao_interativo" == "1" ]]; then
@@ -270,21 +420,29 @@ ui_linha_erro() {
 # Mensagens
 # ------------------------------------------------------------
 
+# As margens vêm do tema. O que acontece dentro de uma etapa começa
+# sempre na mesma coluna, e o detalhe de cada coisa duas colunas
+# depois. Assim a marca de resultado fica sempre no mesmo lugar, e o
+# texto dela alinha com o detalhe de baixo.
+
 ui_info() {
-	ui_linha "  $*"
+	ui_linha "${PA_UI_M_ITEM}$*"
 }
 
+# ui_passo <texto...>
+#
+# O que o instalador está fazendo agora, dentro de uma etapa.
 ui_passo() {
 	PA_UI_ETAPA="$*"
-	ui_linha "${PA_COR_TITULO}==>${PA_COR_RESET} $*"
+	ui_linha "${PA_UI_M_ITEM}${PA_COR_MARCA}${PA_TEMA_SIMBOLO_PASSO}${PA_COR_RESET} ${PA_COR_DESTAQUE}$*${PA_COR_RESET}"
 }
 
 ui_ok() {
-	ui_linha "  ${PA_COR_OK}✓${PA_COR_RESET} $*"
+	ui_linha "${PA_UI_M_ITEM}${PA_COR_OK}${PA_TEMA_SIMBOLO_OK}${PA_COR_RESET} $*"
 }
 
 ui_aviso() {
-	ui_linha "  ${PA_COR_AVISO}!${PA_COR_RESET} $*"
+	ui_linha "${PA_UI_M_ITEM}${PA_COR_AVISO}${PA_TEMA_SIMBOLO_AVISO}${PA_COR_RESET} $*"
 }
 
 # ui_erro <texto...>
@@ -301,7 +459,7 @@ ui_aviso() {
 # A regra passou a ser simples: só o ui_fatal escreve no stderr,
 # porque só ele encerra o script.
 ui_erro() {
-	ui_linha "  ${PA_COR_ERRO}✗${PA_COR_RESET} $*"
+	ui_linha "${PA_UI_M_ITEM}${PA_COR_ERRO}${PA_TEMA_SIMBOLO_ERRO}${PA_COR_RESET} $*"
 }
 
 # ui_detalhe <texto...>
@@ -310,25 +468,79 @@ ui_erro() {
 # comando sugerido. Recuada e apagada de propósito, para não
 # competir com a mensagem principal.
 ui_detalhe() {
-	ui_linha "    ${PA_COR_FRACA}$*${PA_COR_RESET}"
+	ui_linha "${PA_UI_M_DETALHE}${PA_COR_FRACA}$*${PA_COR_RESET}"
 }
 
 ui_vazio() {
 	ui_linha ""
 }
 
+# ui_repetir <caractere> <vezes>
+ui_repetir() {
+	local preenchido
+	printf -v preenchido '%*s' "$2" ''
+	printf '%s' "${preenchido// /$1}"
+}
+
 ui_separador() {
-	local linha
-	printf -v linha '%*s' "$PA_LARGURA" ''
-	ui_linha "${PA_COR_FRACA}${linha// /-}${PA_COR_RESET}"
+	ui_linha "${PA_UI_M_MOLDURA}${PA_COR_FRACA}$(ui_repetir "$PA_TEMA_TRACO" "$PA_UI_LARGURA_LINHA")${PA_COR_RESET}"
+}
+
+# ui_numeros <formato> <n> [total]
+#
+# Troca {n} e {t} de um formato do tema pelos números.
+ui_numeros() {
+	local texto="$1"
+	texto="${texto//\{n\}/$2}"
+	texto="${texto//\{t\}/${3:-}}"
+	printf '%s' "$texto"
 }
 
 # ui_secao <titulo>
+#
+# Título sem número, para o que acontece dentro de uma etapa ou fora
+# da contagem: o que foi encontrado no Traefik, uma instalação que já
+# existia.
 ui_secao() {
 	PA_UI_ETAPA="$1"
 	ui_vazio
-	ui_linha "${PA_COR_TITULO}${PA_COR_DESTAQUE}$1${PA_COR_RESET}"
-	ui_separador
+	ui_linha "${PA_UI_M_TITULO}${PA_COR_MARCA}${PA_TEMA_SECAO_ANTES}${PA_COR_RESET}${PA_COR_DESTAQUE}$1${PA_COR_RESET}"
+	if [[ "$PA_TEMA_SECAO_LINHA" -eq 1 ]]; then
+		ui_separador
+	fi
+}
+
+# ui_etapas <total>
+#
+# Diz quantas etapas este instalador tem e zera a contagem. O total
+# é do caminho inteiro: uma etapa que não tem nada a fazer ainda
+# aparece, dizendo isso, para o contador nunca pular número.
+ui_etapas() {
+	PA_UI_ETAPAS_TOTAL="$1"
+	PA_UI_ETAPA_N=0
+}
+
+# ui_etapa <titulo>
+#
+# Título de etapa, com o contador no formato do tema.
+ui_etapa() {
+	if [[ "$PA_UI_ETAPAS_TOTAL" -eq 0 ]]; then
+		ui_secao "$1"
+		return 0
+	fi
+
+	PA_UI_ETAPA_N=$((PA_UI_ETAPA_N + 1))
+	PA_UI_ETAPA="$1"
+
+	local antes depois
+	antes="$(ui_numeros "$PA_TEMA_ETAPA_ANTES" "$PA_UI_ETAPA_N" "$PA_UI_ETAPAS_TOTAL")"
+	depois="$(ui_numeros "$PA_TEMA_ETAPA_DEPOIS" "$PA_UI_ETAPA_N" "$PA_UI_ETAPAS_TOTAL")"
+
+	ui_vazio
+	ui_linha "${PA_UI_M_TITULO}${PA_COR_MARCA}${antes}${PA_COR_RESET}${PA_COR_DESTAQUE}$1${PA_COR_RESET}${PA_COR_FRACA}${depois}${PA_COR_RESET}"
+	if [[ "$PA_TEMA_ETAPA_LINHA" -eq 1 ]]; then
+		ui_separador
+	fi
 }
 
 # ------------------------------------------------------------
@@ -374,7 +586,7 @@ ui_resumo() {
 	local titulo="$1"
 	shift
 
-	ui_secao "$titulo"
+	ui_etapa "$titulo"
 
 	local rotulo valor origem preenchimento marca cor reset
 	local tem_informado=0
@@ -389,7 +601,7 @@ ui_resumo() {
 		[[ "$preenchimento" -lt 1 ]] && preenchimento=1
 
 		if [[ "$origem" == "informado" ]]; then
-			marca="> "
+			marca="${PA_TEMA_SIMBOLO_INFORMADO} "
 			cor="$PA_COR_DESTAQUE"
 			reset="$PA_COR_RESET"
 			tem_informado=1
@@ -399,8 +611,8 @@ ui_resumo() {
 			reset=""
 		fi
 
-		printf '  %s%s%*s%s%s%s\n' \
-			"$marca" "$rotulo" "$preenchimento" "" \
+		printf '%s%s%s%*s%s%s%s\n' \
+			"$PA_UI_M_ITEM" "$marca" "$rotulo" "$preenchimento" "" \
 			"$cor" "$valor" "$reset"
 	done
 
@@ -414,7 +626,7 @@ ui_resumo() {
 
 	if [[ "$tem_informado" -eq 1 ]]; then
 		ui_vazio
-		ui_detalhe "> veio de você. Confira estes com atenção."
+		ui_detalhe "${PA_TEMA_SIMBOLO_INFORMADO} veio de você. Confira estes com atenção."
 	fi
 
 	ui_vazio
@@ -461,11 +673,11 @@ ui_fatal() {
 	# e o erro final, e parti-lo entre dois fluxos embaralha a
 	# mensagem com a ajuda dela.
 	ui_linha_erro ""
-	ui_linha_erro "  ${PA_COR_ERRO}✗${PA_COR_RESET} ${mensagem}"
+	ui_linha_erro "${PA_UI_M_ITEM}${PA_COR_ERRO}${PA_TEMA_SIMBOLO_ERRO}${PA_COR_RESET} ${mensagem}"
 
 	local ajuda
 	for ajuda in "$@"; do
-		ui_linha_erro "    ${PA_COR_FRACA}${ajuda}${PA_COR_RESET}"
+		ui_linha_erro "${PA_UI_M_DETALHE}${PA_COR_FRACA}${ajuda}${PA_COR_RESET}"
 	done
 
 	ui_linha_erro ""
@@ -476,36 +688,149 @@ ui_fatal() {
 # Cabeçalho
 # ------------------------------------------------------------
 
+# ui_aviso_legal <margem>
+#
+# O aviso que o CLAUDE.md exige em toda execução. Em texto corrido,
+# fora de qualquer moldura: é para ser lido, e moldura em volta de
+# parágrafo atrapalha.
+ui_aviso_legal() {
+	local m="$1"
+
+	ui_linha "${m}${PA_COR_AVISO}AVISO${PA_COR_RESET}"
+	ui_linha "${m}Este script altera a configuração do servidor onde é executado:"
+	ui_linha "${m}instala pacotes, cria containers, volumes e regras de rede."
+	ui_linha "${m}Execute apenas em servidor dedicado a esta finalidade e do qual"
+	ui_linha "${m}você tenha cópia de segurança."
+	ui_vazio
+	ui_linha "${m}O software é fornecido \"como está\", sem garantia de qualquer"
+	ui_linha "${m}espécie. A Play Ahead não se responsabiliza por perda de dados,"
+	ui_linha "${m}indisponibilidade ou danos decorrentes do uso."
+	ui_vazio
+	ui_linha "${m}Leia o código antes de executar."
+}
+
 # ui_cabecalho
 #
-# O bloco de licença e aviso exigido pelo CLAUDE.md. Imprime e
-# faz uma pausa curta, sem pedir confirmação digitada: "digite
-# concordo" travaria a instalação automatizada e atrapalharia a
-# gravação do vídeo.
+# O logo, o que este arquivo instala, a versão, o site, a licença e o
+# aviso. Imprime e faz uma pausa curta, sem pedir confirmação
+# digitada: "digite concordo" travaria a instalação automatizada e
+# atrapalharia a gravação do vídeo.
+#
+# O nome da empresa e o CNPJ não aparecem aqui, por decisão do Fabio
+# em 2026-11-12. O titular da licença está no arquivo LICENSE, que é
+# onde a licença MIT o exige.
+#
+# São três jeitos de apresentar o logo, e quem escolhe é o tema, em
+# PA_TEMA_CABECALHO.
 ui_cabecalho() {
+	# PA_TITULO só existe no menu, que não é de ferramenta nenhuma.
+	local ferramenta="${PA_TITULO:-${PA_FERRAMENTA:-Instalador}}"
+	local versao="versão ${PA_VERSAO:-dev}"
+	local site="playahead.com.br"
+	local licenca="Licença MIT. Consulte o arquivo LICENSE."
+
+	local margem="$PA_UI_M_TITULO"
+	local traco i texto
+
 	ui_vazio
-	ui_linha "${PA_COR_TITULO}============================================================${PA_COR_RESET}"
-	ui_linha "${PA_COR_TITULO}${PA_COR_DESTAQUE} PLAY AHEAD INSTALLER${PA_COR_RESET}"
-	[[ -n "${PA_FERRAMENTA:-}" ]] &&
-		ui_linha "${PA_COR_TITULO} ${PA_FERRAMENTA}${PA_COR_RESET}"
-	ui_linha " https://playahead.com.br"
-	ui_linha " Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08"
+
+	case "$PA_TEMA_CABECALHO" in
+		caixa)
+			margem="$PA_UI_M_MOLDURA"
+
+			# Ao lado do desenho: o nome por extenso, o que este
+			# arquivo instala e a versão, encostados na última linha
+			# do logo.
+			local ao_lado=() estilo=()
+			if [[ -n "$PA_TEMA_NOME" ]]; then
+				ao_lado+=("$PA_TEMA_NOME")
+				estilo+=("$PA_COR_DESTAQUE")
+			fi
+			ao_lado+=("$ferramenta" "$versao")
+			estilo+=("" "$PA_COR_FRACA")
+
+			local coluna=0 largura
+			for i in "${!PA_TEMA_LOGO[@]}"; do
+				largura="$(ui_largura "${PA_TEMA_LOGO[i]}")"
+				[[ "$largura" -gt "$coluna" ]] && coluna="$largura"
+			done
+			coluna=$((coluna + 5))
+
+			local altura="${#PA_TEMA_LOGO[@]}"
+			[[ "${#ao_lado[@]}" -gt "$altura" ]] && altura="${#ao_lado[@]}"
+			local desce=$((altura - ${#ao_lado[@]}))
+
+			traco="$(ui_repetir "$PA_TEMA_TRACO" "$PA_TEMA_LARGURA")"
+			ui_linha "${margem}${PA_COR_MARCA}${PA_TEMA_CANTOS[0]}${traco}${PA_TEMA_CANTOS[1]}${PA_COR_RESET}"
+			ui_moldura_linha "$PA_TEMA_LARGURA" 1 "" ""
+
+			local desenho lado cor espaco pintado
+			for ((i = 0; i < altura; i++)); do
+				desenho="${PA_TEMA_LOGO[i]:-}"
+				lado=""
+				cor=""
+				if [[ "$i" -ge "$desce" ]]; then
+					lado="${ao_lado[i - desce]}"
+					cor="${estilo[i - desce]}"
+				fi
+
+				espaco=$((coluna - $(ui_largura "$desenho")))
+				printf -v texto '%s%*s%s' "$desenho" "$espaco" '' "$lado"
+				printf -v pintado '%s%s%s%*s%s%s%s' \
+					"$PA_COR_MARCA" "$desenho" "$PA_COR_RESET" "$espaco" '' \
+					"$cor" "$lado" "$PA_COR_RESET"
+				ui_moldura_linha "$PA_TEMA_LARGURA" 1 "$texto" "$pintado"
+			done
+
+			ui_moldura_linha "$PA_TEMA_LARGURA" 1 "" ""
+			ui_linha "${margem}${PA_COR_MARCA}${PA_TEMA_CANTOS[2]}${traco}${PA_TEMA_CANTOS[3]}${PA_COR_RESET}"
+			ui_vazio
+			ui_linha "${margem}${PA_COR_FRACA}${site}${PA_COR_RESET}"
+			ui_linha "${margem}${PA_COR_FRACA}${licenca}${PA_COR_RESET}"
+			;;
+
+		barra)
+			margem="${PA_UI_M_MOLDURA}  "
+			local barra="${PA_UI_M_MOLDURA}${PA_COR_MARCA}${PA_TEMA_BARRA}${PA_COR_RESET}"
+
+			for i in "${!PA_TEMA_LOGO[@]}"; do
+				ui_linha "${barra} ${PA_COR_MARCA}${PA_TEMA_LOGO[i]}${PA_COR_RESET}"
+			done
+			ui_linha "$barra"
+			ui_linha "${barra} ${PA_COR_DESTAQUE}${ferramenta}${PA_COR_RESET}"
+			ui_linha "${barra} ${PA_COR_FRACA}${versao}${PA_COR_RESET}"
+			ui_linha "${barra} ${PA_COR_FRACA}${site}${PA_COR_RESET}"
+			ui_linha "${barra} ${PA_COR_FRACA}${licenca}${PA_COR_RESET}"
+			;;
+
+		*)
+			traco="$(ui_repetir "$PA_TEMA_TRACO" "$PA_TEMA_LARGURA")"
+			ui_linha "${PA_UI_M_MOLDURA}${PA_COR_MARCA}${traco}${PA_COR_RESET}"
+			ui_vazio
+			for i in "${!PA_TEMA_LOGO[@]}"; do
+				ui_linha "${margem}${PA_COR_MARCA}${PA_TEMA_LOGO[i]}${PA_COR_RESET}"
+			done
+			ui_vazio
+
+			# O que este arquivo instala à esquerda, a versão à
+			# direita. A versão termina antes do fim da linha o mesmo
+			# tanto que o texto começa depois do começo dela.
+			local sobra
+			sobra=$((PA_TEMA_LARGURA - 2 * (PA_TEMA_MARGEM_TITULO - PA_TEMA_MARGEM_MOLDURA)))
+			sobra=$((sobra - $(ui_largura "$ferramenta") - $(ui_largura "$versao")))
+			[[ "$sobra" -lt 2 ]] && sobra=2
+			printf -v texto '%s%s%s%*s%s%s%s' \
+				"$PA_COR_DESTAQUE" "$ferramenta" "$PA_COR_RESET" "$sobra" '' \
+				"$PA_COR_FRACA" "$versao" "$PA_COR_RESET"
+			ui_linha "${margem}${texto}"
+
+			ui_linha "${PA_UI_M_MOLDURA}${PA_COR_MARCA}${traco}${PA_COR_RESET}"
+			ui_linha "${margem}${PA_COR_FRACA}${site}   ${licenca}${PA_COR_RESET}"
+			;;
+	esac
+
 	ui_vazio
-	ui_linha " Versão ${PA_VERSAO:-dev} | build ${PA_BUILD:-desenvolvimento}"
-	ui_linha " Licença MIT. Consulte o arquivo LICENSE."
-	ui_vazio
-	ui_linha "${PA_COR_AVISO} AVISO${PA_COR_RESET}"
-	ui_linha " Este script altera a configuração do servidor onde é executado:"
-	ui_linha " instala pacotes, cria containers, volumes e regras de rede."
-	ui_linha " Execute apenas em servidor dedicado a esta finalidade e do qual"
-	ui_linha " você tenha cópia de segurança."
-	ui_vazio
-	ui_linha " O software é fornecido \"como está\", sem garantia de qualquer"
-	ui_linha " espécie. A Play Ahead não se responsabiliza por perda de dados,"
-	ui_linha " indisponibilidade ou danos decorrentes do uso."
-	ui_vazio
-	ui_linha " Leia o código antes de executar."
-	ui_linha "${PA_COR_TITULO}============================================================${PA_COR_RESET}"
+	ui_aviso_legal "$margem"
 	ui_vazio
 
 	sleep 3
@@ -635,7 +960,7 @@ ui_perguntar() {
 	local resposta
 	while true; do
 		ui_descartar_entrada
-		printf '  %s: ' "$rotulo"
+		printf '%s%s: ' "$PA_UI_M_ITEM" "$rotulo"
 		IFS= read -r resposta || resposta=""
 		ui_limpar_resposta resposta
 
@@ -674,8 +999,8 @@ ui_perguntar_opcional() {
 	local resposta
 	while true; do
 		ui_descartar_entrada
-		printf '  %s %s[Enter pula]%s: ' \
-			"$texto" "$PA_COR_FRACA" "$PA_COR_RESET"
+		printf '%s%s %s[Enter pula]%s: ' \
+			"$PA_UI_M_ITEM" "$texto" "$PA_COR_FRACA" "$PA_COR_RESET"
 		IFS= read -r resposta || resposta=""
 		ui_limpar_resposta resposta
 
@@ -712,8 +1037,8 @@ ui_confirmar() {
 	local resposta
 	while true; do
 		ui_descartar_entrada
-		printf '  %s %s[%s]%s: ' \
-			"$texto" "$PA_COR_FRACA" "$dica" "$PA_COR_RESET"
+		printf '%s%s %s[%s]%s: ' \
+			"$PA_UI_M_ITEM" "$texto" "$PA_COR_FRACA" "$dica" "$PA_COR_RESET"
 		IFS= read -r resposta || resposta=""
 		ui_limpar_resposta resposta
 
@@ -759,14 +1084,14 @@ ui_escolher() {
 
 	local i
 	for i in "${!opcoes[@]}"; do
-		ui_linha "    ${PA_COR_DESTAQUE}$((i + 1))${PA_COR_RESET}) ${opcoes[i]}"
+		ui_linha "${PA_UI_M_DETALHE}${PA_COR_MARCA}$(ui_numeros "$PA_TEMA_LISTA_NUMERO" "$((i + 1))")${PA_COR_RESET}  ${opcoes[i]}"
 	done
 
 	local resposta
 	while true; do
 		ui_descartar_entrada
-		printf '  Número da opção %s[1]%s: ' \
-			"$PA_COR_FRACA" "$PA_COR_RESET"
+		printf '%sNúmero da opção %s[1]%s: ' \
+			"$PA_UI_M_ITEM" "$PA_COR_FRACA" "$PA_COR_RESET"
 		IFS= read -r resposta || resposta=""
 		ui_limpar_resposta resposta
 		[[ -z "$resposta" ]] && resposta=1
@@ -780,6 +1105,97 @@ ui_escolher() {
 
 		ui_aviso "Escolha um número entre 1 e ${#opcoes[@]}."
 	done
+}
+
+# ------------------------------------------------------------
+# Lista
+# ------------------------------------------------------------
+
+# ui_comando <texto...>
+#
+# Um comando para a pessoa copiar. Recuado, e na cor normal do
+# texto: o apagado do ui_detalhe é para o que se lê, não para o que
+# se digita.
+ui_comando() {
+	ui_linha "${PA_UI_M_DETALHE}  $*"
+}
+
+# ui_lista <titulo> [<numero> <nome> <estado> <descricao>]...
+#
+# A lista numerada do menu. Cada item são quatro textos: o número, o
+# nome, o estado (por exemplo "instalado", ou vazio) e a descrição.
+# O nome sai em negrito e a descrição apagada, em colunas alinhadas
+# pelo texto mais comprido de cada uma. A coluna do estado só existe
+# quando algum item tem estado.
+#
+# O item de número 0 é a saída, e vai sem negrito.
+ui_lista() {
+	local titulo="$1"
+	shift
+
+	local numeros=() nomes=() estados=() descricoes=()
+	while [[ "$#" -ge 4 ]]; do
+		numeros+=("$1")
+		nomes+=("$2")
+		estados+=("$3")
+		descricoes+=("$4")
+		shift 4
+	done
+
+	if [[ "$#" -ne 0 ]]; then
+		ui_fatal "ui_lista recebeu $# argumento(s) sobrando (erro interno)."
+	fi
+
+	local i largura coluna_numero=0 coluna_nome=0 coluna_estado=0
+	local rotulos=()
+	for i in "${!nomes[@]}"; do
+		rotulos+=("$(ui_numeros "$PA_TEMA_LISTA_NUMERO" "${numeros[i]}")")
+
+		largura="$(ui_largura "${rotulos[i]}")"
+		[[ "$largura" -gt "$coluna_numero" ]] && coluna_numero="$largura"
+
+		largura="$(ui_largura "${nomes[i]}")"
+		[[ "$largura" -gt "$coluna_nome" ]] && coluna_nome="$largura"
+
+		largura="$(ui_largura "${estados[i]}")"
+		[[ "$largura" -gt "$coluna_estado" ]] && coluna_estado="$largura"
+	done
+
+	ui_secao "$titulo"
+	if [[ "$PA_TEMA_SECAO_LINHA" -ne 1 ]]; then
+		ui_vazio
+	fi
+
+	local linha negrito espaco
+	for i in "${!nomes[@]}"; do
+		negrito="$PA_COR_DESTAQUE"
+		[[ "${numeros[i]}" == "0" ]] && negrito=""
+
+		espaco=$((coluna_numero - $(ui_largura "${rotulos[i]}") + 2))
+		printf -v linha '%s%s%s%s%*s%s%s%s' \
+			"$PA_UI_M_ITEM" "$PA_COR_MARCA" "${rotulos[i]}" "$PA_COR_RESET" \
+			"$espaco" '' "$negrito" "${nomes[i]}" "$PA_COR_RESET"
+
+		if [[ -n "${estados[i]}${descricoes[i]}" ]]; then
+			espaco=$((coluna_nome - $(ui_largura "${nomes[i]}") + 3))
+			printf -v linha '%s%*s' "$linha" "$espaco" ''
+
+			if [[ "$coluna_estado" -gt 0 ]]; then
+				espaco=$((coluna_estado - $(ui_largura "${estados[i]}") + 3))
+				printf -v linha '%s%s%*s' "$linha" "${estados[i]}" "$espaco" ''
+			fi
+
+			linha+="${PA_COR_FRACA}${descricoes[i]}${PA_COR_RESET}"
+		fi
+
+		ui_linha "$linha"
+	done
+
+	if [[ "$PA_TEMA_LISTA_FECHA" -eq 1 ]]; then
+		ui_separador
+	else
+		ui_vazio
+	fi
 }
 
 # ------------------------------------------------------------
@@ -802,24 +1218,32 @@ ui_aguardar_ate() {
 	local intervalo=3
 	local decorrido=0
 
-	# Os pontinhos só existem para quem está olhando a tela.
-	# Sem terminal eles viram lixo no log, então a linha de
-	# progresso é suprimida e fica só o resultado.
+	# Os pontinhos só existem para quem está olhando a tela. Sem
+	# terminal eles viram lixo no log, então a linha de progresso é
+	# suprimida e fica só o resultado.
+	#
+	# Num terminal com cor, a linha dos pontinhos é apagada quando a
+	# espera acaba, e o resultado ocupa o lugar dela: uma linha por
+	# espera, e não duas dizendo a mesma coisa. Sem cor (NO_COLOR) o
+	# script não manda código de controle nenhum, e o resultado vai
+	# na linha de baixo.
 	local animar=0
+	local fim_da_linha=$'\n'
 	if [[ "$PA_INTERATIVO" == "1" ]]; then
 		animar=1
-		printf '  %s ' "$descricao"
+		[[ -n "$PA_COR_RESET" ]] && fim_da_linha=$'\r\033[K'
+		printf '%s%s ' "$PA_UI_M_ITEM" "$descricao"
 	fi
 
 	while true; do
 		if "$@" >/dev/null 2>&1; then
-			[[ "$animar" == "1" ]] && printf '\n'
+			[[ "$animar" == "1" ]] && printf '%s' "$fim_da_linha"
 			ui_ok "${descricao}: pronto em ${decorrido}s"
 			return 0
 		fi
 
 		if [[ "$decorrido" -ge "$timeout" ]]; then
-			[[ "$animar" == "1" ]] && printf '\n'
+			[[ "$animar" == "1" ]] && printf '%s' "$fim_da_linha"
 			ui_erro "${descricao}: nada respondeu em ${timeout}s"
 			return 1
 		fi
@@ -828,6 +1252,138 @@ ui_aguardar_ate() {
 		sleep "$intervalo"
 		decorrido=$((decorrido + intervalo))
 	done
+}
+
+# ------------------------------------------------------------
+# Quadro
+# ------------------------------------------------------------
+
+# ui_moldura_linha <largura interna> <fechada> <texto sem cor> <texto para a tela>
+#
+# Uma linha de dentro da moldura. O texto vem duas vezes: sem cor,
+# para a conta do espaço que falta até a borda da direita, e como
+# vai para a tela. Com a moldura aberta (fechada=0) não há borda dos
+# lados nem preenchimento.
+ui_moldura_linha() {
+	local interna="$1" fechada="$2" simples="$3" colorido="$4"
+
+	if [[ "$fechada" -ne 1 ]]; then
+		if [[ -n "$simples" ]]; then
+			ui_linha "${PA_UI_M_ITEM}${colorido}"
+		else
+			ui_vazio
+		fi
+		return 0
+	fi
+
+	local sobra=$((interna - 3 - $(ui_largura "$simples")))
+	[[ "$sobra" -lt 0 ]] && sobra=0
+
+	local linha
+	printf -v linha '%s%s%s%s   %s%*s%s%s%s' \
+		"$PA_UI_M_MOLDURA" "$PA_COR_MARCA" "$PA_TEMA_LADO" "$PA_COR_RESET" \
+		"$colorido" "$sobra" '' \
+		"$PA_COR_MARCA" "$PA_TEMA_LADO" "$PA_COR_RESET"
+	ui_linha "$linha"
+}
+
+# ui_colunas
+#
+# Largura do terminal. Sem terminal, 80.
+ui_colunas() {
+	local colunas=""
+	colunas="$(stty size 2>/dev/null | awk '{print $2}')" || true
+	[[ "$colunas" =~ ^[0-9]+$ && "$colunas" -ge 40 ]] || colunas=80
+	printf '%s\n' "$colunas"
+}
+
+# ui_quadro <titulo> [<linha>]...
+#
+# O que a pessoa precisa levar da tela: o endereço, o usuário, a
+# senha. É o único destaque além do cabeçalho.
+#
+# Cada linha é um texto, ou "rótulo<TAB>valor", que sai em duas
+# colunas com o valor em negrito. Linha vazia vira respiro.
+#
+# O tema escolhe, em PA_TEMA_QUADRO, entre "linhas" (uma linha em
+# cima e outra embaixo) e "caixa" (moldura fechada).
+#
+# Nada é cortado. Na caixa, se uma linha não cabe, o quadro alarga;
+# se o quadro alargado não cabe no terminal, as bordas dos lados
+# somem e ficam só a de cima e a de baixo: uma senha partida no meio
+# pela moldura seria pior que moldura nenhuma.
+ui_quadro() {
+	local titulo="$1"
+	shift
+	local linhas=("$@")
+
+	local linha rotulo valor largura
+	local coluna=0
+	local maior
+	maior="$(ui_largura "$titulo")"
+
+	for linha in ${linhas[@]+"${linhas[@]}"}; do
+		[[ "$linha" == *$'\t'* ]] || continue
+		largura="$(ui_largura "${linha%%$'\t'*}")"
+		[[ "$largura" -gt "$coluna" ]] && coluna="$largura"
+	done
+
+	for linha in ${linhas[@]+"${linhas[@]}"}; do
+		if [[ "$linha" == *$'\t'* ]]; then
+			largura=$((coluna + 3 + $(ui_largura "${linha#*$'\t'}")))
+		else
+			largura="$(ui_largura "$linha")"
+		fi
+		[[ "$largura" -gt "$maior" ]] && maior="$largura"
+	done
+
+	local interna="$PA_TEMA_LARGURA"
+	[[ $((maior + 6)) -gt "$interna" ]] && interna=$((maior + 6))
+
+	local fechado=1
+	[[ "$PA_TEMA_QUADRO" == "caixa" ]] || fechado=0
+	[[ $((interna + PA_TEMA_MARGEM_MOLDURA + 2)) -gt "$(ui_colunas)" ]] && fechado=0
+
+	local traco
+	if [[ "$fechado" -eq 1 ]]; then
+		traco="$(ui_repetir "$PA_TEMA_TRACO" "$interna")"
+	else
+		traco="$(ui_repetir "$PA_TEMA_TRACO" "$PA_UI_LARGURA_LINHA")"
+	fi
+
+	ui_vazio
+	if [[ "$fechado" -eq 1 ]]; then
+		ui_linha "${PA_UI_M_MOLDURA}${PA_COR_MARCA}${PA_TEMA_CANTOS[0]}${traco}${PA_TEMA_CANTOS[1]}${PA_COR_RESET}"
+	else
+		ui_linha "${PA_UI_M_MOLDURA}${PA_COR_MARCA}${traco}${PA_COR_RESET}"
+	fi
+
+	ui_moldura_linha "$interna" "$fechado" "" ""
+	ui_moldura_linha "$interna" "$fechado" "$titulo" "${PA_COR_DESTAQUE}${titulo}${PA_COR_RESET}"
+	ui_moldura_linha "$interna" "$fechado" "" ""
+
+	local simples pintado
+	for linha in ${linhas[@]+"${linhas[@]}"}; do
+		if [[ "$linha" == *$'\t'* ]]; then
+			rotulo="${linha%%$'\t'*}"
+			valor="${linha#*$'\t'}"
+			largura=$((coluna - $(ui_largura "$rotulo") + 3))
+			printf -v simples '%s%*s%s' "$rotulo" "$largura" '' "$valor"
+			printf -v pintado '%s%*s%s%s%s' \
+				"$rotulo" "$largura" '' "$PA_COR_DESTAQUE" "$valor" "$PA_COR_RESET"
+			ui_moldura_linha "$interna" "$fechado" "$simples" "$pintado"
+		else
+			ui_moldura_linha "$interna" "$fechado" "$linha" "$linha"
+		fi
+	done
+
+	ui_moldura_linha "$interna" "$fechado" "" ""
+	if [[ "$fechado" -eq 1 ]]; then
+		ui_linha "${PA_UI_M_MOLDURA}${PA_COR_MARCA}${PA_TEMA_CANTOS[2]}${traco}${PA_TEMA_CANTOS[3]}${PA_COR_RESET}"
+	else
+		ui_linha "${PA_UI_M_MOLDURA}${PA_COR_MARCA}${traco}${PA_COR_RESET}"
+	fi
+	ui_vazio
 }
 
 # ------------------------------------------------------------
@@ -1679,7 +2235,7 @@ checks_exigir_flag() {
 # dependem do cenário detectado e do domínio informado, e são
 # chamadas pelo orquestrador mais adiante.
 checks_sistema() {
-	ui_secao "Conferindo o servidor"
+	ui_etapa "Conferindo o servidor"
 
 	checks_bash
 	checks_root
@@ -3749,7 +4305,7 @@ COMPOSE
 portainer_instalar() {
 	PA_PORTAINER_DOMINIO="$1"
 
-	ui_secao "Portainer"
+	ui_etapa "Portainer"
 
 	if portainer_ja_existe; then
 		ui_aviso "Já existe um Portainer em execução nesta máquina."
@@ -3947,13 +4503,13 @@ portainer_gravar_credenciais() {
 portainer_bloco_final() {
 	[[ "$PA_PORTAINER_INSTALADO" -eq 1 ]] || return 0
 
-	ui_vazio
-	ui_info "Portainer"
-	ui_detalhe "URL:      https://${PA_PORTAINER_DOMINIO}"
-	ui_detalhe "usuário:  ${PA_PORTAINER_USUARIO}"
-	ui_detalhe "senha:    ${PA_PORTAINER_SENHA}"
-	ui_detalhe "salvo em: ${PA_PORTAINER_CREDENCIAIS}"
-	ui_vazio
+	ui_quadro "Portainer" \
+		"Endereço"$'\t'"https://${PA_PORTAINER_DOMINIO}" \
+		"Usuário"$'\t'"${PA_PORTAINER_USUARIO}" \
+		"Senha"$'\t'"${PA_PORTAINER_SENHA}" \
+		"" \
+		"Guardado em ${PA_PORTAINER_CREDENCIAIS}"
+
 	ui_info "Quem entra no Portainer controla todos os containers"
 	ui_info "desta máquina. Guarde a senha num gerenciador de senhas."
 	ui_info "Se preferir trocar a senha do Portainer, use outra igualmente"
@@ -4171,7 +4727,7 @@ base_atualizar_planejar_portainer() {
 # Não altera nada além de gravar o compose novo num arquivo ao lado
 # do instalado.
 base_atualizar_planejar() {
-	ui_secao "Conferindo a base"
+	ui_etapa "Conferindo a base"
 
 	if ! docker_presente || ! docker_compose_presente; then
 		ui_fatal \
@@ -4389,49 +4945,49 @@ base_atualizar_como_restaurar() {
 	# não está no meio de atualização nenhuma.
 	printf '\n'
 	if [[ "${1:-}" == "arquivo" ]]; then
-		printf '  Backup feito em %s, antes de atualizar a base.\n' "$(date +%Y-%m-%d)"
+		printf '    Backup feito em %s, antes de atualizar a base.\n' "$(date +%Y-%m-%d)"
 		printf '\n'
-		printf '  Pasta deste backup:\n'
-		printf '      %s\n' "$PA_BASE_BACKUP"
+		printf '    Pasta deste backup:\n'
+		printf '        %s\n' "$PA_BASE_BACKUP"
 	else
-		printf '  A atualização da base não terminou.\n'
+		printf '    A atualização da base não terminou.\n'
 		printf '\n'
-		printf '  O backup de antes dela está em:\n'
-		printf '      %s\n' "$PA_BASE_BACKUP"
+		printf '    O backup de antes dela está em:\n'
+		printf '        %s\n' "$PA_BASE_BACKUP"
 		printf '\n'
-		printf '  PARA TENTAR DE NOVO:\n'
+		printf '    PARA TENTAR DE NOVO:\n'
 		printf '\n'
-		printf '      sudo bash %s --atualizar\n' "$0"
+		printf '        sudo bash %s --atualizar\n' "$0"
 	fi
 
 	if [[ "$PA_BASE_TRAEFIK" == "sim" ]]; then
 		printf '\n'
-		printf '  PARA VOLTAR o Traefik ao %s:\n' "$PA_BASE_TRAEFIK_DE"
+		printf '    PARA VOLTAR o Traefik ao %s:\n' "$PA_BASE_TRAEFIK_DE"
 		printf '\n'
-		printf '      cd %s\n' "$PA_TRAEFIK_DIR"
-		printf '      cp %s/traefik/docker-compose.yml docker-compose.yml\n' "$PA_BASE_BACKUP"
-		printf '      rm -f .compose.sha256\n'
-		printf '      docker compose up -d\n'
+		printf '        cd %s\n' "$PA_TRAEFIK_DIR"
+		printf '        cp %s/traefik/docker-compose.yml docker-compose.yml\n' "$PA_BASE_BACKUP"
+		printf '        rm -f .compose.sha256\n'
+		printf '        docker compose up -d\n'
 	fi
 
 	if [[ "$PA_BASE_PORTAINER" == "sim" ]]; then
 		printf '\n'
-		printf '  PARA VOLTAR o Portainer ao %s, com os dados de antes:\n' "$PA_BASE_PORTAINER_DE"
+		printf '    PARA VOLTAR o Portainer ao %s, com os dados de antes:\n' "$PA_BASE_PORTAINER_DE"
 		printf '\n'
-		printf '      cd %s\n' "$PA_PORTAINER_DIR"
-		printf '      docker compose down -v\n'
-		printf '      cp %s/portainer/docker-compose.yml docker-compose.yml\n' "$PA_BASE_BACKUP"
-		printf '      rm -f .compose.sha256\n'
-		printf '      docker compose up --no-start\n'
-		printf '      tar -xzf %s/portainer/dados.tar.gz \\\n' "$PA_BASE_BACKUP"
+		printf '        cd %s\n' "$PA_PORTAINER_DIR"
+		printf '        docker compose down -v\n'
+		printf '        cp %s/portainer/docker-compose.yml docker-compose.yml\n' "$PA_BASE_BACKUP"
+		printf '        rm -f .compose.sha256\n'
+		printf '        docker compose up --no-start\n'
+		printf '        tar -xzf %s/portainer/dados.tar.gz \\\n' "$PA_BASE_BACKUP"
 		# As aspas e o cifrão são do comando que a pessoa vai colar.
 		# shellcheck disable=SC2016
-		printf '        -C "$(docker volume inspect -f %s %s)"\n' \
+		printf '          -C "$(docker volume inspect -f %s %s)"\n' \
 			"'{{.Mountpoint}}'" "$PA_BASE_VOLUME_PORTAINER"
-		printf '      docker compose up -d\n'
+		printf '        docker compose up -d\n'
 		printf '\n'
-		printf '  O "down -v" apaga os dados atuais do Portainer; o tar devolve\n'
-		printf '  os do backup. Os outros containers não são afetados.\n'
+		printf '    O "down -v" apaga os dados atuais do Portainer; o tar devolve\n'
+		printf '    os do backup. Os outros containers não são afetados.\n'
 	fi
 	printf '\n'
 }
@@ -4448,7 +5004,7 @@ base_atualizar_ao_sair() {
 	if [[ "$codigo" -ne 0 && "$PA_BASE_TROCANDO" -eq 1 ]]; then
 		base_atualizar_como_restaurar >&"$PA_UI_FD_TELA" 2>&1 || true
 	elif [[ "$codigo" -ne 0 && "$PA_BASE_PORTAINER_PARADO" -eq 1 ]]; then
-		printf '  Nada foi trocado. Ligando o Portainer de novo.\n' \
+		printf '    Nada foi trocado. Ligando o Portainer de novo.\n' \
 			>&"$PA_UI_FD_TELA" 2>&1 || true
 		# Espera a parada terminar antes de ligar: um "stop"
 		# interrompido continua valendo dentro do Docker, e ligar na
@@ -4456,8 +5012,8 @@ base_atualizar_ao_sair() {
 		docker_compose_desligado "$PA_PORTAINER_DIR" stop portainer || true
 		docker_compose_desligado "$PA_PORTAINER_DIR" start portainer || true
 		{
-			printf '  Portainer ligado. Para tentar outra vez:\n'
-			printf '      sudo bash %s --atualizar\n\n' "$0"
+			printf '    Portainer ligado. Para tentar outra vez:\n'
+			printf '        sudo bash %s --atualizar\n\n' "$0"
 		} >&"$PA_UI_FD_TELA" 2>&1 || true
 	fi
 
@@ -4538,17 +5094,18 @@ base_atualizar_trocar_portainer() {
 # ------------------------------------------------------------
 
 base_atualizar_bloco_final() {
-	ui_vazio
-	ui_secao "Atualização concluída"
+	ui_etapa "Atualização concluída"
 
-	ui_info "Traefik:   $(base_atualizar_descrever "$PA_BASE_TRAEFIK" "$PA_BASE_TRAEFIK_DE" "$PA_TRAEFIK_VERSAO")"
-	ui_info "Portainer: $(base_atualizar_descrever "$PA_BASE_PORTAINER" "$PA_BASE_PORTAINER_DE" "$PA_PORTAINER_VERSAO")"
-	ui_vazio
-	ui_info "Backup de antes da atualização:"
-	ui_detalhe "$PA_BASE_BACKUP"
-	ui_detalhe "Como voltar, se precisar: COMO-RESTAURAR.txt, dentro dele."
-	ui_detalhe "O instalador não apaga backup. Quando tiver certeza de que"
-	ui_detalhe "está tudo certo, apague a pasta para liberar espaço."
+	ui_quadro "Base atualizada" \
+		"Traefik"$'\t'"$(base_atualizar_descrever "$PA_BASE_TRAEFIK" "$PA_BASE_TRAEFIK_DE" "$PA_TRAEFIK_VERSAO")" \
+		"Portainer"$'\t'"$(base_atualizar_descrever "$PA_BASE_PORTAINER" "$PA_BASE_PORTAINER_DE" "$PA_PORTAINER_VERSAO")" \
+		"" \
+		"Backup de antes da atualização:" \
+		"$PA_BASE_BACKUP"
+
+	ui_info "Como voltar, se precisar: COMO-RESTAURAR.txt, dentro do backup."
+	ui_info "O instalador não apaga backup. Quando tiver certeza de que"
+	ui_info "está tudo certo, apague a pasta para liberar espaço."
 	ui_vazio
 	ui_info "Abra os seus sites no navegador para conferir."
 	if [[ "$PA_BASE_PORTAINER" == "sim" ]]; then
@@ -4568,7 +5125,7 @@ base_atualizar() {
 	base_atualizar_planejar
 	base_atualizar_confirmar
 
-	ui_secao "Atualizando a base"
+	ui_etapa "Atualizando a base"
 
 	# A dica do Ctrl-C da instalação fala em reaproveitar o que foi
 	# instalado. Aqui o que vale é a da atualização.
@@ -4640,7 +5197,7 @@ base_atualizar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-11-11T14:07:03Z"
+PA_BUILD="2026-11-12T14:27:10Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
@@ -4786,7 +5343,7 @@ main_parse_flags() {
 # ------------------------------------------------------------
 
 base_detectar() {
-	ui_secao "Descobrindo a situação desta máquina"
+	ui_etapa "Descobrindo a situação desta máquina"
 
 	cenario_classificar
 
@@ -4841,6 +5398,8 @@ base_perguntar() {
 	# em vez de escolher em silêncio: instalar sem DNS deixaria um
 	# painel inacessível de pé, e pular calado contraria o que o
 	# menu anuncia na opção 1.
+	ui_etapa "Algumas perguntas antes de começar"
+
 	if [[ "$pergunta_portainer" -eq 1 ]] && ! ui_interativo; then
 		ui_fatal \
 			"Falta o subdomínio do Portainer." \
@@ -4850,11 +5409,13 @@ base_perguntar() {
 			"    --sem-portainer"
 	fi
 
+	# A etapa aparece mesmo sem pergunta, para o contador não pular
+	# número: com tudo vindo por opção, ou sem nada a decidir.
 	if [[ "$pergunta_acme" -eq 0 ]] && [[ "$pergunta_portainer" -eq 0 ]]; then
+		ui_info "Nada a perguntar desta vez."
 		return 0
 	fi
 
-	ui_secao "Algumas perguntas antes de começar"
 	ui_info "Depois daqui a instalação corre sozinha até o fim."
 
 	if [[ "$pergunta_acme" -eq 1 ]]; then
@@ -5006,7 +5567,7 @@ base_confirmar() {
 
 base_instalar() {
 	ui_marcar_alteracao
-	ui_secao "Preparando a máquina"
+	ui_etapa "Preparando a máquina"
 
 	sistema_criar_swap "$PA_NO_SWAP"
 	docker_garantir
@@ -5024,19 +5585,16 @@ base_instalar() {
 # ------------------------------------------------------------
 
 base_bloco_final() {
-	ui_vazio
-	ui_secao "Base pronta"
+	ui_etapa "Base pronta"
 
-	ui_info "A infraestrutura compartilhada está no ar:"
-	ui_vazio
-	ui_info "Docker:       $(docker_versao)"
-	ui_info "Compose:      $(docker_compose_versao)"
-	ui_info "Rede do proxy: ${PA_TRAEFIK_NETWORK:-${PA_TRAEFIK_REDE}}"
-	ui_info "Entrypoint:   ${PA_TRAEFIK_ENTRYPOINT:-websecure}"
-	ui_info "Certresolver: ${PA_TRAEFIK_CERTRESOLVER:-<nenhum>}"
+	ui_quadro "A infraestrutura compartilhada está no ar" \
+		"Docker"$'\t'"$(docker_versao)" \
+		"Compose"$'\t'"$(docker_compose_versao)" \
+		"Rede do proxy"$'\t'"${PA_TRAEFIK_NETWORK:-${PA_TRAEFIK_REDE}}" \
+		"Entrypoint"$'\t'"${PA_TRAEFIK_ENTRYPOINT:-websecure}" \
+		"Certresolver"$'\t'"${PA_TRAEFIK_CERTRESOLVER:-nenhum}"
 
 	if [[ -n "$PA_SWAP_CRIADO" ]]; then
-		ui_vazio
 		ui_info "Um arquivo de swap de 2 GB foi criado em ${PA_SWAP_CRIADO}"
 		ui_info "porque esta máquina tem pouca memória."
 	fi
@@ -5056,11 +5614,9 @@ base_bloco_final() {
 		ui_detalhe "Mautic 7:  https://get.playahead.com.br/mautic7"
 	fi
 	ui_vazio
-	ui_separador
 	ui_info "Quer receber avisos de novas versões, correções e conteúdos"
 	ui_info "da Play Ahead sobre automação de marketing?"
 	ui_detalhe "https://playahead.com.br/avisos"
-	ui_separador
 	ui_vazio
 }
 
@@ -5081,12 +5637,17 @@ main() {
 	# precisa do bash e do root: o piso de RAM e de disco da instalação
 	# não vale para uma máquina que já está em uso.
 	if [[ "$PA_ATUALIZAR" -eq 1 ]]; then
-		ui_secao "Conferindo o servidor"
+		ui_etapas 5
+		ui_etapa "Conferindo o servidor"
 		checks_bash
 		checks_root
 		base_atualizar
 		return 0
 	fi
+
+	# Sete etapas: servidor, situação, perguntas, resumo, preparo da
+	# máquina, Portainer e o fim.
+	ui_etapas 7
 
 	checks_sistema
 	base_detectar
@@ -5097,6 +5658,9 @@ main() {
 
 	if [[ "$PA_PORTAINER" -eq 1 ]]; then
 		portainer_instalar "$PA_PORTAINER_DOMINIO" || true
+	else
+		ui_etapa "Portainer"
+		ui_info "Não será instalado, por escolha."
 	fi
 
 	base_bloco_final

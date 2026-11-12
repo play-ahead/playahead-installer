@@ -235,7 +235,7 @@ main_parse_flags() {
 # o que falta, mostra o comando pronto na tela e encerra com 1. A
 # pessoa instala a base, vê o resultado, e roda isto de novo.
 mautic_checar_base() {
-	ui_secao "Conferindo a base"
+	ui_etapa "Conferindo a base"
 
 	cenario_classificar
 
@@ -263,13 +263,13 @@ mautic_checar_base() {
 	else
 		ui_info "Baixe, leia e rode a base:"
 		ui_vazio
-		ui_linha "    curl -sL https://get.playahead.com.br/base -o base.sh"
-		ui_linha "    less base.sh"
-		ui_linha "    sudo bash base.sh"
+		ui_comando "curl -sL https://get.playahead.com.br/base -o base.sh"
+		ui_comando "less base.sh"
+		ui_comando "sudo bash base.sh"
 		ui_vazio
 		ui_info "Terminada a base, rode este instalador de novo:"
 		ui_vazio
-		ui_linha "    sudo bash ${0}"
+		ui_comando "sudo bash ${0}"
 	fi
 	ui_vazio
 	ui_info "Nada foi alterado nesta máquina."
@@ -439,7 +439,10 @@ main_perguntar() {
 	# vez. O e-mail do admin só falta quando o mautic:install ainda
 	# não rodou; depois dele, o e-mail vem do credenciais.txt ou do
 	# banco, e perguntar de novo poderia gravar um que não é o real.
+	ui_etapa "Algumas perguntas antes de começar"
+
 	if [[ "$PA_MAUTIC_RETOMANDO" -eq 1 ]]; then
+		ui_info "Retomando: valem as respostas da primeira vez."
 		if [[ -z "$PA_EMAIL_ADMIN" ]] && ! mautic_site_url_gravado; then
 			ui_perguntar PA_EMAIL_ADMIN \
 				"E-mail para entrar no Mautic" \
@@ -448,7 +451,6 @@ main_perguntar() {
 		return 0
 	fi
 
-	ui_secao "Algumas perguntas antes de começar"
 	ui_info "Depois daqui a instalação corre sozinha até o fim."
 	ui_vazio
 
@@ -536,7 +538,7 @@ main_confirmar_traefik() {
 # ------------------------------------------------------------
 
 main_validar() {
-	ui_secao "Conferindo o domínio"
+	ui_etapa "Conferindo o domínio"
 
 	if [[ "$PA_SKIP_DNS" -eq 1 ]]; then
 		PA_DNS_RESULTADO="não verificado, por --skip-dns-check"
@@ -632,7 +634,7 @@ main_confirmar() {
 
 main_instalar() {
 	ui_marcar_alteracao
-	ui_secao "Instalando o Mautic"
+	ui_etapa "Instalando o Mautic"
 
 	mautic_gravar_compose "$PA_TEMPLATE_MAUTIC"
 	mautic_gerar_env "$PA_DOMINIO"
@@ -700,38 +702,41 @@ main_instalar() {
 # ------------------------------------------------------------
 
 main_bloco_final() {
-	ui_vazio
-	ui_secao "Pronto"
+	ui_etapa "Pronto"
 
-	ui_info "Mautic instalado e no ar."
-	ui_vazio
-	ui_info "URL:      https://${PA_DOMINIO}"
-	ui_info "Versão:   Mautic $(mautic_descrever_versao)"
+	local linhas=(
+		"Endereço"$'\t'"https://${PA_DOMINIO}"
+		"Versão"$'\t'"Mautic $(mautic_descrever_versao)"
+	)
 
 	if [[ "$PA_WIZARD" -eq 1 ]]; then
-		ui_vazio
-		ui_info "Você usou --wizard, então falta concluir a instalação"
-		ui_info "pelo navegador. Use estes dados na tela de banco:"
-		ui_detalhe "host:    mariadb"
-		ui_detalhe "porta:   3306"
-		ui_detalhe "base:    mautic"
-		ui_detalhe "usuário: mautic"
-		ui_detalhe "senha:   ${PA_MAUTIC_SENHA_BANCO}"
+		linhas+=(
+			""
+			"Falta concluir pelo navegador. Na tela do banco, use:"
+			"Host"$'\t'"mariadb"
+			"Porta"$'\t'"3306"
+			"Base"$'\t'"mautic"
+			"Usuário"$'\t'"mautic"
+			"Senha"$'\t'"${PA_MAUTIC_SENHA_BANCO}"
+		)
 	elif [[ "$PA_MAUTIC_JA_INSTALADO" -eq 1 && -z "$PA_MAUTIC_SENHA_ADMIN" ]]; then
-		ui_info "E-mail:   ${PA_EMAIL_ADMIN}"
-		ui_info "Senha:    a definida na instalação anterior"
+		linhas+=(
+			"E-mail"$'\t'"${PA_EMAIL_ADMIN}"
+			"Senha"$'\t'"a definida na instalação anterior"
+		)
 	else
-		ui_info "E-mail:   ${PA_EMAIL_ADMIN}"
-		ui_info "Senha:    ${PA_MAUTIC_SENHA_ADMIN}"
+		linhas+=(
+			"E-mail"$'\t'"${PA_EMAIL_ADMIN}"
+			"Senha"$'\t'"${PA_MAUTIC_SENHA_ADMIN}"
+		)
 	fi
 
-	ui_vazio
-	ui_info "Credenciais salvas em:"
-	ui_detalhe "$PA_MAUTIC_CREDENCIAIS"
+	linhas+=("" "Guardado em ${PA_MAUTIC_CREDENCIAIS}")
+
+	ui_quadro "Mautic instalado e no ar" "${linhas[@]}"
+
 	ui_info "Guarde num gerenciador de senhas. O arquivo não é apagado."
-	ui_vazio
-	ui_info "Arquivos da instalação:"
-	ui_detalhe "$PA_MAUTIC_DIR"
+	ui_info "Arquivos da instalação: ${PA_MAUTIC_DIR}"
 
 	# Medido em 2026-10-22: o IP público está na placa de rede, e a
 	# requisição da conferência nem sai da máquina. Um firewall do
@@ -756,11 +761,9 @@ main_bloco_final() {
 	fi
 
 	ui_vazio
-	ui_separador
 	ui_info "Quer receber avisos de novas versões, correções e conteúdos"
 	ui_info "da Play Ahead sobre automação de marketing?"
 	ui_detalhe "https://playahead.com.br/avisos"
-	ui_separador
 	ui_vazio
 }
 
@@ -782,13 +785,18 @@ main() {
 	# não vale para uma máquina que já roda o Mautic, e o espaço que a
 	# atualização precisa é conferido por ela, com a conta do backup.
 	if [[ "$PA_ATUALIZAR" -eq 1 ]]; then
-		ui_secao "Conferindo o servidor"
+		ui_etapas 6
+		ui_etapa "Conferindo o servidor"
 		checks_bash
 		checks_root
 		mautic_checar_base
 		mautic_atualizar
 		return 0
 	fi
+
+	# Oito etapas: servidor, base, perguntas, domínio, resumo,
+	# instalação, endereço e o fim.
+	ui_etapas 8
 
 	checks_sistema
 
@@ -806,6 +814,7 @@ main() {
 
 	# Não aborta: o Mautic está no ar de qualquer jeito, e a regra do
 	# projeto é não derrubar nada quando algo dá errado.
+	ui_etapa "Conferindo o endereço"
 	mautic_verificar_roteamento "$PA_DOMINIO" || true
 
 	# Último passo. A verificação acima não conta: ela avisa sem

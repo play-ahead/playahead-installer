@@ -186,8 +186,15 @@ silêncio.
 
 ### O menu
 
-`dist/playahead.sh` lista os instaladores e roda o escolhido. Lista numerada,
-escolha por número, uma ferramenta por vez.
+`dist/playahead.sh` é a porta de entrada: lista os instaladores e roda o
+escolhido. Lista numerada, escolha por número, uma ferramenta por vez. Hoje
+são dois (Base e Mautic 7); o desenho é para vários (Chatwoot, Typebot,
+Evolution API e outros).
+
+Por ser a entrada de todas as ferramentas, o cabeçalho de tela do menu é o
+geral, "Play Ahead Installer", e não o de uma delas (decisão do Fabio em
+2026-11-12). O texto vem de `PA_TITULO`, que só o menu define; nos
+instaladores o cabeçalho mostra o `PA_FERRAMENTA`.
 
 **O menu contém os instaladores, não os busca.** O `build.sh` embute o
 `base.sh` e o `mautic7.sh` dentro dele como heredoc citado, mesmo mecanismo do
@@ -233,16 +240,57 @@ executa outro. O que se ganha:
   real em vez de um temporário (verificado, sai `./base.sh`);
 - a pessoa fica com os scripts no disco, para reler e reusar.
 
-O preço é o tamanho: cerca de 9.000 linhas. Como um `less` nisso é pesado, o
+O preço é o tamanho: cerca de 15.000 linhas e 470 KB em 2026-11-12, com dois
+instaladores. Ver, em Pendências, "O tamanho do arquivo único do menu". Como
+um `less` nisso é pesado, o
 cabeçalho impresso na tela diz **em que linha cada instalador começa**, lendo o
 próprio arquivo em tempo de execução em vez de confiar num número gravado no
 build. E `--extrair` grava os dois em arquivos separados, sem instalar nada,
 para quem preferir auditar um por um.
 
-O menu não detecta estado nem mostra "já instalada" na lista. Faria ele
-carregar `checks`, `cenario`, `docker` e `traefik` só para desenhar a tela, e
-cada instalador já detecta e explica o seu estado quando roda. Fica para quando
-a lista virar um painel.
+**A lista é gerada a partir dos instaladores embutidos (2026-11-12, pedido
+do Fabio).** O `lib/menu_main.sh` não tem lista. Para cada instalador que
+embute, o `build.sh` escreve no artefato uma chamada a `menu_registrar`, com
+o arquivo, a versão lida do orquestrador, o nome, a descrição, o grupo e a
+marca de instalado. Esses textos ficam no `build.sh`, ao lado dos alvos
+(`PA_MENU_NOME`, `PA_MENU_DESCRICAO`, `PA_MENU_GRUPO`, `PA_MENU_INSTALADO`).
+Instalador novo que entra em `PA_EMBUTIDOS` ganha quatro linhas ali e aparece
+na lista, sem tocar no menu. Os textos do menu ficaram genéricos ("os
+instaladores", e não "os dois"), e a ajuda, o `--version`, o `--extrair` e a
+tela de onde auditar percorrem a mesma lista.
+
+**"instalado" ao lado do que já existe na VPS (2026-11-12, pedido do
+Fabio).** Mudou a decisão anterior, de o menu não mostrar estado nenhum. O
+motivo dela continua respeitado: o menu não carrega `checks`, `cenario`,
+`docker` nem `traefik`. Ele só olha se existe um arquivo que cada instalador
+deixa quando termina:
+
+| Instalador | Marca de instalado |
+|---|---|
+| Base | `/opt/playahead/traefik/docker-compose.yml` ou `/opt/playahead/portainer/docker-compose.yml` |
+| Mautic 7 | `/opt/playahead/mautic/.instalacao-concluida` |
+
+É uma dica de tela, não uma detecção. Um Traefik de terceiro (cenário 2)
+não faz a Base aparecer como instalada, e quem explica o estado de verdade
+continua sendo cada instalador, quando roda.
+
+**Grupos: desenho pronto, sem implementar (2026-11-12).** Com muitas
+ferramentas a lista vai precisar de grupos: infraestrutura, marketing,
+atendimento. O grupo de cada instalador já é declarado no `build.sh` e
+guardado pelo menu em `PA_MENU_GRUPO`, mas não aparece na tela: com duas
+ferramentas, título de grupo seria mais linha que conteúdo. O desenho para
+quando a lista crescer:
+
+- o nome do grupo numa linha própria, como título sem número, e embaixo os
+  instaladores dele;
+- os grupos na ordem em que aparecem em `PA_EMBUTIDOS`, e a numeração
+  seguindo de um grupo para o outro, para a escolha continuar sendo um
+  número só;
+- a mudança fica toda em `menu_listar`, que passa a chamar `ui_lista` uma
+  vez por grupo. Nada muda no `build.sh` nem nos instaladores.
+
+O que **não** foi feito, de propósito: submenus, busca, ou paginação. Uma
+lista de dez itens em três grupos cabe numa tela.
 
 Sem terminal, o menu recusa e manda usar os instaladores direto. Isso também
 cobre quem tenta `curl | bash`.
@@ -1040,6 +1088,116 @@ repetidas só no que mudar. A configuração da rotina no claude.ai não é
 visível para um agente de auditoria: as duas usaram o arquivo do prompt e
 os fatos medidos na primeira execução.
 
+## Visual
+
+Feito em 2026-11-12 (bloco 3). O pedido do Fabio: bonito, e sem cara de feito
+por IA.
+
+### O que foi pedido
+
+Fazer: o logo da Play Ahead bem desenhado no cabeçalho e no menu; poucas
+cores; contador de etapas; tudo alinhado; moldura só no cabeçalho e no quadro
+final das credenciais; frases curtas e diretas, sem travessão.
+
+Evitar: emoji, moldura por todo lado, arco-íris, frase animada, separador em
+excesso, e animação que suja o log.
+
+Tem de funcionar em 80 colunas, no Termius e no PowerShell, sem cor quando a
+saída não é um terminal ou com `NO_COLOR`, e no modo `--yes`. O logo tem de
+ser legível no código-fonte. As mudanças ficam no `lib/ui.sh` e nos textos:
+nenhum comportamento muda.
+
+### A escolha
+
+Três versões do cabeçalho e do menu foram mostradas ao Fabio, capturadas de
+um terminal de verdade. Em 2026-11-12 ele escolheu a **2**: o nome em letras
+de bloco entre duas linhas, o contador de etapas como `[3/8] Título`, e a
+lista do menu entre duas linhas. As outras duas ficam guardadas.
+
+### O tema mora num bloco só
+
+Pedido do Fabio em 2026-11-12: trocar o visual tem de ser mexer num lugar só.
+
+- **O bloco `TEMA`, no topo do `lib/ui.sh`**, traz o logo, as cores, os
+  símbolos, as peças da moldura, as margens e o formato dos títulos, tudo em
+  variáveis `PA_TEMA_*`. O resto do arquivo desenha a tela a partir delas.
+  Nenhuma outra lib escolhe cor nem caractere: pedem ao `ui.sh` um título,
+  um resultado, um quadro.
+- **`docs/visual/`** guarda os dois temas que não estão em uso
+  (`tema-1-marca-na-moldura.sh` e `tema-3-traco-fino.sh`), cada um com o
+  mesmo bloco preenchido de outro jeito, e o `README.md` com as telas dos
+  três e o passo a passo da troca: copiar o bloco por cima do que está no
+  `lib/ui.sh` e rodar `./build.sh`.
+- **`docs/visual/previa.sh [tema]`** desenha o cabeçalho, as etapas, a tela
+  de confirmação, o quadro final e o menu com dados de exemplo, sem instalar
+  nada. É como se vê um tema antes de trocar.
+- **O `./build.sh` confere os temas guardados**: têm de declarar exatamente
+  as mesmas variáveis do bloco em uso. Tema guardado que ficou para trás
+  quebraria no dia da troca, que é o dia em que ninguém lembra do motivo.
+
+O preço, aceito: o `ui.sh` sabe desenhar três cabeçalhos (`linhas`, `caixa`,
+`barra`) e dois quadros (`linhas`, `caixa`), e só um de cada está em uso. Sem
+isso, trocar de tema pediria mexer no código, e não só no bloco.
+
+### As regras do desenho
+
+- **Poucas cores.** O roxo da marca (135 da paleta de 256, com o magenta das
+  8 cores para terminal que não anuncia a paleta) fica só na identidade: o
+  logo, as linhas do cabeçalho, o contador de etapas e os números do menu.
+  Verde, amarelo e vermelho dizem o resultado de cada passo, e mais nada. O
+  resto é texto normal, em negrito ou apagado. A palavra "instalado", no
+  menu, vai na cor normal do texto: é estado, não resultado de passo.
+- **Quatro símbolos**: `›` para o passo em andamento, `✓`, `!` e `✗` para os
+  resultados. Nenhum emoji.
+- **Contador de etapas.** Cada instalador diz o total com `ui_etapas`, e
+  cada `ui_etapa` avança um: a base tem 7, o Mautic 8, a atualização da base
+  5 e a do Mautic 6. Etapa sem nada a fazer ainda aparece, dizendo isso,
+  para o contador nunca pular número. O menu não conta etapas.
+- **Tudo na mesma coluna.** O título, o resultado de cada passo e o detalhe
+  de cada resultado têm margem fixa, vinda do tema. A marca de resultado
+  fica sempre no mesmo lugar, e o texto dela alinha com o detalhe de baixo.
+- **Destaque só em dois lugares**: o cabeçalho e o quadro final
+  (`ui_quadro`), com o endereço, o usuário e a senha em duas colunas e o
+  valor em negrito. No tema 2 os dois são marcados por uma linha em cima e
+  outra embaixo, sem moldura fechada.
+- **Comando para copiar** sai por `ui_comando`, recuado e na cor normal: o
+  apagado é para o que se lê, não para o que se digita.
+- **80 colunas.** O desenho tem 68 de largura mais a margem. Medido nas
+  prévias: a linha mais larga tem 74 colunas no tema 2, 75 no 1 e 76 no 3.
+  No quadro em caixa, linha que não cabe alarga o quadro, e quadro que não
+  cabe no terminal perde as bordas dos lados em vez de partir uma senha.
+- **Sem cor e sem controle fora do terminal.** Com a saída num arquivo, ou
+  com `NO_COLOR`, não vai código nenhum. A espera (`ui_aguardar_ate`) só
+  reescreve a própria linha quando há cor; sem terminal, nem os pontinhos
+  aparecem, só o resultado.
+
+### Decisões de implementação
+
+- **O quadro final do tema 2 é em `linhas`**, e não em caixa (decisão do
+  Claude). Combina com o cabeçalho, e não põe borda ao lado de uma senha que
+  a pessoa vai copiar. Trocar é uma variável: `PA_TEMA_QUADRO="caixa"`.
+- **O contador é conferido pelo teste fixo no formato do tema.** O teste lê
+  `PA_TEMA_ETAPA_ANTES` e `PA_TEMA_ETAPA_DEPOIS` do próprio `dist/`, em vez
+  de repetir um formato que muda com o visual, e confere que as etapas vão
+  de 1 ao total, em ordem, sem pular e sem passar. Provado com sete logs
+  simulados, nos três formatos.
+- **O menu é conferido num terminal de teste**, pelo
+  `testes/vps/pty-rodar.py`: antes de instalar, a lista aparece sem
+  "instalado"; depois, com "instalado" nos dois. O cabeçalho tem de ser o
+  geral. Sem `python3` na máquina, o teste avisa e segue.
+- **O aviso de VPS lenta entrou** (era um achado "a decidir" do item 2 do
+  bloco 2). Antes de baixar as imagens do Mautic, a tela diz que a VPS pode
+  ficar lenta e que, se o terminal cair, é entrar de novo e rodar o mesmo
+  comando: a instalação continua de onde parou.
+
+### O que não foi feito, de propósito
+
+- Animação, barra de progresso ou relógio girando: sujam o log e a gravação.
+- Logo diferente para cada ferramenta: o logo é da Play Ahead, e a linha de
+  baixo diz o que aquele arquivo instala.
+- Grupos no menu: ver "O menu".
+
+
 ## Licença e aviso legal
 
 Licença MIT. Arquivo `LICENSE` na raiz do repositório. Sem licença explícita,
@@ -1052,7 +1210,6 @@ execução, com uma pausa curta:
     # ============================================================
     # PLAY AHEAD INSTALLER
     # https://playahead.com.br
-    # Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
     #
     # Licença MIT. Consulte o arquivo LICENSE.
     #
@@ -1071,6 +1228,13 @@ execução, com uma pausa curta:
 
 Não pedir confirmação digitada do tipo "digite concordo". Isso trava instalação
 automatizada e atrapalha a gravação do vídeo.
+
+**O nome da empresa e o CNPJ saíram do cabeçalho em 2026-11-12**, por decisão
+do Fabio: da tela, do comentário no topo de cada artefato e do README. Na
+tela ficam Play Ahead (o logo), playahead.com.br, a versão, a licença MIT e
+o aviso. O titular da licença está só no arquivo `LICENSE`, que é onde a MIT
+o exige, e assim trocar de titular é mexer num arquivo só. Qual empresa fica
+como titular está em Pendências.
 
 Observação: cláusula de exclusão total de responsabilidade tem eficácia limitada
 no Brasil, porque o Código de Defesa do Consumidor considera abusivas as
@@ -1346,7 +1510,7 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
     LICENSE                 MIT
     templates/              arquivos docker-compose
 
-    lib/ui.sh               cores, prompts, mensagens        compartilhado
+    lib/ui.sh               o tema e tudo que desenha a tela compartilhado
     lib/checks.sh           pré-checagens e validadores      compartilhado
     lib/cenario.sh          classificação do estado          compartilhado
     lib/docker.sh           detecção do Docker               compartilhado
@@ -1370,6 +1534,8 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
     testes/trava-versoes.sh trava dos pedidos da rotina     (não publicado)
     testes/vps/             apoio aos testes na VPS: zerar, rodar num pty,
                             reproduzir o cache pela metade
+    docs/visual/            os dois temas que não estão em uso, a prévia
+                            e as telas dos três (não publicado)
     rotinas/vigia-de-versoes.md
                             prompt da rotina semanal de versões
     .github/workflows/teste-instalador.yml
@@ -3004,7 +3170,8 @@ Traefik v4, Mautic 8, MariaDB 11, imagem de outro dono, tag flutuante,
 comando escondido na linha da variável, variável redefinida, linha de
 template, modo de arquivo, exclusão), todos com o resultado esperado.
 
-**Achado no teste do item 2, a decidir:** durante o download e a subida do
+**Achado no teste do item 2. Decidido em 2026-11-12: o aviso entrou, ver
+"Visual".** Durante o download e a subida do
 banco, numa VPS de 1 vCPU, a carga média chegou a 13, e o SSH ficou sem
 responder até derrubar a conexão de quem estava olhando. A instalação
 seguiu sozinha e terminou com saída 0, mas quem segue o tutorial pode achar
@@ -3015,9 +3182,12 @@ conexão cair, o processo do instalador morre junto? Neste teste não morreu,
 porque o terminal era um pty de outro processo; num SSH comum, provavelmente
 morre, e a retomada (bloco 1) cobre o caso.
 
-#### Bloco 3: visual (não implementado)
+#### Bloco 3: visual (feito em 2026-11-12)
 
-Moldura, contador de etapas e quadro final com as credenciais.
+Ver a seção "Visual". O Fabio escolheu a versão 2 entre três capturas de
+terminal, e pediu quatro ajustes: menu geral, cabeçalho sem empresa nem
+CNPJ, o aviso do tamanho do arquivo do menu em Pendências, e o tema num
+bloco só, com as outras duas versões guardadas.
 
 ### Login em inglês: defeito do pacote oficial pt_BR (2026-10-27)
 
@@ -3049,6 +3219,40 @@ ele rodar dentro de uma instalação de ferramenta.
   por último dentro da base e a validação de DNS dele avisa em vez de abortar.
 
 Ver "Onde o Portainer ficou".
+
+### Titular da licença: a confirmar com o contador (2026-11-12)
+
+O `LICENSE` traz como titular "Fabio Roger de Oliveira ME (CNPJ
+31.176.090/0001-08)". O Fabio vai confirmar com o contador qual empresa fica
+como titular. Até lá o arquivo fica como está. Quando vier a resposta, a
+mudança é só no `LICENSE`: o cabeçalho de tela, o topo dos artefatos e o
+README não citam mais empresa nenhuma.
+
+A página de inscrição (playahead.com.br/avisos) identifica o controlador dos
+dados com o mesmo nome e CNPJ, por exigência da LGPD. Se a empresa mudar,
+conferir se o controlador muda junto.
+
+### O tamanho do arquivo único do menu (2026-11-12)
+
+O `dist/playahead.sh` carrega todos os instaladores dentro dele. Com dois,
+são cerca de 470 KB e 15.000 linhas. Cada ferramenta nova soma o instalador
+inteiro dela, com o `lib/ui.sh` e as libs compartilhadas repetidas: cada
+embutido é um arquivo completo, de propósito, para ser igual ao que a URL
+própria entrega.
+
+**Avaliar quando entrar a terceira ferramenta.** O que pesar na hora:
+
+- o `less` num arquivo desse tamanho, que é a promessa central do projeto. O
+  cabeçalho já diz em que linha cada instalador começa, e `--extrair` grava
+  cada um separado;
+- o tempo de download e de leitura do bash, que hoje não se percebe;
+- as saídas possíveis, cada uma com um preço: o menu baixar o instalador
+  escolhido (quebra a regra de nada ser buscado na rede, e pediria hash
+  embutido); um arquivo de menu por grupo de ferramentas; ou compactar os
+  embutidos (quebra o `less`).
+
+Nada disso foi decidido. A lista do menu já é gerada, então trocar a forma
+de carregar os instaladores não muda a tela.
 
 **Ainda sem decisão:**
 

@@ -34,7 +34,8 @@ certificado SSL não é emitido.
 ## Como usar
 
 O caminho mais curto é o menu, que lista as ferramentas e roda a que você
-escolher:
+escolher. Hoje são duas, a base e o Mautic 7, e outras entram na mesma lista
+conforme forem publicadas:
 
     curl -sL https://get.playahead.com.br -o playahead.sh
     less playahead.sh
@@ -42,13 +43,16 @@ escolher:
 
 **O menu contém os instaladores, não os baixa.** Nada é buscado na hora, então
 o que você leu é o que pode rodar. Como o arquivo é grande, ele imprime na tela
-em que linha cada instalador começa, e `--extrair` grava os dois em arquivos
-separados se você preferir ler um por um.
+em que linha cada instalador começa, e `--extrair` grava cada um num arquivo
+separado se você preferir ler um por um.
 
 Escolhido o número, o menu grava o instalador no diretório atual e roda. Quando
 ele termina, a lista volta, para você escolher a próxima: instalou a base,
 escolha o Mautic em seguida. O `0` sai. Um Ctrl-C no meio de um instalador
 interrompe só ele, e o menu volta.
+
+A lista mostra `instalado` ao lado do que já existe na VPS. É só uma indicação:
+quem confere de verdade a situação da máquina é cada instalador, quando roda.
 
 ### Ou direto, por instalador
 
@@ -378,6 +382,4 @@ decorrentes do uso.
 
 ## Licença
 
-MIT. Consulte o arquivo [LICENSE](LICENSE).
-
-Fabio Roger de Oliveira ME, CNPJ 31.176.090/0001-08.
+MIT. O texto e o titular estão no arquivo [LICENSE](LICENSE).

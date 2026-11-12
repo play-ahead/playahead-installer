@@ -3,16 +3,17 @@
 #
 # ============================================================
 # lib/menu_main.sh
-# Menu: lista as ferramentas e chama o instalador escolhido.
+# Menu: a porta de entrada. Lista os instaladores da Play Ahead e
+# chama o escolhido.
 #
 # Depende de lib/ui.sh e das funções que o build.sh embute.
 #
 # O MENU CONTÉM OS INSTALADORES, não os busca.
 #
 # Essa é a decisão que faz o menu conviver com a regra de que um
-# instalador não baixa nem executa outro. O build.sh embute o
-# dist/base.sh e o dist/mautic7.sh aqui dentro, como heredoc
-# citado, mesmo mecanismo já validado para o template do compose.
+# instalador não baixa nem executa outro. O build.sh embute cada
+# instalador publicado aqui dentro, como heredoc citado, mesmo
+# mecanismo já validado para o template do compose.
 # Escolhido o número, o menu grava o instalador no diretório atual,
 # roda, e volta para a lista quando ele termina.
 #
@@ -29,16 +30,19 @@
 #
 # O preço é o tamanho. Como `less` num arquivo destes é pesado, o
 # cabeçalho impresso na tela diz em que linha cada instalador
-# começa, e `--extrair` grava os dois em arquivos separados para
+# começa, e `--extrair` grava todos em arquivos separados para
 # quem preferir auditar um por um.
+#
+# A lista não mora neste arquivo. Quem a escreve é o build.sh, com
+# uma chamada a menu_registrar para cada instalador que ele embute:
+# entrou um instalador novo no build, ele aparece na lista.
 # ============================================================
 
 # ------------------------------------------------------------
 # Versão
 #
-# PA_VERSAO_BASE e PA_VERSAO_MAUTIC7 são substituídas pelo
-# build.sh, do mesmo jeito que PA_BUILD. O menu não decide versão
-# de ninguém: ele só reporta a de quem carrega dentro.
+# O menu não decide versão de ninguém: ele só reporta a de quem
+# carrega dentro, que chega pelo menu_registrar.
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
@@ -46,27 +50,72 @@ PA_BUILD="desenvolvimento"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Menu de instaladores"
 
-PA_VERSAO_BASE="desenvolvimento"
-PA_VERSAO_MAUTIC7="desenvolvimento"
+# O que o cabeçalho de tela diz embaixo do logo. Nos instaladores é o
+# nome da ferramenta; aqui é o nome do conjunto, porque o menu é a
+# entrada para todas elas.
+PA_TITULO="Play Ahead Installer"
 
 # ------------------------------------------------------------
 # Catálogo
 #
-# Uma entrada por instalador: número, nome de arquivo, descrição e
-# a função que o build.sh embutiu. Acrescentar o terceiro
-# instalador é acrescentar uma linha aqui e uma no build.sh.
+# Uma posição por instalador embutido, na ordem em que o build.sh os
+# registrou. Vazio no código-fonte: sem build não há instalador
+# nenhum aqui dentro.
 # ------------------------------------------------------------
 
-PA_MENU_ARQUIVO=(base.sh mautic7.sh)
-PA_MENU_NOME=(
-	"Base (Docker, Traefik e Portainer)"
-	"Mautic 7"
-)
-PA_MENU_EXTRATOR=(menu_conteudo_base menu_conteudo_mautic7)
-PA_MENU_MARCADOR=(
-	"# ===== INSTALADOR base.sh ====="
-	"# ===== INSTALADOR mautic7.sh ====="
-)
+PA_MENU_ARQUIVO=()
+PA_MENU_VERSAO=()
+PA_MENU_NOME=()
+PA_MENU_DESCRICAO=()
+PA_MENU_INSTALADO=()
+PA_MENU_EXTRATOR=()
+PA_MENU_MARCADOR=()
+
+# O grupo de cada instalador (infraestrutura, marketing, atendimento).
+# Ainda não aparece na tela: com duas ferramentas, título de grupo
+# seria mais linha que conteúdo. Fica guardado para o dia em que a
+# lista crescer, e aí o menu_listar passa a imprimir o nome do grupo
+# antes do primeiro item de cada um. Ver "O menu", no CLAUDE.md.
+# shellcheck disable=SC2034
+PA_MENU_GRUPO=()
+
+# menu_registrar <arquivo> <versão> <nome> <descrição> <grupo> <marca de instalado>
+#
+# Põe um instalador na lista. Quem chama é o trecho que o build.sh
+# gera, logo depois de embutir cada instalador.
+#
+# A <marca de instalado> é um arquivo que só existe nesta máquina
+# depois de aquele instalador ter terminado, ou mais de um, separados
+# por espaço. O menu olha se o arquivo existe, e mais nada: detectar
+# de verdade é trabalho do instalador, quando roda.
+menu_registrar() {
+	local arquivo="$1"
+
+	PA_MENU_ARQUIVO+=("$arquivo")
+	PA_MENU_VERSAO+=("$2")
+	PA_MENU_NOME+=("$3")
+	PA_MENU_DESCRICAO+=("$4")
+	PA_MENU_GRUPO+=("$5")
+	PA_MENU_INSTALADO+=("$6")
+	PA_MENU_EXTRATOR+=("menu_conteudo_${arquivo%.sh}")
+	PA_MENU_MARCADOR+=("# ===== INSTALADOR ${arquivo} =====")
+}
+
+# menu_instalado <indice>
+#
+# Verdadeiro quando a marca daquele instalador existe nesta máquina.
+menu_instalado() {
+	local marca
+
+	# Sem aspas de propósito: pode ser mais de um caminho, separados
+	# por espaço, e basta um deles existir.
+	# shellcheck disable=SC2086
+	for marca in ${PA_MENU_INSTALADO[$1]}; do
+		[[ -e "$marca" ]] && return 0
+	done
+
+	return 1
+}
 
 # ------------------------------------------------------------
 # Ajuda e versão
@@ -79,8 +128,11 @@ main_versao() {
 	printf 'Fonte:  %s\n' "$PA_FONTE"
 	printf '\n'
 	printf 'Instaladores embutidos:\n'
-	printf '  base.sh      %s\n' "$PA_VERSAO_BASE"
-	printf '  mautic7.sh   %s\n' "$PA_VERSAO_MAUTIC7"
+
+	local i
+	for i in "${!PA_MENU_ARQUIVO[@]}"; do
+		printf '  %-12s %s\n' "${PA_MENU_ARQUIVO[i]}" "${PA_MENU_VERSAO[i]}"
+	done
 }
 
 main_ajuda() {
@@ -102,8 +154,14 @@ OPÇÕES
 Cada instalador também tem URL própria, para quem chega por um
 vídeo específico:
 
-    https://get.playahead.com.br/base
-    https://get.playahead.com.br/mautic7
+AJUDA
+
+	local i
+	for i in "${!PA_MENU_ARQUIVO[@]}"; do
+		printf '    https://get.playahead.com.br/%s\n' "${PA_MENU_ARQUIVO[i]%.sh}"
+	done
+
+	cat <<'AJUDA'
 
 DOCUMENTAÇÃO
     https://github.com/play-ahead/playahead-installer
@@ -123,9 +181,8 @@ AJUDA
 # promessa feita em outra máquina. Rodando por um cano, sem arquivo
 # nenhum, devolve vazio em vez de quebrar.
 #
-# O -x é o que faz a conta certa. Sem ele, o grep casa primeiro com
-# a declaração do catálogo aqui em cima, que contém o mesmo texto
-# entre aspas, e o número sai errado por alguns milhares de linhas.
+# O -x é o que faz a conta certa: só serve a linha que é o marcador
+# inteiro, e não uma linha qualquer que o cite.
 menu_linha_de() {
 	local marcador="$1"
 
@@ -143,10 +200,10 @@ menu_onde_auditar() {
 	local total=""
 	[[ -f "$0" ]] && total="$(wc -l <"$0" | tr -d '[:space:]')"
 
-	ui_info "Este arquivo contém os dois instaladores. Nada é baixado."
+	ui_info "Os instaladores vêm dentro deste arquivo. Nada é baixado."
 	[[ -n "$total" ]] && ui_detalhe "São ${total} linhas no total."
 	ui_vazio
-	ui_info "Para auditar, os instaladores começam em:"
+	ui_info "Para ler antes de rodar, cada um começa em:"
 
 	local i linha
 	for i in "${!PA_MENU_ARQUIVO[@]}"; do
@@ -331,19 +388,30 @@ menu_executar() {
 # Menu
 # ------------------------------------------------------------
 
+# menu_listar
+#
+# A lista sai do catálogo, na ordem em que os instaladores foram
+# registrados. "instalado" aparece ao lado do que já existe nesta
+# máquina, olhando só a marca de cada um (ver menu_registrar).
+#
+# Quando a lista crescer, os itens passam a vir agrupados: o nome do
+# grupo numa linha, e embaixo os instaladores dele, com a numeração
+# seguindo de um grupo para o outro. O grupo de cada instalador já
+# está em PA_MENU_GRUPO.
 menu_listar() {
-	ui_secao "Instaladores da Play Ahead"
+	local itens=()
+	local i estado
 
-	local i
 	for i in "${!PA_MENU_NOME[@]}"; do
-		ui_linha "  ${PA_COR_DESTAQUE}$((i + 1))${PA_COR_RESET}  ${PA_MENU_NOME[i]}"
-	done
+		estado=""
+		menu_instalado "$i" && estado="instalado"
 
-	ui_vazio
-	ui_linha "  ${PA_COR_DESTAQUE}0${PA_COR_RESET}  Sair"
-	ui_vazio
-	ui_info "A base roda uma vez por VPS. As ferramentas vêm depois."
-	ui_detalhe "Para só gravar os dois e ler antes: --extrair"
+		itens+=("$((i + 1))" "${PA_MENU_NOME[i]}" "$estado" "${PA_MENU_DESCRICAO[i]}")
+	done
+	itens+=("0" "Sair" "" "")
+
+	ui_lista "Instaladores" "${itens[@]}"
+	ui_detalhe "Para só gravar os instaladores e ler antes: --extrair"
 	ui_vazio
 }
 
@@ -363,12 +431,10 @@ menu_escolher() {
 	if ! ui_interativo; then
 		ui_fatal \
 			"O menu precisa de um terminal para perguntar." \
-			"Sem terminal, use o instalador direto:" \
+			"Sem terminal, use cada instalador direto. Para gravar" \
+			"todos nesta pasta, sem instalar nada:" \
 			"" \
-			"    sudo bash base.sh" \
-			"    sudo bash mautic7.sh" \
-			"" \
-			"Rode com --extrair para gravar os dois aqui."
+			"    bash ${0} --extrair"
 	fi
 
 	local total="${#PA_MENU_NOME[@]}"
@@ -380,7 +446,7 @@ menu_escolher() {
 		# instalador terminar, e qualquer Enter apertado durante a
 		# instalação estaria esperando na fila.
 		ui_descartar_entrada
-		printf '  Número da opção: '
+		printf '%sNúmero da opção: ' "$PA_UI_M_ITEM"
 		IFS= read -r resposta || resposta=""
 		ui_limpar_resposta resposta
 
@@ -416,13 +482,13 @@ menu_extrair_todos() {
 	done
 
 	ui_vazio
-	ui_info "Leia os dois antes de rodar:"
-	ui_vazio
-	ui_linha "    less base.sh"
-	ui_linha "    sudo bash base.sh"
-	ui_vazio
-	ui_linha "    less mautic7.sh"
-	ui_linha "    sudo bash mautic7.sh"
+	ui_info "Leia cada um antes de rodar:"
+
+	for i in "${!PA_MENU_ARQUIVO[@]}"; do
+		ui_vazio
+		ui_comando "less ${PA_MENU_ARQUIVO[i]}"
+		ui_comando "sudo bash ${PA_MENU_ARQUIVO[i]}"
+	done
 	ui_vazio
 }
 
