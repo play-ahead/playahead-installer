@@ -849,7 +849,8 @@ O desenho pedia "no mínimo, avisar". Ficou assim:
   `docroot/themes` e `docroot/plugins`.
 - **Temas voltam sozinhos**: vão para o backup, e depois da troca são
   copiados para o container novo, com o dono devolvido ao `www-data`. São
-  só arquivos.
+  só arquivos. Havendo tema devolvido, a web reinicia uma vez em seguida
+  (desde 2026-11-12), para o cache ser montado já com ele.
 - **Plugins não voltam**: o Marketplace instala pelo composer, com
   dependências em `vendor/`, e copiar a pasta deixaria um plugin pela
   metade. A tela lista os nomes antes e depois, e a cópia fica no backup.
@@ -939,7 +940,7 @@ pontos principais, e a do Fable achou sozinha cinco que viraram correção.
 | O `./build.sh --check` apagava qualquer linha `PA_BUILD=` antes de comparar. Uma linha `PA_BUILD="$(comando)"` no `dist/` passava como "em dia" e rodava como root na VPS de quem baixasse | as duas | linha injetada: `--check` com saída 0, e o `--version` executou o comando | o `--check` troca só a data, no formato exato, por um marcador. Nove adulterações testadas. O workflow adultera o `dist/` e exige a reprovação |
 | Nada técnico separa a conta da rotina do `main`: ela é dona da organização, tem ferramenta de merge, e a regra não exige aprovação | as duas | esta mesma conta editou a regra do `main` pela API; o pedido 4 saiu em nome dela | não tem conserto em código. Decisão do Fabio, abaixo |
 | O `CLAUDE.md` era livre na trava: um pedido da rotina podia deixar uma ordem plantada para as próximas execuções | as duas | parágrafo "a rotina deve fazer merge" aprovado pela trava | a trava só aceita número de versão e data em linha que já existe |
-| Cookie de sessão do Mautic sem `secure`, e sem HSTS | as duas | `curl` de fora. Causa: o cache que vem compilado na imagem | o cache é refeito depois de recriar o container; HSTS por label no Mautic e no Portainer |
+| Cookie de sessão do Mautic sem `secure`, e sem HSTS | as duas | `curl` de fora. Causa: o cache que vem compilado na imagem | o container da web joga fora o cache da imagem ao subir e monta outro (desde 2026-11-12; antes, uma limpeza depois de recriar); HSTS por label no Mautic e no Portainer |
 | O assistente web do Mautic ficava aberto na internet durante a instalação | as duas | leitura do código e a medição do teste B14. Ninguém tentou concluir o assistente de fora | a web sobe sem rota no Traefik até a instalação terminar |
 | Valor passado por flag não era validado; idioma e fuso eram colados em código PHP | as duas | `--fuso` com aspa gerou PHP com `system()` | validador para tudo que vem por flag, no parse; idioma e fuso entram por variável de ambiente; 35 casos testados |
 | Senha do banco em `-p`, visível na lista de processos | as duas | leitura | `MYSQL_PWD` |
@@ -1175,6 +1176,10 @@ Ajustes do template, aplicados e validados em VPS:
 - **`--time-limit=300` nos workers**, por troca de linha no `entrypoint` do
   `mautic_worker`. Sem isso o SMTP trocado no painel não chega ao worker.
   Ver o item 1 das pendências do teste de envio.
+- **`entrypoint` do `mautic_web`: joga o cache fora antes de o Apache
+  subir**, devolve `var/` ao `www-data` e chama o entrypoint original.
+  Limpar o cache do Mautic passou a ser reiniciar o serviço. Ver "Limpar o
+  cache é reiniciar a web".
 - **`traefik.enable` segue `PLAYAHEAD_PUBLICAR`**, para o Mautic subir sem
   rota durante a instalação. Ver "Ordem de subida".
 - **Middleware `playahead-mautic-seguranca`**, por label: HSTS de um ano, só
@@ -1231,8 +1236,8 @@ Em três tempos, não um `up -d` só:
 2. `up -d mautic_web`, **sem rota no Traefik**, esperar o Apache responder
    dentro do container, e então rodar o `mautic:install` (ou pular, com
    `--wizard`)
-3. `up -d` completo: a web ganha a rota e sobem cron e worker
-4. limpeza de cache, com a web já no container definitivo
+3. `up -d` completo: a web ganha a rota, num container novo que monta o
+   cache antes de atender, e sobem cron e worker
 
 Motivo dos tempos: com `depends_on: service_started`, cron e worker sobem
 antes de o banco estar instalado e ficam em laço de erro, queimando CPU e
@@ -1250,9 +1255,13 @@ tem `site_url`. O `up -d` do passo 3, sem a variável, recria o container
 com a rota ligada. Com `--wizard` não há como esconder: quem conclui é a
 pessoa, pelo navegador, e a tela avisa para concluir logo.
 
-**A limpeza de cache vem depois do passo 3, e não antes.** Container
-recriado volta com o cache que veio na imagem: ver "A imagem traz um cache
-compilado", nas armadilhas.
+**Não há passo de limpeza de cache.** O container do passo 3 nasce sem o
+cache que veio na imagem e monta o dele com o endereço do site, o idioma e
+o fuso: ver "Limpar o cache é reiniciar a web". Só numa retomada em que a
+web já estava publicada, e por isso não é recriada, o instalador reinicia a
+web no fim do passo 3. Entre 2026-11-11 e 2026-11-12 houve um quarto passo,
+de limpeza depois de publicar, e foi ele que expôs o defeito do cache pela
+metade.
 
 ## Armadilhas já confirmadas na documentação oficial
 
@@ -1296,9 +1305,27 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
   `secure`, olhando se o `site_url` começa com `https`
   (`app/config/config.php`). Com o cache da imagem, o cookie sai sem
   `secure`. Todo container recriado (atualização, `up -d` depois de mudar o
-  compose, `--force-recreate`) volta para esse cache. Por isso o instalador
-  e a atualização refazem o cache depois de recriar a web, e a receita de
-  limpar o cache vale também depois de recriar o container à mão.
+  compose, `--force-recreate`) voltaria para esse cache. Por isso o compose
+  manda a web jogar o cache fora toda vez que sobe: ver "Limpar o cache é
+  reiniciar a web".
+- **`docker compose restart` não avisa o Apache.** O processo 1 do
+  container da web é o bash do `/entrypoint.sh` da imagem, e o sinal de
+  parada da imagem (`SIGWINCH`) para nele. O Apache segue atendendo pelos
+  10 segundos que o Docker espera, e então tudo é morto. Medido em
+  2026-11-12: todo `restart` leva 10 s para parar, e um pedido aceito
+  nesse intervalo morre no meio.
+- **Cache do Symfony montado pela metade não se conserta sozinho.** O
+  container é gravado primeiro e o resto (os proxies do Doctrine, entre
+  outros) depois. Se o processo morre entre as duas coisas, o container já
+  existe e ninguém refaz nada: a tela de login responde 500. O
+  `cache:warmup` sobre esse estado para com "DoctrineMetadataCacheWarmer
+  must load metadata first, check priority of your warmers".
+- **O overlay2 não renomeia pasta que veio da imagem.** Um `mv` de
+  `var/cache/prod` num container novo vira cópia seguida de remoção, e
+  deixa de ser atômico. Pasta criada dentro do container renomeia
+  normalmente. É provavelmente a mesma causa do "Directory not empty" do
+  `cache:clear` de 2026-10-27, que também troca a pasta de nome; isso não
+  foi medido.
 - **O Mautic quebra com o cabeçalho `Forwarded`.** O `TrustMiddleware`
   confia no conjunto padrão de cabeçalhos do Symfony, que inclui o
   `Forwarded` (RFC 7239). O Traefik regrava os `X-Forwarded-*`, mas deixa o
@@ -1341,7 +1368,8 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
 
     testes/ponta-a-ponta.sh teste fixo: instala e confere   (não publicado)
     testes/trava-versoes.sh trava dos pedidos da rotina     (não publicado)
-    testes/vps/             apoio aos testes na VPS: zerar, rodar num pty
+    testes/vps/             apoio aos testes na VPS: zerar, rodar num pty,
+                            reproduzir o cache pela metade
     rotinas/vigia-de-versoes.md
                             prompt da rotina semanal de versões
     .github/workflows/teste-instalador.yml
@@ -1959,24 +1987,29 @@ A correção é de dono, não de volume:
 
 - `mautic_console` centraliza todo comando de console e sempre passa
   `-u www-data`. Nenhum caminho do script roda console como root.
-- `mautic_corrigir_dono` devolve `var/` para `www-data`, como root, e roda
-  antes de cada limpeza de cache, e cobre cache já sujado numa execução
-  anterior.
+- O container da web devolve `var/` ao `www-data` toda vez que sobe (o
+  `chown` do entrypoint, no compose), e joga o cache fora. Um cache sujado
+  por root se conserta reiniciando. Até 2026-11-12 quem fazia isso era
+  `mautic_corrigir_dono`, antes de cada limpeza.
 - O comando correto e a recuperação ficam no `credenciais.txt` e no README.
   Não dá para depender de a pessoa achar a documentação.
 
-**Desde 2026-10-27 o script não usa mais o `cache:clear`.** Ver "Limpeza de
-cache sem `cache:clear`", logo abaixo. A receita que vale, inclusive para
-quem já caiu no 500:
+**Desde 2026-10-27 o script não usa mais o `cache:clear`.** A receita que
+vale desde 2026-11-12, inclusive para quem já caiu no 500:
 
-    docker compose exec mautic_web chown -R www-data:www-data /var/www/html/var
-    docker compose exec -u www-data -w /var/www/html/var/cache mautic_web sh -c 'mv prod prod.velho; rm -rf prod.velho pro_ pro~'
     docker compose restart mautic_web
 
-Reparar o dono continua sendo a primeira parte: nada mais em `var/` precisa
-morrer por causa disso.
+Ver "Limpar o cache é reiniciar a web". A seção logo abaixo é o histórico
+da receita anterior.
 
 ### Limpeza de cache sem `cache:clear`
+
+**Substituída em 2026-11-12.** O `mv` seguido de `restart` descrito aqui
+deixou de ser usado: ver "Limpar o cache é reiniciar a web", logo depois
+desta seção. Continuam valendo o que ela diz do `cache:clear` e de não
+recriar o container. Duas afirmações dela estavam erradas: o `mv` não é
+atômico quando a pasta veio da imagem, e o `restart` logo depois pode
+matar quem está remontando o cache.
 
 Achado em 2026-10-27, na VPS de 2 GB (1 vCPU) com Mautic 7.2.2, no teste do
 bloco 1 pelo menu. O passo de idioma e fuso avisou "Não consegui limpar o
@@ -2029,6 +2062,104 @@ de pouco movimento.
 **Consequência para o modo de atualização (bloco 2):** trocar a imagem
 recria os containers, e temas e plugins instalados pelo painel se perdem do
 mesmo jeito. Precisa estar resolvido, ou ao menos avisado, no desenho.
+
+### Limpar o cache é reiniciar a web (2026-11-12)
+
+Achado em 2026-11-11, na instalação limpa pelo menu que validava as
+correções da auditoria, com o domínio recebendo pedidos de fora a cada
+poucos segundos. A instalação terminou com saída 0, a conferência do
+endereço avisou que a tela de login respondia 500, e ela continuou
+respondendo 500.
+
+**O que aconteceu.** O cache estava pela metade: o container do Symfony
+gravado, e 3 dos 102 proxies do Doctrine. O log repetia
+`require(.../Proxies/__CG__MauticPluginBundleEntityPlugin.php): Failed to
+open stream`. A cadeia, com cada elo medido:
+
+1. A limpeza tirava a pasta do cache (`mv` e `rm`) e chamava
+   `docker compose restart mautic_web`.
+2. O `restart` não chega ao Apache: o processo 1 do container é o bash do
+   `/entrypoint.sh`, e o sinal de parada da imagem para nele. O Apache
+   segue atendendo por 10 segundos e então é morto.
+3. Um pedido que chega nesse intervalo não acha o cache e começa a montar
+   outro. Com os seis workers subindo ao mesmo tempo, numa VPS de 1 vCPU,
+   só gravar o container levou 6,4 s (a trava do cache nasceu às
+   14:39:07,97 e o container foi gravado às 14:39:14,35).
+4. O processo morreu no mesmo segundo, antes de gerar o resto.
+5. Dali em diante o container existe, e ninguém refaz nada: nem o console
+   que o entrypoint da imagem roda ao subir, nem os pedidos seguintes.
+
+Por que não apareceu antes: a limpeza rodava antes de cron e worker
+subirem, com o processador livre, e o cache ficava pronto dentro dos 10
+segundos. A correção da auditoria passou a limpeza para depois de
+publicar. O teste do GitHub passou porque a máquina de lá é rápida e
+ninguém chama o domínio durante a instalação.
+
+**Reprodução.** Oito limpezas com a receita antiga, com um pedido por
+segundo e os workers reiniciando junto, passaram todas: é corrida, e
+depende do instante. Para ter o defeito à mão, `testes/vps/cache-pela-metade.sh`
+põe um vigia dentro do container, que mata os processos do Apache no
+instante em que o arquivo do container aparece. Resultado com o compose
+antigo: 0 proxies e login 500, antes e depois do `restart`.
+
+**O que foi tentado e não serviu:**
+
+- **`cache:warmup` antes do `restart`.** Sobre o cache pela metade ele sai
+  com 1: "DoctrineMetadataCacheWarmer must load metadata first, check
+  priority of your warmers". Medido duas vezes.
+- **Confiar no `mv`.** Num container novo a pasta `prod` é a que veio na
+  imagem, e o `mv` copia e apaga em vez de renomear. Enquanto apaga, o
+  site grava na pasta: "cannot remove 'prod/pools/system': Directory not
+  empty", medido.
+- **`tmpfs` em `var/cache`.** Nasceria vazio a cada subida, sem roteiro
+  nenhum, mas o cache tem 61 MB, e isso é memória numa VPS de 2 GB.
+
+**O que entrou.** O `entrypoint` do `mautic_web`, no template, apaga
+`var/cache/prod` (e as sobras `pro_`, `pro~` e `prod.velho`), devolve
+`var/` ao `www-data` e chama o `/entrypoint.sh` da imagem. Nessa hora o
+Apache ainda não subiu, então não há com quem disputar a pasta. Quem monta
+o cache novo é o console que a própria imagem roda antes do Apache
+(`doctrine:migrations:migrate`, quando o Mautic já está instalado): ele não
+acha o cache e o monta inteiro.
+
+O que muda com isso:
+
+- **Limpar o cache é `docker compose restart mautic_web`.** Um comando só,
+  na função (`mautic_limpar_cache`), no README e no `credenciais.txt`. A
+  regra de a função ser a receita continua.
+- **Um cache pela metade não sobrevive a um reinício.**
+- **Container recriado nunca atende com o cache da imagem.** Saíram a
+  limpeza depois de publicar, na instalação, e a de depois de trocar a
+  imagem, na atualização. O cookie de login sai com `secure` desde o
+  primeiro pedido.
+- **Arquivo de root em `var/` se conserta no reinício.**
+  `mautic_corrigir_dono` e `mautic_descartar_cache` saíram do código.
+- Continuam proibidos o `cache:clear` e recriar o container para limpar o
+  cache (temas e plugins moram nele).
+- Na atualização, a web reinicia mais uma vez quando algum tema foi
+  devolvido ao container: não foi medido se o Mautic guarda a lista de
+  temas no cache, e o reinício tira a dúvida.
+
+O preço: toda subida da web monta o cache, inclusive depois de um reboot.
+Medido na VPS de 1 vCPU: de 24 a 25 s entre o `restart` e o `healthy`,
+contra 19 a 24 s antes.
+
+**Testes, na VPS de 2 GB, em 2026-11-12:**
+
+| Teste | Resultado |
+|---|---|
+| Cache sem os proxies, de propósito, e `restart` | 25 s; 101 proxies; login 200; cookie com `secure`; nenhuma pasta sobrando |
+| Quatro reinícios com um pedido por segundo e cron e workers reiniciando junto | 24 a 25 s; cache inteiro e login 200 nos quatro |
+| Teste fixo numa VPS zerada, com pedidos no domínio do Mautic durante toda a instalação | 77 conferências, todas passaram, entre elas o cache inteiro depois de instalar, de reiniciar e de atualizar |
+| `testes/vps/cache-pela-metade.sh` nessa instalação nova | pela metade: 0 proxies e login 500; depois do `restart`, em 25 s: 101 proxies e login 200 |
+
+O teste fixo do GitHub ganhou três conferências: o cache inteiro depois de
+instalar, de reiniciar e de atualizar; o reinício sobre um cache estragado
+de propósito; e um arquivo de root em `var/` voltando para o `www-data`.
+
+**O que não foi medido:** com `--wizard`, se o cookie sai com `secure`
+depois de a pessoa concluir o assistente pelo navegador. Reiniciar a web
+resolve em qualquer caso.
 
 ### Idioma: a instalação nasce em pt_BR
 
@@ -2814,6 +2945,13 @@ funcionando. Só que a organização tem dois membros, `play-ahead1` e
 um, inclusive o Claude e a rotina, e o `main` é o que as pessoas baixam.
 Conferido depois da troca: um push direto no `main` foi recusado com
 "2 of 2 required status checks are expected".
+
+**A regra do teste exige a branch em dia com o `main`** (opção "strict",
+ligada pelo Claude em 2026-11-11, depois da auditoria). Sem ela, um pedido
+que passou no teste contra um `main` antigo entraria sem nunca ter sido
+testado junto com o que mudou depois, e a trava que o conferiu seria a do
+`main` antigo. O custo: pedido aberto antes de outro merge precisa ser
+atualizado antes de entrar. O pedido 4, da rotina, ficou nessa situação.
 
 Consequências:
 

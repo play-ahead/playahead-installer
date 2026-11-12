@@ -261,19 +261,16 @@ comportamento.
 ## Limpar o cache
 
 Limpar cache é a primeira coisa que se tenta quando algo estranho acontece no
-Mautic. Faça num horário de pouco movimento, porque o site sai do ar por menos
-de um minuto e quem estiver usando naquele instante pode ver uma página de
-erro. Nesta ordem:
+Mautic. Nesta instalação, limpar o cache é reiniciar o serviço da web:
 
     cd /opt/playahead/mautic
-    docker compose exec mautic_web chown -R www-data:www-data /var/www/html/var
-    docker compose exec -u www-data -w /var/www/html/var/cache mautic_web sh -c 'mv prod prod.velho; rm -rf prod.velho pro_ pro~'
     docker compose restart mautic_web
 
-O primeiro comando devolve os arquivos para o `www-data` (só root consegue). O
-segundo tira o cache do caminho de uma vez e o apaga. O terceiro reinicia o
-site, que monta um cache novo sozinho em menos de um minuto. Os três estão no
-`credenciais.txt` da instalação, para não depender de você achar esta página.
+Ao subir, o container joga o cache fora e monta outro inteiro antes de voltar
+a atender. Leva cerca de um minuto, e o site fica fora do ar nesse tempo: faça
+num horário de pouco movimento. Temas e plugins instalados pelo painel não são
+tocados. O comando também está no `credenciais.txt` da instalação, para não
+depender de você achar esta página.
 
 **Não use o `cache:clear`.** Com o site no ar, ele disputa a pasta com o
 próprio Mautic: num teste ele falhou no meio, deixou o cache em pedaços e o
@@ -285,8 +282,8 @@ temas e plugins instalados pelo painel moram dentro dele e se perderiam.
 Qualquer comando de console (`php bin/console`) vai **sempre com
 `-u www-data`**. Sem ele o comando roda como root, deixa arquivos de root no
 cache, e o Mautic passa a responder erro 500. Foi medido num teste: 30.737
-arquivos de root e o site fora do ar. Se isso já aconteceu, a receita acima
-também recupera.
+arquivos de root e o site fora do ar. Se isso já aconteceu, reiniciar também
+recupera: ao subir, o container devolve os arquivos ao `www-data`.
 
 ## Idioma e fuso horário
 

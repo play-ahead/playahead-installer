@@ -684,15 +684,9 @@ main_instalar() {
 		mautic_regionalizar "$PA_IDIOMA" "$PA_FUSO"
 	fi
 
+	# O container que nasce aqui monta o cache já com o endereço do
+	# site, o idioma e o fuso. Ver mautic_subir_resto.
 	mautic_subir_resto
-
-	# Depois de publicar, e não antes: o container recriado volta com
-	# o cache que veio na imagem. É este passo que faz o idioma e o
-	# fuso aparecerem, e o cookie de sessão sair com "secure". Com
-	# --wizard fica de fora: ainda não há site_url para compilar.
-	if [[ "$PA_WIZARD" -eq 0 ]]; then
-		mautic_limpar_cache || true
-	fi
 
 	mautic_conferir_workers
 
