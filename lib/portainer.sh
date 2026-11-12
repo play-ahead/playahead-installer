@@ -80,6 +80,30 @@ portainer_ja_existe() {
 		grep -qi 'portainer'
 }
 
+# portainer_dominio_instalado
+#
+# O domínio do Portainer que esta base instalou, lido do compose dele.
+# Não devolve nada quando não há compose nosso, ou quando a linha da
+# regra não está como o instalador a escreve. O que sai daqui vai para
+# a tela, então só passa o que tem cara de domínio.
+portainer_dominio_instalado() {
+	local compose="${PA_PORTAINER_DIR}/docker-compose.yml"
+	local dominio
+
+	[[ -f "$compose" ]] || return 0
+
+	# - "traefik.http.routers.playahead-portainer.rule=Host(`painel.exemplo.com.br`)"
+	#
+	# As crases dentro das aspas simples são do texto procurado, e não
+	# um comando.
+	# shellcheck disable=SC2016
+	dominio="$(sed -n 's/^.*playahead-portainer\.rule=Host(`\([^`]*\)`).*$/\1/p' "$compose" | head -n 1)" || true
+
+	if [[ "$dominio" =~ ^[A-Za-z0-9.-]+$ ]]; then
+		printf '%s\n' "$dominio"
+	fi
+}
+
 # ------------------------------------------------------------
 # Senha
 # ------------------------------------------------------------

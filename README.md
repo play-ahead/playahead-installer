@@ -231,6 +231,11 @@ de perguntas do resto.
 Não quer o Portainer? Aperte Enter na pergunta do subdomínio, ou rode a base com
 `--sem-portainer`.
 
+Rodando a base de novo numa VPS que já tem um Portainer no ar, ela não pergunta
+o subdomínio outra vez: diz que ele foi encontrado e o mantém como está. A base
+nunca mexe num Portainer que já existe, seja o que ela instalou, seja o de outra
+pessoa.
+
 **A senha já vem pronta.** A base gera a senha do usuário `admin`, entrega ao
 Portainer antes de ele subir, mostra no fim da instalação e guarda em:
 

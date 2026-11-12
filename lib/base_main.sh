@@ -57,6 +57,10 @@ PA_EMAIL_ACME=""
 # --sem-portainer desliga, e Enter na pergunta também.
 PA_PORTAINER=1
 PA_PORTAINER_DOMINIO=""
+
+# 1 quando já há um Portainer no ar nesta máquina, o nosso ou o de
+# outra pessoa. Preenchida por base_detectar_portainer.
+PA_PORTAINER_ENCONTRADO=0
 PA_SKIP_DNS=0
 PA_NO_SWAP=0
 PA_NAO_INTERATIVO=0
@@ -198,6 +202,7 @@ base_detectar() {
 		ui_ok "Já existe um proxy Traefik nesta máquina"
 		ui_detalhe "Ele será reaproveitado; nada da configuração dele será tocado."
 		traefik_mostrar_deteccao
+		base_detectar_portainer
 		return 0
 	fi
 
@@ -216,6 +221,43 @@ base_detectar() {
 	else
 		ui_ok "Máquina limpa"
 		ui_detalhe "Docker, Compose e Traefik serão instalados."
+	fi
+
+	base_detectar_portainer
+}
+
+# base_detectar_portainer
+#
+# Um Portainer que já está no ar nunca é tocado, seja o que esta base
+# instalou, seja o de outra pessoa: ele pode estar cuidando de
+# containers que não são desta instalação.
+#
+# Desde 2026-11-12 ele também não é mais perguntado (decisão do Fabio,
+# depois do ensaio do teste final). Rodar a base de novo pedia outra
+# vez o subdomínio, e com Enter a tela dizia "Portainer não será
+# instalado" ao lado de um Portainer funcionando. Agora a tela diz que
+# ele foi encontrado e que fica como está.
+#
+# Vale para Portainer no ar. Com o compose gravado e o container
+# parado, que é como fica uma base interrompida no meio, o caminho é o
+# de sempre: a pergunta aparece, e o portainer_instalar mantém o
+# compose e sobe o container.
+base_detectar_portainer() {
+	portainer_ja_existe || return 0
+
+	PA_PORTAINER_ENCONTRADO=1
+
+	local dominio
+	dominio="$(portainer_dominio_instalado)"
+
+	ui_ok "Já existe um Portainer nesta máquina"
+	if [[ -n "$dominio" ]]; then
+		ui_detalhe "Instalado por esta base, em https://${dominio}"
+	fi
+	ui_detalhe "Ele será mantido como está; nada dele será tocado."
+
+	if [[ -n "$PA_PORTAINER_DOMINIO" ]]; then
+		ui_detalhe "O --portainer-domain não tem efeito desta vez."
 	fi
 }
 
@@ -236,7 +278,9 @@ base_perguntar() {
 	# ele, com o e-mail que já tem.
 	[[ "$PA_TEM_TRAEFIK" -eq 0 ]] && [[ -z "$PA_EMAIL_ACME" ]] &&
 		pergunta_acme=1
+	# Portainer já no ar não é perguntado: ver base_detectar_portainer.
 	[[ "$PA_PORTAINER" -eq 1 ]] && [[ -z "$PA_PORTAINER_DOMINIO" ]] &&
+		[[ "$PA_PORTAINER_ENCONTRADO" -eq 0 ]] &&
 		pergunta_portainer=1
 
 	# O Portainer entrou no fluxo normal, então no modo automático
@@ -298,6 +342,7 @@ base_perguntar() {
 
 base_validar() {
 	[[ "$PA_PORTAINER" -eq 1 ]] || return 0
+	[[ "$PA_PORTAINER_ENCONTRADO" -eq 0 ]] || return 0
 	[[ "$PA_SKIP_DNS" -eq 0 ]] || return 0
 
 	ui_secao "Conferindo o DNS do Portainer"
@@ -398,7 +443,9 @@ base_confirmar() {
 	[[ "$PA_TEM_TRAEFIK" -eq 0 ]] &&
 		itens+=("E-mail do SSL" "$PA_EMAIL_ACME" informado)
 
-	if [[ "$PA_PORTAINER" -eq 1 ]]; then
+	if [[ "$PA_PORTAINER_ENCONTRADO" -eq 1 ]]; then
+		itens+=("Portainer" "manter o que já está no ar" detectado)
+	elif [[ "$PA_PORTAINER" -eq 1 ]]; then
 		itens+=("Portainer" "https://${PA_PORTAINER_DOMINIO}" informado)
 	else
 		itens+=("Portainer" "não instalar" informado)
@@ -503,7 +550,13 @@ main() {
 	base_confirmar
 	base_instalar
 
-	if [[ "$PA_PORTAINER" -eq 1 ]]; then
+	if [[ "$PA_PORTAINER_ENCONTRADO" -eq 1 ]]; then
+		ui_etapa "Portainer"
+		ui_ok "Portainer já existente mantido como está"
+		if [[ -f "$PA_PORTAINER_CREDENCIAIS" ]]; then
+			ui_detalhe "O endereço e a senha dele estão em ${PA_PORTAINER_CREDENCIAIS}"
+		fi
+	elif [[ "$PA_PORTAINER" -eq 1 ]]; then
 		portainer_instalar "$PA_PORTAINER_DOMINIO" || true
 	else
 		ui_etapa "Portainer"
