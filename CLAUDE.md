@@ -2562,29 +2562,93 @@ assim:
 O teste foi além do combinado (Mautic 7.2.1): incluiu a 7.1.3, para passar
 por uma migração de banco de verdade, e a volta pelo backup depois dela.
 
-**Falta ainda:**
+**Estado em 2026-11-12, no fim da conversa que fechou o projeto**
 
-- Bloco 3, visual: três versões do cabeçalho e do menu foram mostradas ao
-  Fabio em 2026-11-11, capturadas de um terminal de verdade. Ele escolhe; só
-  depois o visual é aplicado em tudo.
-- Depois do visual: repetir as duas auditorias só no que mudou, e o ensaio
-  do teste final, numa instalação do zero na VPS de teste.
-- **Decisões que são do Fabio**, saídas das auditorias: ver "O que ficou
-  para o Fabio decidir", em "Auditoria de segurança".
-- Teste final do Fabio, numa VPS limpa de 2 GB, pelo menu: base e Mautic,
-  swap, Portainer abrindo sem token e com a senha do `credenciais.txt`, o menu
-  voltando para a lista, a marca `>` no resumo, o painel sem laço de
-  redirecionamento, o login funcionando (a tela de login sai em inglês, ver
-  "Login em inglês"), a segunda execução reconhecendo a instalação, o Ctrl-C,
-  a pergunta de versão, e o item 5 do teste de envio: SMTP do SES na porta
-  2587 no painel e um e-mail a um contato, conferido no log e não no
-  histórico. Só depois dele sai a tag `mautic7-v0.1.0`.
-- Achado a decidir, registrado mais abaixo: o aviso de VPS lenta durante a
-  instalação (SSH caindo com carga 13 em 1 vCPU).
+Feito nesta conversa, tudo no `main` por pedido de atualização, com o teste
+passando: a correção do cache (pedido 6, junto com as correções da primeira
+auditoria), o visual com o menu geral, a segunda rodada das duas auditorias
+com as correções, e o ensaio do teste final (pedido 7). O prompt da rotina
+no claude.ai foi atualizado em 2026-11-12 com o texto do
+`rotinas/vigia-de-versoes.md` que entrou pelo pedido 6.
+
+**Falta, e é do Fabio:**
+
+- **O teste final dele**, numa VPS limpa de 2 GB, pelo menu, e a gravação.
+  O ensaio abaixo já passou por toda a lista. O que só ele pode fazer:
+  configurar o SMTP do SES na porta 2587 no painel, enviar um e-mail a um
+  contato e conferir na caixa de entrada e no log, não no histórico do
+  contato (item 5 do teste de envio). Só depois sai a tag `mautic7-v0.1.0`.
+- **O pedido 4, da rotina** (Traefik v3.7.16 para v3.7.18): espera a
+  decisão dele. Como a regra do teste exige a branch em dia, o pedido
+  precisa ser refeito em cima do `main` antes de entrar; o caminho mais
+  simples é fechá-lo e deixar a rotina abrir outro na segunda-feira.
+- **As decisões saídas da primeira auditoria**: ver "O que ficou para o
+  Fabio decidir", em "Auditoria de segurança".
+- **O titular da licença**, a confirmar com o contador, e **o tamanho do
+  arquivo único do menu**, a avaliar na terceira ferramenta: os dois têm
+  seção própria mais abaixo.
+- **Publicar**: `get.playahead.com.br` ainda não está no ar.
+- **Destruir a VPS de teste** depois do teste final. O histórico do git
+  ainda traz o endereço dela, de antes de 2026-11-11.
+
+**Observações do ensaio, sem mudança de código:**
+
+- **Rodar a base de novo pergunta outra vez o subdomínio do Portainer**,
+  mesmo com o Portainer já instalado, e com Enter a tela diz "Portainer não
+  será instalado". Nada é tocado, e o Portainer segue no ar, mas a frase
+  confunde. Mexer nisso muda a pergunta 2 do inventário da base, que é
+  decisão registrada: fica para o Fabio decidir.
+- **A tela de login do Mautic sai parte em inglês** ("Username or email",
+  "Keep me logged in", "Login", "Forgot your password?"), como já
+  registrado em "Login em inglês". O painel, depois do login, abre em
+  português. Os três quadros do painel inicial ("Contacts Created", "Page
+  Visits", "Form Submissions") também saem em inglês.
 - **Medição incompleta da renovação dos workers** (2026-10-27): a cada 5
-  minutos os 6 workers se renovam juntos. Na única renovação medida (18:57:30
-  UTC), a carga continuou caindo, de 1,5 para 0,7, sem pico. Só 23 das 72
-  amostras previstas foram gravadas; vale repetir uma medição mais longa.
+  minutos os 6 workers se renovam juntos. Na única renovação medida
+  (18:57:30 UTC), a carga continuou caindo, de 1,5 para 0,7, sem pico. Só
+  23 das 72 amostras previstas foram gravadas; vale repetir uma medição
+  mais longa.
+
+### Ensaio do teste final (2026-11-12)
+
+Feito pelo Claude na VPS de teste de 2 GB, zerada a cada parte, com o
+código do pedido 7. É a lista do teste final do Fabio, menos o envio pelo
+SES.
+
+**Parte A, com os domínios `.test` da própria VPS:**
+
+| Conferência | Resultado |
+|---|---|
+| Teste fixo inteiro, do zero, com pedidos chegando ao domínio durante toda a instalação | 91 conferências, todas passaram |
+| Login no Mautic num navegador (Chromium, pelo Playwright), com o e-mail e a senha do `credenciais.txt` | entrou em `/s/dashboard`; página em `pt_BR`, título "Painel Principal"; menu em português |
+| Login no Portainer com a senha do `credenciais.txt` | entrou em `#!/home`, sem pedir token; 6 de 6 containers |
+
+Os logins foram feitos nos domínios `.test`, e não nos de verdade, porque o
+navegador digitando senha só é usado em endereço local de teste. O
+formulário e o que vem depois dele são os mesmos.
+
+**Parte B, pelo menu, num terminal de verdade, com domínio e certificado de
+verdade:**
+
+| Conferência | Resultado |
+|---|---|
+| Ctrl-C na primeira pergunta da base | "Interrompido (Ctrl-C) em: Algumas perguntas antes de começar. Nada foi alterado nesta máquina ainda."; o menu disse "interrompido" e voltou para a lista |
+| Base pelo menu, numa máquina sem Docker e sem swap | saída 0 em 59 s; swap de 2 GB; Traefik v3.7.16 e Portainer 2.45.3 |
+| Pergunta de versão, com a recomendada simulada em 7.2.1 | as duas opções na tela; Enter ficou na recomendada; "não" em "Posso começar?" e nada foi criado |
+| Mautic pelo menu | saída 0 em 238 s; 8 etapas na ordem; a marca `>` nos dois valores informados |
+| O que o domínio respondeu de fora durante a instalação | nenhuma resposta até o Mautic ser publicado; nunca o assistente web |
+| Certificados | Let's Encrypt, válidos sem `-k`, no Mautic e no Portainer |
+| Painel | a raiz chega em `/s/login` com 200, em 2 saltos, sem laço |
+| Cookie e cabeçalhos | cookie com `secure`, `httponly` e `samesite=lax`; HSTS de um ano; HTTP redireciona com 301 |
+| Workers, migrações, idioma e fuso | 6 workers com `--time-limit=300`; migrações em dia; `pt_BR` e `America/Sao_Paulo` |
+| Lista do menu depois de instalar | "instalado" na Base e no Mautic 7 |
+| Menu de novo, escolhendo o Mautic e a base | "Instalação encontrada", nada reinstalado; os seis containers com o mesmo identificador e a mesma data de criação |
+| Reinício da web, medido de fora a cada 2 s | 200, depois 502 e 404 por 14 s, e 200 de novo; voltou em 27 s |
+| Telas de login abertas no navegador, com o certificado conferido por ele | Mautic com o formulário; Portainer com o campo de usuário, sem token |
+
+A emissão de certificado foi de verdade nesta parte: a segunda da semana
+para os dois nomes de teste (o limite do Let's Encrypt é de 5 por semana
+para os mesmos nomes).
 
 **Ambiente de teste**
 
