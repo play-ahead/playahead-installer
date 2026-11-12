@@ -16,7 +16,7 @@
 # https://playahead.com.br
 #
 # Versão: 0.1.0
-# Build:  2026-11-12T15:37:13Z
+# Build:  2026-11-12T17:27:16Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -3823,10 +3823,11 @@ traefik_mostrar_log_acme() {
 # Versão fixa da linha v3, nunca `latest`. Política de versões do
 # CLAUDE.md: o proxy recebe as correções da própria linha.
 #
-# v3.7.16 é a última da 3.7 em 2026-10-27, conferida no Docker Hub
-# e no GitHub. As quatro versões depois da v3.7.12, que o script
-# usava até então, trazem avisos de segurança.
-PA_TRAEFIK_VERSAO="v3.7.16"
+# v3.7.18 é a última da 3.7 em 2026-11-11, conferida no Docker Hub
+# e no GitHub. A v3.7.17 traz correção de segurança (GHSA-xv5x-242w-7hf7)
+# que a v3.7.16 não tem; a v3.7.18 acrescenta correções de BasicAuth,
+# Host matcher e Compress, sem problema aberto citando a versão.
+PA_TRAEFIK_VERSAO="v3.7.18"
 
 PA_TRAEFIK_DIR="/opt/playahead/traefik"
 PA_TRAEFIK_REDE="traefik_public"
@@ -5227,7 +5228,7 @@ base_atualizar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-11-12T15:37:13Z"
+PA_BUILD="2026-11-12T17:27:16Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
