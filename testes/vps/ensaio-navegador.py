@@ -87,6 +87,12 @@ def main():
                 q = resultado["portainer"]
                 q["url"] = url_portainer
                 pagina.goto(url_portainer + "/", wait_until="networkidle", timeout=120000)
+                # O Portainer monta a tela depois de carregar: sem esperar
+                # o campo, a foto sai com "Loading Portainer...".
+                try:
+                    pagina.wait_for_selector("#username", timeout=60000)
+                except Exception:
+                    pass
                 q["tela_inicial"] = pagina.url
                 q["pediu_token_de_setup"] = "setup token" in pagina.inner_text("body").lower()
                 q["campo_de_usuario"] = pagina.locator("#username").count() == 1
