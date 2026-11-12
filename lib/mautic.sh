@@ -618,6 +618,8 @@ mautic_baixar_imagens() {
 	ui_passo "Baixando as imagens do Mautic e do banco"
 	ui_detalhe "Cerca de 730 MB na primeira vez. Pode levar alguns minutos,"
 	ui_detalhe "e o progresso aparece logo abaixo."
+	ui_detalhe "A VPS pode ficar lenta enquanto isso. Se o terminal cair, entre"
+	ui_detalhe "de novo e rode o mesmo comando: a instalação continua de onde parou."
 
 	if mautic_compose pull; then
 		ui_ok "Imagens prontas"

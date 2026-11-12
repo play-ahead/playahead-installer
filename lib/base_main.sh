@@ -190,7 +190,7 @@ main_parse_flags() {
 # ------------------------------------------------------------
 
 base_detectar() {
-	ui_secao "Descobrindo a situação desta máquina"
+	ui_etapa "Descobrindo a situação desta máquina"
 
 	cenario_classificar
 
@@ -245,6 +245,8 @@ base_perguntar() {
 	# em vez de escolher em silêncio: instalar sem DNS deixaria um
 	# painel inacessível de pé, e pular calado contraria o que o
 	# menu anuncia na opção 1.
+	ui_etapa "Algumas perguntas antes de começar"
+
 	if [[ "$pergunta_portainer" -eq 1 ]] && ! ui_interativo; then
 		ui_fatal \
 			"Falta o subdomínio do Portainer." \
@@ -254,11 +256,13 @@ base_perguntar() {
 			"    --sem-portainer"
 	fi
 
+	# A etapa aparece mesmo sem pergunta, para o contador não pular
+	# número: com tudo vindo por opção, ou sem nada a decidir.
 	if [[ "$pergunta_acme" -eq 0 ]] && [[ "$pergunta_portainer" -eq 0 ]]; then
+		ui_info "Nada a perguntar desta vez."
 		return 0
 	fi
 
-	ui_secao "Algumas perguntas antes de começar"
 	ui_info "Depois daqui a instalação corre sozinha até o fim."
 
 	if [[ "$pergunta_acme" -eq 1 ]]; then
@@ -410,7 +414,7 @@ base_confirmar() {
 
 base_instalar() {
 	ui_marcar_alteracao
-	ui_secao "Preparando a máquina"
+	ui_etapa "Preparando a máquina"
 
 	sistema_criar_swap "$PA_NO_SWAP"
 	docker_garantir
@@ -428,19 +432,16 @@ base_instalar() {
 # ------------------------------------------------------------
 
 base_bloco_final() {
-	ui_vazio
-	ui_secao "Base pronta"
+	ui_etapa "Base pronta"
 
-	ui_info "A infraestrutura compartilhada está no ar:"
-	ui_vazio
-	ui_info "Docker:       $(docker_versao)"
-	ui_info "Compose:      $(docker_compose_versao)"
-	ui_info "Rede do proxy: ${PA_TRAEFIK_NETWORK:-${PA_TRAEFIK_REDE}}"
-	ui_info "Entrypoint:   ${PA_TRAEFIK_ENTRYPOINT:-websecure}"
-	ui_info "Certresolver: ${PA_TRAEFIK_CERTRESOLVER:-<nenhum>}"
+	ui_quadro "A infraestrutura compartilhada está no ar" \
+		"Docker"$'\t'"$(docker_versao)" \
+		"Compose"$'\t'"$(docker_compose_versao)" \
+		"Rede do proxy"$'\t'"${PA_TRAEFIK_NETWORK:-${PA_TRAEFIK_REDE}}" \
+		"Entrypoint"$'\t'"${PA_TRAEFIK_ENTRYPOINT:-websecure}" \
+		"Certresolver"$'\t'"${PA_TRAEFIK_CERTRESOLVER:-nenhum}"
 
 	if [[ -n "$PA_SWAP_CRIADO" ]]; then
-		ui_vazio
 		ui_info "Um arquivo de swap de 2 GB foi criado em ${PA_SWAP_CRIADO}"
 		ui_info "porque esta máquina tem pouca memória."
 	fi
@@ -460,11 +461,9 @@ base_bloco_final() {
 		ui_detalhe "Mautic 7:  https://get.playahead.com.br/mautic7"
 	fi
 	ui_vazio
-	ui_separador
 	ui_info "Quer receber avisos de novas versões, correções e conteúdos"
 	ui_info "da Play Ahead sobre automação de marketing?"
 	ui_detalhe "https://playahead.com.br/avisos"
-	ui_separador
 	ui_vazio
 }
 
@@ -485,12 +484,17 @@ main() {
 	# precisa do bash e do root: o piso de RAM e de disco da instalação
 	# não vale para uma máquina que já está em uso.
 	if [[ "$PA_ATUALIZAR" -eq 1 ]]; then
-		ui_secao "Conferindo o servidor"
+		ui_etapas 5
+		ui_etapa "Conferindo o servidor"
 		checks_bash
 		checks_root
 		base_atualizar
 		return 0
 	fi
+
+	# Sete etapas: servidor, situação, perguntas, resumo, preparo da
+	# máquina, Portainer e o fim.
+	ui_etapas 7
 
 	checks_sistema
 	base_detectar
@@ -501,6 +505,9 @@ main() {
 
 	if [[ "$PA_PORTAINER" -eq 1 ]]; then
 		portainer_instalar "$PA_PORTAINER_DOMINIO" || true
+	else
+		ui_etapa "Portainer"
+		ui_info "Não será instalado, por escolha."
 	fi
 
 	base_bloco_final

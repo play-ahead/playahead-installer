@@ -243,7 +243,7 @@ COMPOSE
 portainer_instalar() {
 	PA_PORTAINER_DOMINIO="$1"
 
-	ui_secao "Portainer"
+	ui_etapa "Portainer"
 
 	if portainer_ja_existe; then
 		ui_aviso "Já existe um Portainer em execução nesta máquina."
@@ -441,13 +441,13 @@ portainer_gravar_credenciais() {
 portainer_bloco_final() {
 	[[ "$PA_PORTAINER_INSTALADO" -eq 1 ]] || return 0
 
-	ui_vazio
-	ui_info "Portainer"
-	ui_detalhe "URL:      https://${PA_PORTAINER_DOMINIO}"
-	ui_detalhe "usuário:  ${PA_PORTAINER_USUARIO}"
-	ui_detalhe "senha:    ${PA_PORTAINER_SENHA}"
-	ui_detalhe "salvo em: ${PA_PORTAINER_CREDENCIAIS}"
-	ui_vazio
+	ui_quadro "Portainer" \
+		"Endereço"$'\t'"https://${PA_PORTAINER_DOMINIO}" \
+		"Usuário"$'\t'"${PA_PORTAINER_USUARIO}" \
+		"Senha"$'\t'"${PA_PORTAINER_SENHA}" \
+		"" \
+		"Guardado em ${PA_PORTAINER_CREDENCIAIS}"
+
 	ui_info "Quem entra no Portainer controla todos os containers"
 	ui_info "desta máquina. Guarde a senha num gerenciador de senhas."
 	ui_info "Se preferir trocar a senha do Portainer, use outra igualmente"

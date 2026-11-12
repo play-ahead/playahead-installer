@@ -248,7 +248,7 @@ mautic_atualizar_conferir_env() {
 # nada a fazer ou quando atualizar seria voltar versão. Não altera
 # nada além de gravar o compose novo num arquivo ao lado.
 mautic_atualizar_planejar() {
-	ui_secao "Conferindo a instalação"
+	ui_etapa "Conferindo a instalação"
 
 	PA_DOMINIO="$(mautic_env_valor MAUTIC_DOMAIN)"
 	if [[ -z "$PA_DOMINIO" ]]; then
@@ -710,40 +710,40 @@ mautic_atualizar_como_restaurar() {
 	# não está no meio de atualização nenhuma.
 	printf '\n'
 	if [[ "${1:-}" == "arquivo" ]]; then
-		printf '  Backup feito em %s, antes de atualizar o Mautic\n' "$(date +%Y-%m-%d)"
-		printf '  %s para o %s.\n' "$PA_MAUTIC_VERSAO_DE" "$PA_MAUTIC_VERSAO_PARA"
+		printf '    Backup feito em %s, antes de atualizar o Mautic\n' "$(date +%Y-%m-%d)"
+		printf '    %s para o %s.\n' "$PA_MAUTIC_VERSAO_DE" "$PA_MAUTIC_VERSAO_PARA"
 		printf '\n'
-		printf '  Pasta deste backup:\n'
-		printf '      %s\n' "$pasta"
+		printf '    Pasta deste backup:\n'
+		printf '        %s\n' "$pasta"
 	else
-		printf '  A atualização do Mautic não terminou.\n'
+		printf '    A atualização do Mautic não terminou.\n'
 		printf '\n'
-		printf '  O backup de antes dela está inteiro em:\n'
-		printf '      %s\n' "$pasta"
+		printf '    O backup de antes dela está inteiro em:\n'
+		printf '        %s\n' "$pasta"
 		printf '\n'
-		printf '  PARA CONTINUAR de onde parou (o backup não é refeito):\n'
+		printf '    PARA CONTINUAR de onde parou (o backup não é refeito):\n'
 		printf '\n'
-		printf '      sudo bash %s --atualizar\n' "$0"
+		printf '        sudo bash %s --atualizar\n' "$0"
 	fi
 	printf '\n'
-	printf '  PARA VOLTAR ao Mautic %s, como estava antes:\n' "$PA_MAUTIC_VERSAO_DE"
+	printf '    PARA VOLTAR ao Mautic %s, como estava antes:\n' "$PA_MAUTIC_VERSAO_DE"
 	printf '\n'
-	printf '      cd %s\n' "$PA_MAUTIC_DIR"
-	printf '      docker compose stop mautic_web mautic_cron mautic_worker\n'
-	printf '      cp %s/docker-compose.yml docker-compose.yml\n' "$pasta"
-	printf '      docker compose up -d mariadb\n'
-	printf '      gunzip -c %s/banco.sql.gz | docker compose exec -T mariadb \\\n' "$pasta"
+	printf '        cd %s\n' "$PA_MAUTIC_DIR"
+	printf '        docker compose stop mautic_web mautic_cron mautic_worker\n'
+	printf '        cp %s/docker-compose.yml docker-compose.yml\n' "$pasta"
+	printf '        docker compose up -d mariadb\n'
+	printf '        gunzip -c %s/banco.sql.gz | docker compose exec -T mariadb \\\n' "$pasta"
 	# As aspas simples são do comando que a pessoa vai colar.
 	# shellcheck disable=SC2016
-	printf '        sh -c %s\n' "'MYSQL_PWD=\"\$MYSQL_ROOT_PASSWORD\" mariadb -uroot'"
-	printf '      docker compose up -d\n'
-	printf '      rm -f %s %s\n' "$PA_MAUTIC_ATUALIZANDO" "${PA_MAUTIC_DIR}/.compose.sha256"
+	printf '          sh -c %s\n' "'MYSQL_PWD=\"\$MYSQL_ROOT_PASSWORD\" mariadb -uroot'"
+	printf '        docker compose up -d\n'
+	printf '        rm -f %s %s\n' "$PA_MAUTIC_ATUALIZANDO" "${PA_MAUTIC_DIR}/.compose.sha256"
 	printf '\n'
-	printf '  O comando do gunzip apaga o banco atual e devolve o do backup.\n'
-	printf '  Espere o banco ficar no ar (docker compose ps) antes de rodá-lo.\n'
+	printf '    O comando do gunzip apaga o banco atual e devolve o do backup.\n'
+	printf '    Espere o banco ficar no ar (docker compose ps) antes de rodá-lo.\n'
 	if [[ "${#PA_MAUTIC_TEMAS_EXTRAS[@]}" -gt 0 || "${#PA_MAUTIC_PLUGINS_EXTRAS[@]}" -gt 0 ]]; then
-		printf '  Temas e plugins instalados pelo painel estão em %s,\n' "$pasta"
-		printf '  nas pastas temas e plugins.\n'
+		printf '    Temas e plugins instalados pelo painel estão em %s,\n' "$pasta"
+		printf '    nas pastas temas e plugins.\n'
 	fi
 	printf '\n'
 }
@@ -767,12 +767,12 @@ mautic_atualizar_ao_sair() {
 	if [[ "$codigo" -ne 0 && "$PA_MAUTIC_TROCANDO" -eq 1 ]]; then
 		mautic_atualizar_como_restaurar >&"$PA_UI_FD_TELA" 2>&1 || true
 	elif [[ "$codigo" -ne 0 && "$PA_MAUTIC_PARADO" -eq 1 ]]; then
-		printf '  Nada foi trocado. Ligando o Mautic de novo, na versão de antes.\n' \
+		printf '    Nada foi trocado. Ligando o Mautic de novo, na versão de antes.\n' \
 			>&"$PA_UI_FD_TELA" 2>&1 || true
 		mautic_atualizar_religar
 		{
-			printf '  Mautic ligado. Para tentar outra vez:\n'
-			printf '      sudo bash %s --atualizar\n\n' "$0"
+			printf '    Mautic ligado. Para tentar outra vez:\n'
+			printf '        sudo bash %s --atualizar\n\n' "$0"
 		} >&"$PA_UI_FD_TELA" 2>&1 || true
 	fi
 
@@ -986,20 +986,21 @@ mautic_atualizar_registrar() {
 }
 
 mautic_atualizar_bloco_final() {
-	ui_vazio
-	ui_secao "Atualização concluída"
+	ui_etapa "Atualização concluída"
 
-	ui_info "URL:      https://${PA_DOMINIO}"
-	ui_info "Mautic:   $(mautic_atualizar_descrever "$PA_MAUTIC_VERSAO_DE" "$PA_MAUTIC_VERSAO_PARA")"
-	ui_info "MariaDB:  $(mautic_atualizar_descrever "$PA_MARIADB_VERSAO_DE" "$PA_MARIADB_VERSAO_PARA")"
-	ui_vazio
-	ui_info "O e-mail e a senha de acesso continuam os mesmos."
-	ui_vazio
-	ui_info "Backup de antes da atualização:"
-	ui_detalhe "$PA_MAUTIC_BACKUP"
-	ui_detalhe "Como voltar, se precisar: COMO-RESTAURAR.txt, dentro dele."
-	ui_detalhe "O instalador não apaga backup. Quando tiver certeza de que"
-	ui_detalhe "está tudo certo, apague a pasta para liberar espaço."
+	ui_quadro "Mautic atualizado" \
+		"Endereço"$'\t'"https://${PA_DOMINIO}" \
+		"Mautic"$'\t'"$(mautic_atualizar_descrever "$PA_MAUTIC_VERSAO_DE" "$PA_MAUTIC_VERSAO_PARA")" \
+		"MariaDB"$'\t'"$(mautic_atualizar_descrever "$PA_MARIADB_VERSAO_DE" "$PA_MARIADB_VERSAO_PARA")" \
+		"" \
+		"O e-mail e a senha de acesso continuam os mesmos." \
+		"" \
+		"Backup de antes da atualização:" \
+		"$PA_MAUTIC_BACKUP"
+
+	ui_info "Como voltar, se precisar: COMO-RESTAURAR.txt, dentro do backup."
+	ui_info "O instalador não apaga backup. Quando tiver certeza de que"
+	ui_info "está tudo certo, apague a pasta para liberar espaço."
 
 	if [[ "${#PA_MAUTIC_PLUGINS_EXTRAS[@]}" -gt 0 ]]; then
 		ui_vazio
@@ -1037,7 +1038,7 @@ mautic_atualizar() {
 
 	mautic_atualizar_confirmar
 
-	ui_secao "Atualizando o Mautic"
+	ui_etapa "Atualizando o Mautic"
 
 	# A dica do Ctrl-C da instalação fala em domínio e em retomar a
 	# instalação. Aqui o que vale é a da atualização.

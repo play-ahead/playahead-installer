@@ -202,7 +202,7 @@ base_atualizar_planejar_portainer() {
 # Não altera nada além de gravar o compose novo num arquivo ao lado
 # do instalado.
 base_atualizar_planejar() {
-	ui_secao "Conferindo a base"
+	ui_etapa "Conferindo a base"
 
 	if ! docker_presente || ! docker_compose_presente; then
 		ui_fatal \
@@ -420,49 +420,49 @@ base_atualizar_como_restaurar() {
 	# não está no meio de atualização nenhuma.
 	printf '\n'
 	if [[ "${1:-}" == "arquivo" ]]; then
-		printf '  Backup feito em %s, antes de atualizar a base.\n' "$(date +%Y-%m-%d)"
+		printf '    Backup feito em %s, antes de atualizar a base.\n' "$(date +%Y-%m-%d)"
 		printf '\n'
-		printf '  Pasta deste backup:\n'
-		printf '      %s\n' "$PA_BASE_BACKUP"
+		printf '    Pasta deste backup:\n'
+		printf '        %s\n' "$PA_BASE_BACKUP"
 	else
-		printf '  A atualização da base não terminou.\n'
+		printf '    A atualização da base não terminou.\n'
 		printf '\n'
-		printf '  O backup de antes dela está em:\n'
-		printf '      %s\n' "$PA_BASE_BACKUP"
+		printf '    O backup de antes dela está em:\n'
+		printf '        %s\n' "$PA_BASE_BACKUP"
 		printf '\n'
-		printf '  PARA TENTAR DE NOVO:\n'
+		printf '    PARA TENTAR DE NOVO:\n'
 		printf '\n'
-		printf '      sudo bash %s --atualizar\n' "$0"
+		printf '        sudo bash %s --atualizar\n' "$0"
 	fi
 
 	if [[ "$PA_BASE_TRAEFIK" == "sim" ]]; then
 		printf '\n'
-		printf '  PARA VOLTAR o Traefik ao %s:\n' "$PA_BASE_TRAEFIK_DE"
+		printf '    PARA VOLTAR o Traefik ao %s:\n' "$PA_BASE_TRAEFIK_DE"
 		printf '\n'
-		printf '      cd %s\n' "$PA_TRAEFIK_DIR"
-		printf '      cp %s/traefik/docker-compose.yml docker-compose.yml\n' "$PA_BASE_BACKUP"
-		printf '      rm -f .compose.sha256\n'
-		printf '      docker compose up -d\n'
+		printf '        cd %s\n' "$PA_TRAEFIK_DIR"
+		printf '        cp %s/traefik/docker-compose.yml docker-compose.yml\n' "$PA_BASE_BACKUP"
+		printf '        rm -f .compose.sha256\n'
+		printf '        docker compose up -d\n'
 	fi
 
 	if [[ "$PA_BASE_PORTAINER" == "sim" ]]; then
 		printf '\n'
-		printf '  PARA VOLTAR o Portainer ao %s, com os dados de antes:\n' "$PA_BASE_PORTAINER_DE"
+		printf '    PARA VOLTAR o Portainer ao %s, com os dados de antes:\n' "$PA_BASE_PORTAINER_DE"
 		printf '\n'
-		printf '      cd %s\n' "$PA_PORTAINER_DIR"
-		printf '      docker compose down -v\n'
-		printf '      cp %s/portainer/docker-compose.yml docker-compose.yml\n' "$PA_BASE_BACKUP"
-		printf '      rm -f .compose.sha256\n'
-		printf '      docker compose up --no-start\n'
-		printf '      tar -xzf %s/portainer/dados.tar.gz \\\n' "$PA_BASE_BACKUP"
+		printf '        cd %s\n' "$PA_PORTAINER_DIR"
+		printf '        docker compose down -v\n'
+		printf '        cp %s/portainer/docker-compose.yml docker-compose.yml\n' "$PA_BASE_BACKUP"
+		printf '        rm -f .compose.sha256\n'
+		printf '        docker compose up --no-start\n'
+		printf '        tar -xzf %s/portainer/dados.tar.gz \\\n' "$PA_BASE_BACKUP"
 		# As aspas e o cifrão são do comando que a pessoa vai colar.
 		# shellcheck disable=SC2016
-		printf '        -C "$(docker volume inspect -f %s %s)"\n' \
+		printf '          -C "$(docker volume inspect -f %s %s)"\n' \
 			"'{{.Mountpoint}}'" "$PA_BASE_VOLUME_PORTAINER"
-		printf '      docker compose up -d\n'
+		printf '        docker compose up -d\n'
 		printf '\n'
-		printf '  O "down -v" apaga os dados atuais do Portainer; o tar devolve\n'
-		printf '  os do backup. Os outros containers não são afetados.\n'
+		printf '    O "down -v" apaga os dados atuais do Portainer; o tar devolve\n'
+		printf '    os do backup. Os outros containers não são afetados.\n'
 	fi
 	printf '\n'
 }
@@ -479,7 +479,7 @@ base_atualizar_ao_sair() {
 	if [[ "$codigo" -ne 0 && "$PA_BASE_TROCANDO" -eq 1 ]]; then
 		base_atualizar_como_restaurar >&"$PA_UI_FD_TELA" 2>&1 || true
 	elif [[ "$codigo" -ne 0 && "$PA_BASE_PORTAINER_PARADO" -eq 1 ]]; then
-		printf '  Nada foi trocado. Ligando o Portainer de novo.\n' \
+		printf '    Nada foi trocado. Ligando o Portainer de novo.\n' \
 			>&"$PA_UI_FD_TELA" 2>&1 || true
 		# Espera a parada terminar antes de ligar: um "stop"
 		# interrompido continua valendo dentro do Docker, e ligar na
@@ -487,8 +487,8 @@ base_atualizar_ao_sair() {
 		docker_compose_desligado "$PA_PORTAINER_DIR" stop portainer || true
 		docker_compose_desligado "$PA_PORTAINER_DIR" start portainer || true
 		{
-			printf '  Portainer ligado. Para tentar outra vez:\n'
-			printf '      sudo bash %s --atualizar\n\n' "$0"
+			printf '    Portainer ligado. Para tentar outra vez:\n'
+			printf '        sudo bash %s --atualizar\n\n' "$0"
 		} >&"$PA_UI_FD_TELA" 2>&1 || true
 	fi
 
@@ -569,17 +569,18 @@ base_atualizar_trocar_portainer() {
 # ------------------------------------------------------------
 
 base_atualizar_bloco_final() {
-	ui_vazio
-	ui_secao "Atualização concluída"
+	ui_etapa "Atualização concluída"
 
-	ui_info "Traefik:   $(base_atualizar_descrever "$PA_BASE_TRAEFIK" "$PA_BASE_TRAEFIK_DE" "$PA_TRAEFIK_VERSAO")"
-	ui_info "Portainer: $(base_atualizar_descrever "$PA_BASE_PORTAINER" "$PA_BASE_PORTAINER_DE" "$PA_PORTAINER_VERSAO")"
-	ui_vazio
-	ui_info "Backup de antes da atualização:"
-	ui_detalhe "$PA_BASE_BACKUP"
-	ui_detalhe "Como voltar, se precisar: COMO-RESTAURAR.txt, dentro dele."
-	ui_detalhe "O instalador não apaga backup. Quando tiver certeza de que"
-	ui_detalhe "está tudo certo, apague a pasta para liberar espaço."
+	ui_quadro "Base atualizada" \
+		"Traefik"$'\t'"$(base_atualizar_descrever "$PA_BASE_TRAEFIK" "$PA_BASE_TRAEFIK_DE" "$PA_TRAEFIK_VERSAO")" \
+		"Portainer"$'\t'"$(base_atualizar_descrever "$PA_BASE_PORTAINER" "$PA_BASE_PORTAINER_DE" "$PA_PORTAINER_VERSAO")" \
+		"" \
+		"Backup de antes da atualização:" \
+		"$PA_BASE_BACKUP"
+
+	ui_info "Como voltar, se precisar: COMO-RESTAURAR.txt, dentro do backup."
+	ui_info "O instalador não apaga backup. Quando tiver certeza de que"
+	ui_info "está tudo certo, apague a pasta para liberar espaço."
 	ui_vazio
 	ui_info "Abra os seus sites no navegador para conferir."
 	if [[ "$PA_BASE_PORTAINER" == "sim" ]]; then
@@ -599,7 +600,7 @@ base_atualizar() {
 	base_atualizar_planejar
 	base_atualizar_confirmar
 
-	ui_secao "Atualizando a base"
+	ui_etapa "Atualizando a base"
 
 	# A dica do Ctrl-C da instalação fala em reaproveitar o que foi
 	# instalado. Aqui o que vale é a da atualização.

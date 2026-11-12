@@ -12,7 +12,7 @@
 # Tres alvos hoje:
 #     dist/base.sh        Docker, Traefik e Portainer
 #     dist/mautic7.sh     Mautic 7
-#     dist/playahead.sh   menu, com os dois embutidos
+#     dist/playahead.sh   menu, com os instaladores embutidos
 #
 # A ORDEM IMPORTA: o menu embute os outros dois, entao eles precisam
 # estar gerados antes.
@@ -70,7 +70,42 @@ declare -A PA_TEMPLATE=(
 # Artefatos que o menu carrega dentro de si. Só ele embute outros
 # artefatos, então isto é um caso próprio e não um sistema: o dia em
 # que houver um segundo menu, aí se generaliza.
+#
+# A ordem aqui é a ordem da lista do menu.
 PA_EMBUTIDOS=(base mautic7)
+
+# Como cada instalador embutido aparece no menu. O menu não tem lista
+# própria: o build escreve, para cada embutido, uma chamada a
+# menu_registrar com estes textos e com a versão lida do orquestrador.
+# Instalador novo que entra em PA_EMBUTIDOS ganha quatro linhas aqui e
+# aparece na lista, sem tocar no lib/menu_main.sh.
+#
+#   nome        como aparece na lista
+#   descrição   uma frase curta, ao lado do nome
+#   grupo       infraestrutura, marketing ou atendimento. Ainda não
+#               aparece na tela; ver "O menu", no CLAUDE.md
+#   instalado   arquivo que só existe na VPS depois de o instalador
+#               ter terminado. Mais de um, separados por espaço: basta
+#               um deles existir
+declare -A PA_MENU_NOME=(
+	[base]="Base"
+	[mautic7]="Mautic 7"
+)
+
+declare -A PA_MENU_DESCRICAO=(
+	[base]="Docker, Traefik e Portainer. Uma vez por VPS."
+	[mautic7]="Precisa da base instalada."
+)
+
+declare -A PA_MENU_GRUPO=(
+	[base]="infraestrutura"
+	[mautic7]="marketing"
+)
+
+declare -A PA_MENU_INSTALADO=(
+	[base]="/opt/playahead/traefik/docker-compose.yml /opt/playahead/portainer/docker-compose.yml"
+	[mautic7]="/opt/playahead/mautic/.instalacao-concluida"
+)
 
 # Lidas por nameref em gerar(); o shellcheck não enxerga uso por
 # nameref, daí a diretiva.
@@ -191,13 +226,34 @@ marcador_de() {
 	printf '# ===== INSTALADOR %s =====\n' "${arq##*/}"
 }
 
+# texto_do_menu <alvo> <campo> <valor>
+#
+# Os textos do menu entram no artefato entre aspas duplas. Aspa,
+# cifrão, crase e barra invertida mudariam o sentido da linha gerada,
+# então o build recusa em vez de escapar: são textos curtos, escritos
+# aqui mesmo, e não há motivo para terem esses caracteres.
+texto_do_menu() {
+	local alvo="$1" campo="$2" valor="$3"
+
+	[[ -n "$valor" ]] || erro "playahead: falta ${campo} de ${alvo}, em build.sh"
+
+	case "$valor" in
+		*\"* | *\$* | *\`* | *\\*)
+			erro "playahead: ${campo} de ${alvo} tem aspa, cifrão, crase ou barra invertida"
+			;;
+	esac
+
+	printf '%s' "$valor"
+}
+
 # embutir_instaladores
 #
-# Escreve cada artefato como heredoc citado dentro de uma função.
+# Escreve cada artefato como heredoc citado dentro de uma função, e
+# em seguida a linha que o põe na lista do menu.
 # Citado é obrigatório: o conteúdo é código bash cheio de $ e de
 # crase, e precisa chegar literal ao arquivo final.
 embutir_instaladores() {
-	local alvo arq delim
+	local alvo arq delim versao nome descricao grupo instalado
 
 	for alvo in "${PA_EMBUTIDOS[@]}"; do
 		arq="${PA_SAIDA[$alvo]}"
@@ -210,12 +266,24 @@ embutir_instaladores() {
 			erro "playahead: ${arq} contém ${delim}; troque o delimitador"
 		fi
 
+		versao="$(ler_var PA_VERSAO "$(orquestrador_de "$alvo")")"
+		nome="$(texto_do_menu "$alvo" nome "${PA_MENU_NOME[$alvo]:-}")"
+		descricao="$(texto_do_menu "$alvo" descrição "${PA_MENU_DESCRICAO[$alvo]:-}")"
+		grupo="$(texto_do_menu "$alvo" grupo "${PA_MENU_GRUPO[$alvo]:-}")"
+		instalado="$(texto_do_menu "$alvo" instalado "${PA_MENU_INSTALADO[$alvo]:-}")"
+
 		marcador_de "$alvo"
 		printf 'menu_conteudo_%s() {\n' "$alvo"
 		printf "\tcat <<'%s'\n" "$delim"
 		cat "$arq"
 		printf '%s\n' "$delim"
 		printf '}\n\n'
+
+		printf 'menu_registrar "%s" "%s" \\\n' "${arq##*/}" "$versao"
+		printf '\t"%s" \\\n' "$nome"
+		printf '\t"%s" \\\n' "$descricao"
+		printf '\t"%s" \\\n' "$grupo"
+		printf '\t"%s"\n\n' "$instalado"
 	done
 }
 
@@ -313,7 +381,6 @@ gerar() {
 # PLAY AHEAD INSTALLER
 # ${ferramenta}
 # https://playahead.com.br
-# Fabio Roger de Oliveira ME | CNPJ 31.176.090/0001-08
 #
 # Versão: ${versao}
 # Build:  ${build}
@@ -393,26 +460,6 @@ CABECALHO
 
 	grep -q "^PA_BUILD=\"${build}\"$" "$destino" ||
 		erro "${alvo}: não consegui injetar a data de build"
-
-	# O menu reporta a versão de quem carrega dentro, e não decide
-	# versão de ninguém. Os valores vêm do orquestrador de cada
-	# instalador embutido, mesma fonte única do resto.
-	if [[ "$alvo" == "playahead" ]]; then
-		local embutido versao_embutida maiuscula
-		for embutido in "${PA_EMBUTIDOS[@]}"; do
-			versao_embutida="$(
-				ler_var PA_VERSAO "$(orquestrador_de "$embutido")"
-			)"
-			maiuscula="$(printf '%s' "$embutido" | tr '[:lower:]' '[:upper:]')"
-
-			sed -i \
-				"s/^PA_VERSAO_${maiuscula}=\"desenvolvimento\"$/PA_VERSAO_${maiuscula}=\"${versao_embutida}\"/" \
-				"$destino"
-
-			grep -q "^PA_VERSAO_${maiuscula}=\"${versao_embutida}\"$" "$destino" ||
-				erro "playahead: não consegui injetar a versão de ${embutido}"
-		done
-	fi
 }
 
 # ------------------------------------------------------------
@@ -502,6 +549,41 @@ verificar_versoes_template() {
 }
 
 # ------------------------------------------------------------
+# Temas guardados
+# ------------------------------------------------------------
+
+# variaveis_do_tema <arquivo>
+#
+# Os nomes das variáveis PA_TEMA_ que o arquivo declara, um por linha.
+variaveis_do_tema() {
+	grep -oE '^PA_TEMA_[A-Z_]+=' "$1" | sort -u
+}
+
+# verificar_temas
+#
+# Os temas de docs/visual/ só servem se puderem entrar no lugar do
+# bloco de tema do lib/ui.sh. Para isso têm de declarar exatamente as
+# mesmas variáveis. Um tema guardado que ficou para trás quando o
+# bloco ganhou uma variável nova quebraria no dia da troca, que é
+# justamente o dia em que ninguém lembra mais do motivo.
+verificar_temas() {
+	local tema quantos=0
+
+	for tema in docs/visual/tema-*.sh; do
+		[[ -f "$tema" ]] || continue
+
+		if [[ "$(variaveis_do_tema "$tema")" != "$(variaveis_do_tema lib/ui.sh)" ]]; then
+			erro "${tema} não declara as mesmas variáveis do tema de lib/ui.sh"
+		fi
+
+		bash -n "$tema" || erro "${tema}: não passa em bash -n"
+		quantos=$((quantos + 1))
+	done
+
+	info "temas de docs/visual: ${quantos}, com as mesmas variáveis de lib/ui.sh"
+}
+
+# ------------------------------------------------------------
 # Corpo, sem o cabeçalho
 #
 # Serve para comparar duas builds ignorando a data. Sem isso, todo
@@ -548,6 +630,8 @@ esac
 
 build="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 defasados=0
+
+verificar_temas
 
 for alvo in "${PA_ALVOS[@]}"; do
 	saida="${PA_SAIDA[$alvo]}"

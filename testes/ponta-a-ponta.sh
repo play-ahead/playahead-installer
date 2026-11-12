@@ -29,7 +29,8 @@
 #   - o firewall do provedor e o bloqueio de portas de SMTP;
 #   - a instalação do Docker e o swap, quando a máquina já vem com
 #     Docker e muita memória, como a do GitHub (cenário 1.5, 16 GB);
-#   - o menu, que exige terminal;
+#   - rodar um instalador pelo menu. A lista do menu é conferida
+#     aqui, num terminal de mentira, mas a escolha é sempre "sair";
 #   - o envio de e-mail de verdade;
 #   - a troca de versão de verdade no modo de atualização. Aqui a
 #     atualização roda sobre a mesma versão, com o compose alterado
@@ -106,6 +107,61 @@ if ! grep -q " ${DOMINIO_MAUTIC}" /etc/hosts; then
 	printf '127.0.0.1 %s %s\n' "$DOMINIO_MAUTIC" "$DOMINIO_PORTAINER" >>/etc/hosts
 fi
 ok "${DOMINIO_MAUTIC} e ${DOMINIO_PORTAINER} apontam para 127.0.0.1"
+
+# ------------------------------------------------------------
+passo "Menu, antes de instalar"
+# ------------------------------------------------------------
+#
+# O menu só conversa com terminal. O testes/vps/pty-rodar.py dá um a
+# ele, espera a pergunta e responde 0, que é sair sem instalar nada.
+
+# tela_do_menu <arquivo de log>
+#
+# Devolve 1 quando não deu para rodar o menu (sem python3, ou o menu
+# não chegou à pergunta).
+tela_do_menu() {
+	local log="$1"
+
+	if ! command -v python3 >/dev/null 2>&1; then
+		return 1
+	fi
+
+	# O timeout de fora cobre o caso de o menu nunca chegar à
+	# pergunta: sem ele, o teste ficaria esperando para sempre.
+	timeout 240 python3 testes/vps/pty-rodar.py --sem-cor --tempo 120 --log "$log" \
+		--resposta "Número da opção=0" \
+		-- bash dist/playahead.sh >/dev/null 2>&1 || return 1
+
+	grep -q "Número da opção" "$log"
+}
+
+# item_do_menu <arquivo de log> <nome>
+#
+# A linha da lista com aquele nome. O número pode vir como "1" ou
+# "1)", conforme o tema.
+item_do_menu() {
+	grep -E "^ *[0-9]+\)? +${2} " "$1" | head -n 1 || true
+}
+
+MENU_TESTAVEL=1
+if tela_do_menu "${LOGS}/menu-antes.log"; then
+	confere "o cabeçalho do menu é o geral (Play Ahead Installer)" \
+		grep -q "Play Ahead Installer" "${LOGS}/menu-antes.log"
+
+	for nome in "Base" "Mautic 7"; do
+		linha="$(item_do_menu "${LOGS}/menu-antes.log" "$nome")"
+		if [[ -z "$linha" ]]; then
+			falhou "menu: ${nome} não aparece na lista"
+		elif [[ "$linha" == *instalado* ]]; then
+			falhou "menu: ${nome} aparece como instalado numa máquina limpa"
+		else
+			ok "menu: ${nome} na lista, sem a marca de instalado"
+		fi
+	done
+else
+	MENU_TESTAVEL=0
+	printf '  aviso  não consegui rodar o menu num terminal de teste (python3?); a lista não foi conferida\n'
+fi
 
 # ------------------------------------------------------------
 passo "Base"
@@ -552,6 +608,94 @@ if [[ "$codigo" == "200" ]]; then
 	ok "Portainer no ar depois da atualização da base"
 else
 	falhou "Portainer depois da atualização da base: ${codigo:-sem resposta}"
+fi
+
+# ------------------------------------------------------------
+passo "Menu, depois de instalar"
+# ------------------------------------------------------------
+
+if [[ "$MENU_TESTAVEL" -eq 1 ]] && tela_do_menu "${LOGS}/menu-depois.log"; then
+	for nome in "Base" "Mautic 7"; do
+		linha="$(item_do_menu "${LOGS}/menu-depois.log" "$nome")"
+		if [[ "$linha" == *instalado* ]]; then
+			ok "menu: ${nome} aparece como instalado"
+		else
+			falhou "menu: ${nome} sem a marca de instalado: ${linha:-linha não encontrada}"
+		fi
+	done
+else
+	printf '  aviso  menu não conferido depois de instalar\n'
+fi
+
+# ------------------------------------------------------------
+passo "Contador de etapas"
+# ------------------------------------------------------------
+#
+# Cada instalador anuncia o total de etapas e conta de 1 até ele. Uma
+# etapa que não aparece faz o contador pular número, e uma a mais
+# passa do total.
+#
+# O formato do título de etapa é do tema ("[3/8] Título", "3 de 8
+# Título"), então o teste lê do próprio dist/ o que vem antes e depois
+# do título, em vez de repetir um formato que muda com o visual.
+
+FORMATO_ANTES="$(recomendada PA_TEMA_ETAPA_ANTES dist/mautic7.sh)"
+FORMATO_DEPOIS="$(recomendada PA_TEMA_ETAPA_DEPOIS dist/mautic7.sh)"
+
+# literal <texto>
+#
+# O texto com os caracteres especiais de expressão regular escapados.
+literal() {
+	# O cifrão dentro das aspas simples é do sed, e não uma variável.
+	# shellcheck disable=SC2016
+	printf '%s' "$1" | sed 's,[][\.*^$(){}?+|],\\&,g'
+}
+
+# titulo_de_etapa <n> <total>
+#
+# A expressão regular da linha de título da etapa n de total.
+titulo_de_etapa() {
+	local antes="${FORMATO_ANTES//\{n\}/$1}" depois="${FORMATO_DEPOIS//\{n\}/$1}"
+	antes="${antes//\{t\}/$2}"
+	depois="${depois//\{t\}/$2}"
+
+	printf '^ *%s.*%s$' "$(literal "$antes")" "$(literal "$depois")"
+}
+
+# conferir_etapas <arquivo de log> <total esperado>
+conferir_etapas() {
+	local log="$1" total="$2" n linha anterior=0 problema=""
+
+	for n in $(seq 1 "$total"); do
+		linha="$(grep -nE -m1 -- "$(titulo_de_etapa "$n" "$total")" "$log" 2>/dev/null | cut -d: -f1 || true)"
+
+		if [[ -z "$linha" ]]; then
+			problema+=" falta a ${n};"
+		elif [[ "$linha" -le "$anterior" ]]; then
+			problema+=" a ${n} veio antes da $((n - 1));"
+		else
+			anterior="$linha"
+		fi
+	done
+
+	if grep -qE -- "$(titulo_de_etapa "$((total + 1))" "$total")" "$log" 2>/dev/null; then
+		problema+=" passou do total;"
+	fi
+
+	if [[ -z "$problema" ]]; then
+		ok "$(basename "$log"): etapas de 1 a ${total}, em ordem e sem pular"
+	else
+		falhou "$(basename "$log"): contador de etapas:${problema}"
+	fi
+}
+
+if [[ "${FORMATO_ANTES}${FORMATO_DEPOIS}" == *"{n}"* ]]; then
+	conferir_etapas "${LOGS}/base.log" 7
+	conferir_etapas "${LOGS}/mautic.log" 8
+	conferir_etapas "${LOGS}/mautic-atualizar.log" 6
+	conferir_etapas "${LOGS}/base-atualizar.log" 5
+else
+	falhou "não achei o formato do título de etapa no dist/mautic7.sh"
 fi
 
 # ------------------------------------------------------------
