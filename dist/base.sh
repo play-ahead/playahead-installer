@@ -16,7 +16,7 @@
 # https://playahead.com.br
 #
 # Versão: 0.1.0
-# Build:  2026-11-12T14:27:10Z
+# Build:  2026-11-12T15:07:03Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -192,6 +192,13 @@ PA_COR_DESTAQUE=""
 
 # 1 quando dá para perguntar: --yes ausente e stdin é terminal.
 PA_INTERATIVO=0
+
+# O que o cabeçalho diz embaixo do logo, no lugar do nome da
+# ferramenta. Só o menu preenche. Nasce vazia aqui, e não só no menu,
+# para um valor herdado do ambiente de quem roda nunca chegar ao
+# cabeçalho de um instalador: é ele que diz ao suporte qual instalador
+# rodou.
+PA_TITULO=""
 
 # Modo do terminal, guardado pelo ui_init e devolvido no EXIT.
 PA_TERMINAL_MODO=""
@@ -593,7 +600,7 @@ ui_resumo() {
 
 	while [[ "$#" -ge 3 ]]; do
 		rotulo="$1"
-		valor="$2"
+		valor="${2//[[:cntrl:]]/}"
 		origem="$3"
 		shift 3
 
@@ -921,9 +928,12 @@ ui_descartar_entrada() {
 ui_limpar_resposta() {
 	local -n _bruta="$1"
 
-	_bruta="${_bruta//$'\r'/}"
-	_bruta="${_bruta//$'\t'/}"
-	_bruta="${_bruta//$'\n'/}"
+	# Retorno de carro, tabulação e quebra de linha, e junto com eles
+	# todo caractere de controle. Um ESC colado numa resposta iria
+	# para a tela de confirmação e para o quadro final, e ali vira
+	# comando para o terminal: limpar a tela, trocar o título da
+	# janela.
+	_bruta="${_bruta//[[:cntrl:]]/}"
 
 	# Espaço das duas pontas, sem sed e sem subshell.
 	_bruta="${_bruta#"${_bruta%%[![:space:]]*}"}"
@@ -1313,11 +1323,24 @@ ui_colunas() {
 # somem e ficam só a de cima e a de baixo: uma senha partida no meio
 # pela moldura seria pior que moldura nenhuma.
 ui_quadro() {
-	local titulo="$1"
+	local titulo="${1//[[:cntrl:]]/}"
 	shift
-	local linhas=("$@")
 
-	local linha rotulo valor largura
+	# O que chega aqui pode ter vindo de fora: um e-mail lido do banco
+	# numa retomada, um nome detectado no Traefik de outra pessoa.
+	# Nenhum caractere de controle vai para a tela. A tabulação que
+	# separa o rótulo do valor é guardada antes.
+	local linhas=() linha rotulo valor largura
+	for linha in "$@"; do
+		if [[ "$linha" == *$'\t'* ]]; then
+			rotulo="${linha%%$'\t'*}"
+			valor="${linha#*$'\t'}"
+			linhas+=("${rotulo//[[:cntrl:]]/}"$'\t'"${valor//[[:cntrl:]]/}")
+		else
+			linhas+=("${linha//[[:cntrl:]]/}")
+		fi
+	done
+
 	local coluna=0
 	local maior
 	maior="$(ui_largura "$titulo")"
@@ -5197,7 +5220,7 @@ base_atualizar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-11-12T14:27:10Z"
+PA_BUILD="2026-11-12T15:07:03Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 

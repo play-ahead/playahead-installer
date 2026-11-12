@@ -472,6 +472,67 @@ fi
 
 conferir_seguranca_mautic "depois de reiniciar"
 
+# Depois de subir, nada em var/ pode ter ficado com outro dono: o que
+# o container roda antes do Apache tem de rodar como www-data.
+de_outro_dono="$(docker exec mautic-mautic_web-1 sh -c 'find /var/www/html/var ! -user www-data | wc -l' 2>/dev/null || true)"
+if [[ "${de_outro_dono:-1}" -eq 0 ]]; then
+	ok "tudo em var/ é do www-data depois do reinício"
+else
+	falhou "${de_outro_dono:-?} arquivo(s) em var/ com outro dono depois do reinício"
+fi
+
+# O cache é apagado como root, toda vez que o container sobe. Se o
+# usuário do site trocar var/cache por um link simbólico, o root não
+# pode apagar nada no lugar para onde o link aponta. Aqui o alvo é
+# uma pasta de root com uma "prod" dentro, que tem de sobreviver.
+docker exec mautic-mautic_web-1 sh -c '
+	mkdir -p /srv/alvo/prod && echo a >/srv/alvo/prod/arquivo && chown -R root:root /srv/alvo' >/dev/null 2>&1 || true
+docker exec -u www-data mautic-mautic_web-1 sh -c '
+	mv /var/www/html/var/cache /var/www/html/var/cache.guardado &&
+	ln -s /srv/alvo /var/www/html/var/cache' >/dev/null 2>&1 || true
+
+if [[ "$(docker exec mautic-mautic_web-1 readlink /var/www/html/var/cache 2>/dev/null || true)" == "/srv/alvo" ]]; then
+	(cd /opt/playahead/mautic && docker compose restart mautic_web) >>"${LOGS}/reinicio-web.log" 2>&1 || true
+	sleep 5
+
+	if docker exec mautic-mautic_web-1 test -e /srv/alvo/prod/arquivo; then
+		ok "com var/cache trocada por um link, o reinício não apagou nada no alvo"
+	else
+		falhou "com var/cache trocada por um link, o reinício apagou a pasta prod do alvo"
+	fi
+
+	dono="$(docker exec mautic-mautic_web-1 stat -c '%U' /srv/alvo/prod/arquivo 2>/dev/null || true)"
+	if [[ "$dono" == "root" || -z "$dono" ]]; then
+		ok "o chown do reinício não seguiu o link"
+	else
+		falhou "o chown do reinício seguiu o link: o arquivo do alvo ficou com ${dono}"
+	fi
+else
+	falhou "não consegui montar o teste do link simbólico em var/cache"
+fi
+
+# Desfaz, e a web tem de voltar inteira.
+docker exec mautic-mautic_web-1 sh -c '
+	rm -f /var/www/html/var/cache
+	rm -rf /srv/alvo
+	[ -d /var/www/html/var/cache.guardado ] && mv /var/www/html/var/cache.guardado /var/www/html/var/cache' >/dev/null 2>&1 || true
+(cd /opt/playahead/mautic && docker compose restart mautic_web) >>"${LOGS}/reinicio-web.log" 2>&1 || true
+
+voltou=0
+for _ in $(seq 1 120); do
+	if [[ "$(docker inspect -f '{{.State.Health.Status}}' mautic-mautic_web-1 2>/dev/null || true)" == "healthy" ]]; then
+		voltou=1
+		break
+	fi
+	sleep 2
+done
+if [[ "$voltou" -eq 1 ]]; then
+	ok "a web voltou a ficar healthy depois do teste do link"
+else
+	falhou "a web não ficou healthy depois do teste do link"
+fi
+conferir_cache_mautic "depois do teste do link"
+
 # ------------------------------------------------------------
 passo "Segunda execução não reinstala"
 # ------------------------------------------------------------

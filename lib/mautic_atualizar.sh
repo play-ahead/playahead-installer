@@ -1062,6 +1062,7 @@ mautic_atualizar() {
 	mautic_atualizar_subir
 
 	mautic_verificar_roteamento "$PA_DOMINIO" || true
+	mautic_conferir_cookie "$PA_DOMINIO" || true
 
 	mautic_atualizar_registrar
 
