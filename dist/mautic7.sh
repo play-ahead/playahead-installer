@@ -16,7 +16,7 @@
 # https://playahead.com.br
 #
 # Versão: 0.1.0
-# Build:  2026-11-12T14:27:10Z
+# Build:  2026-11-12T15:07:03Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -192,6 +192,13 @@ PA_COR_DESTAQUE=""
 
 # 1 quando dá para perguntar: --yes ausente e stdin é terminal.
 PA_INTERATIVO=0
+
+# O que o cabeçalho diz embaixo do logo, no lugar do nome da
+# ferramenta. Só o menu preenche. Nasce vazia aqui, e não só no menu,
+# para um valor herdado do ambiente de quem roda nunca chegar ao
+# cabeçalho de um instalador: é ele que diz ao suporte qual instalador
+# rodou.
+PA_TITULO=""
 
 # Modo do terminal, guardado pelo ui_init e devolvido no EXIT.
 PA_TERMINAL_MODO=""
@@ -593,7 +600,7 @@ ui_resumo() {
 
 	while [[ "$#" -ge 3 ]]; do
 		rotulo="$1"
-		valor="$2"
+		valor="${2//[[:cntrl:]]/}"
 		origem="$3"
 		shift 3
 
@@ -921,9 +928,12 @@ ui_descartar_entrada() {
 ui_limpar_resposta() {
 	local -n _bruta="$1"
 
-	_bruta="${_bruta//$'\r'/}"
-	_bruta="${_bruta//$'\t'/}"
-	_bruta="${_bruta//$'\n'/}"
+	# Retorno de carro, tabulação e quebra de linha, e junto com eles
+	# todo caractere de controle. Um ESC colado numa resposta iria
+	# para a tela de confirmação e para o quadro final, e ali vira
+	# comando para o terminal: limpar a tela, trocar o título da
+	# janela.
+	_bruta="${_bruta//[[:cntrl:]]/}"
 
 	# Espaço das duas pontas, sem sed e sem subshell.
 	_bruta="${_bruta#"${_bruta%%[![:space:]]*}"}"
@@ -1313,11 +1323,24 @@ ui_colunas() {
 # somem e ficam só a de cima e a de baixo: uma senha partida no meio
 # pela moldura seria pior que moldura nenhuma.
 ui_quadro() {
-	local titulo="$1"
+	local titulo="${1//[[:cntrl:]]/}"
 	shift
-	local linhas=("$@")
 
-	local linha rotulo valor largura
+	# O que chega aqui pode ter vindo de fora: um e-mail lido do banco
+	# numa retomada, um nome detectado no Traefik de outra pessoa.
+	# Nenhum caractere de controle vai para a tela. A tabulação que
+	# separa o rótulo do valor é guardada antes.
+	local linhas=() linha rotulo valor largura
+	for linha in "$@"; do
+		if [[ "$linha" == *$'\t'* ]]; then
+			rotulo="${linha%%$'\t'*}"
+			valor="${linha#*$'\t'}"
+			linhas+=("${rotulo//[[:cntrl:]]/}"$'\t'"${valor//[[:cntrl:]]/}")
+		else
+			linhas+=("${linha//[[:cntrl:]]/}")
+		fi
+	done
+
 	local coluna=0
 	local maior
 	maior="$(ui_largura "$titulo")"
@@ -3654,6 +3677,17 @@ mautic_php_stdin() {
 # moram na camada dele (docroot/themes, docroot/plugins, vendor), e
 # se perderiam.
 mautic_limpar_cache() {
+	# Reiniciar só refaz o cache quando o compose instalado tem o
+	# entrypoint que o joga fora. Um compose gravado por um instalador
+	# anterior a 2026-11-12 não tem, e este instalador nunca regrava um
+	# compose que já existe: quem troca o compose é a atualização.
+	if ! grep -q 'var/cache' "${PA_MAUTIC_DIR}/docker-compose.yml" 2>/dev/null; then
+		ui_aviso "O compose desta instalação é de um instalador mais antigo."
+		ui_detalhe "Reiniciar o Mautic não vai refazer o cache dele. Para receber o"
+		ui_detalhe "compose novo, rode a atualização:"
+		ui_detalhe "sudo bash ${0} --atualizar"
+	fi
+
 	if ! mautic_compose restart mautic_web >/dev/null 2>&1; then
 		ui_aviso "Não consegui reiniciar o Mautic para refazer o cache."
 		ui_detalhe "O painel pode demorar a refletir idioma e fuso."
@@ -4588,6 +4622,10 @@ mautic_gravar_credenciais() {
 			printf '  senha:  %s\n' "$PA_MAUTIC_SENHA_ADMIN"
 		elif [[ "${PA_WIZARD:-0}" -eq 1 ]]; then
 			printf '  senha:  (a que você definir no assistente web)\n'
+			printf '\n'
+			printf '  Terminado o assistente, reinicie o Mautic uma vez, para o\n'
+			printf '  cache ser montado com o endereço do site:\n'
+			printf '    cd %s && docker compose restart mautic_web\n' "$PA_MAUTIC_DIR"
 		else
 			printf '  senha:  (definida em instalação anterior)\n'
 		fi
@@ -4659,6 +4697,38 @@ mautic_gravar_credenciais() {
 # ------------------------------------------------------------
 # Verificação anti-404
 # ------------------------------------------------------------
+
+# mautic_conferir_cookie <dominio>
+#
+# O cookie de login tem de sair com a marca "secure". O Mautic decide
+# isso quando monta o cache, olhando se o endereço do site começa com
+# https, e o cache é montado quando o container sobe (ver o entrypoint
+# da web, no compose). Se a limpeza do cache não aconteceu, o
+# container atende com o cache que veio na imagem, o cookie sai sem a
+# marca, e nada mais na tela denuncia. Pode acontecer com uma imagem
+# de outro formato, que é o caso de --versao=mais-nova.
+#
+# Avisa e segue, como as outras conferências do fim.
+mautic_conferir_cookie() {
+	local dominio="$1"
+	local cabecalhos=""
+
+	cabecalhos="$(curl -skI --max-time 20 "https://${dominio}/s/login" 2>/dev/null)" || true
+
+	# Sem cookie na resposta não há o que conferir.
+	grep -qi '^set-cookie:' <<<"$cabecalhos" || return 0
+
+	if grep -qiE '^set-cookie:.*; *secure' <<<"$cabecalhos"; then
+		ui_ok "O cookie de login sai marcado como seguro"
+		return 0
+	fi
+
+	ui_aviso "O cookie de login saiu sem a marca \"secure\"."
+	ui_detalhe "O cache do Mautic não foi refeito com o endereço deste site."
+	ui_detalhe "Reinicie o Mautic e abra o painel de novo:"
+	ui_detalhe "cd ${PA_MAUTIC_DIR} && docker compose restart mautic_web"
+	return 1
+}
 
 # mautic_verificar_roteamento <dominio>
 #
@@ -5926,6 +5996,7 @@ mautic_atualizar() {
 	mautic_atualizar_subir
 
 	mautic_verificar_roteamento "$PA_DOMINIO" || true
+	mautic_conferir_cookie "$PA_DOMINIO" || true
 
 	mautic_atualizar_registrar
 
@@ -5972,7 +6043,7 @@ mautic_atualizar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-11-12T14:27:10Z"
+PA_BUILD="2026-11-12T15:07:03Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
@@ -6658,6 +6729,10 @@ main_bloco_final() {
 			"Base"$'\t'"mautic"
 			"Usuário"$'\t'"mautic"
 			"Senha"$'\t'"${PA_MAUTIC_SENHA_BANCO}"
+			""
+			"Terminado o assistente, reinicie o Mautic uma vez, para o"
+			"cache ser montado com o endereço do site:"
+			"cd ${PA_MAUTIC_DIR} && docker compose restart mautic_web"
 		)
 	elif [[ "$PA_MAUTIC_JA_INSTALADO" -eq 1 && -z "$PA_MAUTIC_SENHA_ADMIN" ]]; then
 		linhas+=(
@@ -6756,6 +6831,12 @@ main() {
 	# projeto é não derrubar nada quando algo dá errado.
 	ui_etapa "Conferindo o endereço"
 	mautic_verificar_roteamento "$PA_DOMINIO" || true
+
+	# Com --wizard ainda não há endereço gravado: o cache certo só
+	# existe depois de a pessoa concluir o assistente e reiniciar.
+	if [[ "$PA_WIZARD" -eq 0 ]]; then
+		mautic_conferir_cookie "$PA_DOMINIO" || true
+	fi
 
 	# Último passo. A verificação acima não conta: ela avisa sem
 	# derrubar, e o Mautic está instalado de qualquer jeito.
@@ -6932,12 +7013,25 @@ services:
     # O chown devolve a pasta var/ ao www-data. Um comando de console
     # rodado como root deixa arquivos de root ali, e o Mautic, que roda
     # como www-data, passa a responder erro 500.
+    #
+    # Se var/cache não for uma pasta comum, nada é apagado, e um aviso
+    # sai no log do container. As pastas var/ e var/cache são do
+    # www-data, o usuário do site: quem invadisse o Mautic poderia
+    # trocar uma delas por um link simbólico, e este trecho, que roda
+    # como root, apagaria uma pasta "prod" no lugar para onde o link
+    # aponta. Medido em 2026-11-12. O chown leva -h para agir no link,
+    # e nunca no arquivo para onde ele aponta.
     entrypoint:
       - /bin/sh
       - -c
       - |
-        cd /var/www/html/var/cache && rm -rf prod pro_ pro~ prod.velho
-        chown -R www-data:www-data /var/www/html/var
+        v=/var/www/html/var
+        if [ -d "$$v/cache" ] && [ ! -L "$$v" ] && [ ! -L "$$v/cache" ]; then
+          rm -rf -- "$$v/cache/prod" "$$v/cache/pro_" "$$v/cache/pro~" "$$v/cache/prod.velho"
+        else
+          echo "playahead: AVISO: var/cache não é uma pasta comum; o cache do Mautic não foi apagado"
+        fi
+        chown -R -h www-data:www-data "$$v"
         exec /entrypoint.sh
 
     depends_on:

@@ -63,6 +63,16 @@ def main():
 
     pid, fd = pty.fork()
     if pid == 0:
+        # Devolve ao normal os sinais que chegam ignorados. Um processo
+        # lançado em segundo plano (com "&", ou com nohup) herda o
+        # Ctrl-C e a queda do terminal ignorados, e o bash não deixa um
+        # script voltar a tratar um sinal que já nasceu ignorado: o ^C
+        # deste roteiro não teria efeito nenhum no comando testado.
+        # Visto em 2026-11-12: o instalador ficou parado na pergunta,
+        # com o "^C" na tela.
+        for sinal in (signal.SIGINT, signal.SIGQUIT, signal.SIGHUP):
+            signal.signal(sinal, signal.SIG_DFL)
+
         os.environ["TERM"] = "xterm-256color"
         if a.sem_cor:
             os.environ["NO_COLOR"] = "1"

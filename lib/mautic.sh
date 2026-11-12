@@ -567,6 +567,17 @@ mautic_php_stdin() {
 # moram na camada dele (docroot/themes, docroot/plugins, vendor), e
 # se perderiam.
 mautic_limpar_cache() {
+	# Reiniciar só refaz o cache quando o compose instalado tem o
+	# entrypoint que o joga fora. Um compose gravado por um instalador
+	# anterior a 2026-11-12 não tem, e este instalador nunca regrava um
+	# compose que já existe: quem troca o compose é a atualização.
+	if ! grep -q 'var/cache' "${PA_MAUTIC_DIR}/docker-compose.yml" 2>/dev/null; then
+		ui_aviso "O compose desta instalação é de um instalador mais antigo."
+		ui_detalhe "Reiniciar o Mautic não vai refazer o cache dele. Para receber o"
+		ui_detalhe "compose novo, rode a atualização:"
+		ui_detalhe "sudo bash ${0} --atualizar"
+	fi
+
 	if ! mautic_compose restart mautic_web >/dev/null 2>&1; then
 		ui_aviso "Não consegui reiniciar o Mautic para refazer o cache."
 		ui_detalhe "O painel pode demorar a refletir idioma e fuso."
@@ -1501,6 +1512,10 @@ mautic_gravar_credenciais() {
 			printf '  senha:  %s\n' "$PA_MAUTIC_SENHA_ADMIN"
 		elif [[ "${PA_WIZARD:-0}" -eq 1 ]]; then
 			printf '  senha:  (a que você definir no assistente web)\n'
+			printf '\n'
+			printf '  Terminado o assistente, reinicie o Mautic uma vez, para o\n'
+			printf '  cache ser montado com o endereço do site:\n'
+			printf '    cd %s && docker compose restart mautic_web\n' "$PA_MAUTIC_DIR"
 		else
 			printf '  senha:  (definida em instalação anterior)\n'
 		fi
@@ -1572,6 +1587,38 @@ mautic_gravar_credenciais() {
 # ------------------------------------------------------------
 # Verificação anti-404
 # ------------------------------------------------------------
+
+# mautic_conferir_cookie <dominio>
+#
+# O cookie de login tem de sair com a marca "secure". O Mautic decide
+# isso quando monta o cache, olhando se o endereço do site começa com
+# https, e o cache é montado quando o container sobe (ver o entrypoint
+# da web, no compose). Se a limpeza do cache não aconteceu, o
+# container atende com o cache que veio na imagem, o cookie sai sem a
+# marca, e nada mais na tela denuncia. Pode acontecer com uma imagem
+# de outro formato, que é o caso de --versao=mais-nova.
+#
+# Avisa e segue, como as outras conferências do fim.
+mautic_conferir_cookie() {
+	local dominio="$1"
+	local cabecalhos=""
+
+	cabecalhos="$(curl -skI --max-time 20 "https://${dominio}/s/login" 2>/dev/null)" || true
+
+	# Sem cookie na resposta não há o que conferir.
+	grep -qi '^set-cookie:' <<<"$cabecalhos" || return 0
+
+	if grep -qiE '^set-cookie:.*; *secure' <<<"$cabecalhos"; then
+		ui_ok "O cookie de login sai marcado como seguro"
+		return 0
+	fi
+
+	ui_aviso "O cookie de login saiu sem a marca \"secure\"."
+	ui_detalhe "O cache do Mautic não foi refeito com o endereço deste site."
+	ui_detalhe "Reinicie o Mautic e abra o painel de novo:"
+	ui_detalhe "cd ${PA_MAUTIC_DIR} && docker compose restart mautic_web"
+	return 1
+}
 
 # mautic_verificar_roteamento <dominio>
 #

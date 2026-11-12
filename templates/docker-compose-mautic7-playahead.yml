@@ -160,12 +160,25 @@ services:
     # O chown devolve a pasta var/ ao www-data. Um comando de console
     # rodado como root deixa arquivos de root ali, e o Mautic, que roda
     # como www-data, passa a responder erro 500.
+    #
+    # Se var/cache não for uma pasta comum, nada é apagado, e um aviso
+    # sai no log do container. As pastas var/ e var/cache são do
+    # www-data, o usuário do site: quem invadisse o Mautic poderia
+    # trocar uma delas por um link simbólico, e este trecho, que roda
+    # como root, apagaria uma pasta "prod" no lugar para onde o link
+    # aponta. Medido em 2026-11-12. O chown leva -h para agir no link,
+    # e nunca no arquivo para onde ele aponta.
     entrypoint:
       - /bin/sh
       - -c
       - |
-        cd /var/www/html/var/cache && rm -rf prod pro_ pro~ prod.velho
-        chown -R www-data:www-data /var/www/html/var
+        v=/var/www/html/var
+        if [ -d "$$v/cache" ] && [ ! -L "$$v" ] && [ ! -L "$$v/cache" ]; then
+          rm -rf -- "$$v/cache/prod" "$$v/cache/pro_" "$$v/cache/pro~" "$$v/cache/prod.velho"
+        else
+          echo "playahead: AVISO: var/cache não é uma pasta comum; o cache do Mautic não foi apagado"
+        fi
+        chown -R -h www-data:www-data "$$v"
         exec /entrypoint.sh
 
     depends_on:

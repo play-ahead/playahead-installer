@@ -105,12 +105,14 @@ menu_registrar() {
 #
 # Verdadeiro quando a marca daquele instalador existe nesta máquina.
 menu_instalado() {
-	local marca
+	local marcas=() marca
 
-	# Sem aspas de propósito: pode ser mais de um caminho, separados
-	# por espaço, e basta um deles existir.
-	# shellcheck disable=SC2086
-	for marca in ${PA_MENU_INSTALADO[$1]}; do
+	# Pode ser mais de um caminho, separados por espaço, e basta um
+	# deles existir. O read separa as palavras sem expandir curinga,
+	# o que um "for" sem aspas faria.
+	read -ra marcas <<<"${PA_MENU_INSTALADO[$1]}"
+
+	for marca in ${marcas[@]+"${marcas[@]}"}; do
 		[[ -e "$marca" ]] && return 0
 	done
 
@@ -277,12 +279,19 @@ menu_gravar() {
 			"Apague o link, ou rode o menu de outra pasta."
 	fi
 
+	# Mesmo igual ao embutido, o arquivo é gravado de novo, sem
+	# pergunta. Entre a comparação e a execução, quem fosse dono dele
+	# numa pasta compartilhada poderia trocá-lo. Gravado agora, por
+	# troca de nome, ele é de root e é o que este menu carrega.
+	local igual=0
+
 	if [[ -e "$arquivo" ]]; then
 		if "$extrator" | cmp -s - "$arquivo"; then
-			ui_ok "${arquivo} já está aqui, e é igual ao deste menu"
-			return 0
+			igual=1
 		fi
+	fi
 
+	if [[ -e "$arquivo" && "$igual" -eq 0 ]]; then
 		# A mensagem precisa dizer que o que existe é o ARQUIVO do
 		# instalador, e não a ferramenta instalada. No teste de
 		# 2026-09-30 a versão anterior, "mautic7.sh já existe neste
@@ -322,7 +331,11 @@ menu_gravar() {
 			"Verifique a permissão de escrita em: $(pwd)"
 	fi
 
-	ui_ok "${arquivo} gravado em $(pwd)"
+	if [[ "$igual" -eq 1 ]]; then
+		ui_ok "${arquivo} já estava aqui, igual ao deste menu"
+	else
+		ui_ok "${arquivo} gravado em $(pwd)"
+	fi
 }
 
 # menu_executar <indice>

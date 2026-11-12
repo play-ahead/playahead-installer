@@ -1083,10 +1083,63 @@ executar. Estão na ordem do risco.
 
 ### O que ainda não foi auditado
 
-O visual (bloco 3) ainda não existia. Depois dele, as duas auditorias são
-repetidas só no que mudar. A configuração da rotina no claude.ai não é
-visível para um agente de auditoria: as duas usaram o arquivo do prompt e
-os fatos medidos na primeira execução.
+A configuração da rotina no claude.ai não é visível para um agente de
+auditoria: as duas usaram o arquivo do prompt e os fatos medidos na
+primeira execução.
+
+### Segunda rodada, sobre o que mudou depois (2026-11-12)
+
+Depois da primeira rodada entraram a limpeza de cache pelo reinício e o
+visual, com o menu geral. As duas auditorias foram repetidas só nesse
+intervalo (`7e35c6e..40940ae`), de novo uma com Fable 5.2 e outra com Opus
+5.5, cada uma num agente que não viu este trabalho nem a outra.
+
+**Nenhuma achou nada crítico, alto nem médio.** Somando as duas, oito
+pontos de gravidade baixa. Cada um foi reproduzido antes de ser corrigido,
+e depois da correção a mesma prova termina em recusa.
+
+| Achado | Quem achou | Como foi confirmado | O que foi feito |
+|---|---|---|---|
+| O entrypoint novo da web apaga o cache como root, numa pasta que é do usuário do site. Trocada `var/cache` por um link simbólico, o root apagava uma pasta `prod` no lugar para onde o link aponta | as duas | na VPS: uma pasta `prod` de root, fora de `var/`, sumiu depois do reinício. O `chown -R` não seguiu o link | o entrypoint não apaga nada quando `var/` ou `var/cache` não é uma pasta comum, e avisa no log do container; o `chown` leva `-h` |
+| Quando a limpeza do cache não acontece, ninguém avisa, e o que se perde é o `secure` do cookie | Fable | leitura; o aviso foi provado com um compose sem o entrypoint | aviso no log do container; o instalador e a atualização conferem o cookie no fim (`mautic_conferir_cookie`) e avisam |
+| `mautic_limpar_cache` supõe o compose novo. Numa retomada sobre um compose de instalador anterior, reiniciar não limpa nada | as duas | função chamada sobre um compose sem o entrypoint: não avisava | a função avisa e manda rodar `--atualizar`, que é quem troca o compose |
+| A versão entrava no código gerado do menu sem filtro: um `PA_VERSAO` com `$(comando)` virava comando no `dist/playahead.sh` | as duas | `PA_VERSAO="0.1.0$(date +%s)"` passou no build, e o comando rodou no `--version` do menu | o build exige a versão no formato `0.0.0` |
+| Tema guardado em `docs/visual/` é código, e o build só conferia nomes e sintaxe. Um tema com `$(comando)` passava no `--check`; um número entre aspas simples também executava, porque margens e largura entram em conta | Fable | os dois casos rodaram o comando na prévia, com o `--check` aprovando | `conferir_tema`: o bloco `TEMA` do `lib/ui.sh` e cada tema guardado, inteiro, só podem ter variável `PA_TEMA_` com valor literal; o que entra em conta tem de ser número puro, e cor só dígito e ponto e vírgula |
+| `PA_TITULO` herdada do ambiente trocava o cabeçalho do `base.sh` e do `mautic7.sh`, com código de terminal junto | Fable | `PA_TITULO=... bash dist/mautic7.sh` mostrou o texto de fora no cabeçalho | a variável nasce vazia no `lib/ui.sh` |
+| Caractere de controle (ESC) passava cru pelo quadro final, pela tela de confirmação e pelas respostas digitadas | Fable | `ui_quadro` e `ui_resumo` com ESC no valor: saiu ESC | `ui_limpar_resposta`, `ui_resumo` e `ui_quadro` tiram todo caractere de controle do que mostram |
+| `menu_instalado` expandia a marca sem aspas, o que também expande curinga | Opus | leitura; os caminhos são constantes do build | `read -ra`, que separa sem expandir |
+
+Conferido e em ordem, pelas duas: nenhum `eval` nem `printf` com formato
+vindo de fora; senha fora da lista de processos; logs novos do teste sem
+segredo; o `./build.sh --check` reprovou todo `dist/` adulterado que
+testaram; a trava da rotina não ganhou caminho novo (oito pedidos simulados
+pelo Fable); portas, painéis e cabeçalhos HTTPS não mudaram. Depois do
+reinício, nada em `var/` fica com outro dono (medido na VPS: 0 arquivos).
+
+**Corrigido por tabela, visto de passagem pelo Fable:** o menu executava
+sem regravar um instalador que já estava na pasta e era igual ao embutido.
+Numa pasta compartilhada, o dono do arquivo poderia trocá-lo entre a
+comparação e a execução. Agora o menu grava de novo mesmo o arquivo igual.
+
+**Não medido, e resolvido por instrução:** com `--wizard`, se o cookie sai
+com `secure` depois de a pessoa concluir o assistente pelo navegador. O
+bloco final e o `credenciais.txt` do `--wizard` passaram a mandar reiniciar
+o Mautic depois do assistente, o que garante o cache certo em qualquer
+caso.
+
+**Ficou como está, registrado:**
+
+- `testes/ponta-a-ponta.sh` grava os logs numa pasta de nome fixo em
+  `/tmp`. Só importa em máquina com outro usuário local, e o teste roda em
+  máquina descartável. O workflow depende do caminho fixo para guardar os
+  logs.
+- A regra do `CLAUDE.md` na trava aceita mover uma linha de lugar (remoção
+  e acréscimo iguais) e trocar números de um endereço IP, que casa com o
+  padrão de versão. O alcance é um texto de documentação fora de ordem.
+
+O teste fixo ganhou duas conferências com isso: nada em `var/` com outro
+dono depois do reinício, e `var/cache` trocada por um link simbólico, com
+uma pasta `prod` de root no alvo, que tem de sobreviver ao reinício.
 
 ## Visual
 
@@ -1533,7 +1586,8 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
     testes/ponta-a-ponta.sh teste fixo: instala e confere   (não publicado)
     testes/trava-versoes.sh trava dos pedidos da rotina     (não publicado)
     testes/vps/             apoio aos testes na VPS: zerar, rodar num pty,
-                            reproduzir o cache pela metade
+                            reproduzir o cache pela metade, abrir os
+                            painéis num navegador (Playwright)
     docs/visual/            os dois temas que não estão em uso, a prévia
                             e as telas dos três (não publicado)
     rotinas/vigia-de-versoes.md
@@ -2554,6 +2608,21 @@ por uma migração de banco de verdade, e a volta pelo backup depois dela.
 
 **Armadilhas dos testes, aprendidas nesta conversa**
 
+- **Processo lançado em segundo plano herda o Ctrl-C ignorado**, e o bash
+  não deixa um script voltar a tratar um sinal que já nasceu ignorado. Em
+  2026-11-12 o ensaio pelo menu, lançado com `setsid nohup ... &`, mandou
+  `^C` numa pergunta e a base ficou parada, com o `^C` na tela: parecia
+  defeito do instalador, e era do jeito de lançar. O
+  `testes/vps/pty-rodar.py` passou a devolver `SIGINT`, `SIGQUIT` e
+  `SIGHUP` ao normal antes de rodar o comando.
+- **O opcache esconde arquivo apagado por alguns segundos.** Apagar os
+  proxies do Doctrine com o site no ar não derruba a tela de login na
+  hora. Para provar que o reinício refaz o cache, o teste confere que os
+  arquivos voltaram, e não que o login caiu.
+- **O Docker guarda só os últimos eventos.** `docker events --since` de uma
+  hora atrás volta vazio numa máquina com healthcheck a cada 15 s. Para
+  reconstruir um instante, valem o horário dos arquivos e o log do
+  container.
 - Numa VPS de 1 vCPU, comando longo (instalação, `docker compose up -d`) roda
   desligado da sessão SSH (`setsid nohup ... &`) e é acompanhado por um laço
   curto de conferência: a carga derruba o SSH, e o comando morre junto.

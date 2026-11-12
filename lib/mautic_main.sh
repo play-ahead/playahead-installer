@@ -718,6 +718,10 @@ main_bloco_final() {
 			"Base"$'\t'"mautic"
 			"Usuário"$'\t'"mautic"
 			"Senha"$'\t'"${PA_MAUTIC_SENHA_BANCO}"
+			""
+			"Terminado o assistente, reinicie o Mautic uma vez, para o"
+			"cache ser montado com o endereço do site:"
+			"cd ${PA_MAUTIC_DIR} && docker compose restart mautic_web"
 		)
 	elif [[ "$PA_MAUTIC_JA_INSTALADO" -eq 1 && -z "$PA_MAUTIC_SENHA_ADMIN" ]]; then
 		linhas+=(
@@ -816,6 +820,12 @@ main() {
 	# projeto é não derrubar nada quando algo dá errado.
 	ui_etapa "Conferindo o endereço"
 	mautic_verificar_roteamento "$PA_DOMINIO" || true
+
+	# Com --wizard ainda não há endereço gravado: o cache certo só
+	# existe depois de a pessoa concluir o assistente e reiniciar.
+	if [[ "$PA_WIZARD" -eq 0 ]]; then
+		mautic_conferir_cookie "$PA_DOMINIO" || true
+	fi
 
 	# Último passo. A verificação acima não conta: ela avisa sem
 	# derrubar, e o Mautic está instalado de qualquer jeito.

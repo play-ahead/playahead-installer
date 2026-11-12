@@ -266,7 +266,14 @@ embutir_instaladores() {
 			erro "playahead: ${arq} contém ${delim}; troque o delimitador"
 		fi
 
+		# A versão também entra na linha gerada, entre aspas duplas,
+		# e por isso passa por um filtro como os textos: só número, no
+		# formato 0.0.0. Um PA_VERSAO com "$(...)" viraria comando no
+		# artefato do menu.
 		versao="$(ler_var PA_VERSAO "$(orquestrador_de "$alvo")")"
+		[[ "$versao" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+			erro "playahead: a versão de ${alvo} não está no formato 0.0.0"
+
 		nome="$(texto_do_menu "$alvo" nome "${PA_MENU_NOME[$alvo]:-}")"
 		descricao="$(texto_do_menu "$alvo" descrição "${PA_MENU_DESCRICAO[$alvo]:-}")"
 		grupo="$(texto_do_menu "$alvo" grupo "${PA_MENU_GRUPO[$alvo]:-}")"
@@ -559,18 +566,126 @@ variaveis_do_tema() {
 	grep -oE '^PA_TEMA_[A-Z_]+=' "$1" | sort -u
 }
 
+# bloco_do_tema <arquivo>
+#
+# As linhas entre o título "# TEMA" e o "# FIM DO TEMA".
+bloco_do_tema() {
+	awk '
+		$0 == "# TEMA"        { dentro = 1; next }
+		$0 == "# FIM DO TEMA" { dentro = 0 }
+		dentro                { print }
+	' "$1"
+}
+
+# conferir_tema <rótulo para a mensagem>
+#
+# Lê do stdin as linhas de um tema e para o build se alguma for mais
+# que um dado. Um tema é uma lista de variáveis PA_TEMA_ com valor
+# literal, e mais nada.
+#
+# Importa porque tema vira código. O docs/visual/previa.sh carrega o
+# arquivo do tema, e trocar de tema é copiar o bloco para dentro do
+# lib/ui.sh, que roda como root na VPS de quem instala. Antes desta
+# conferência (auditoria de 2026-11-12), um tema com "$(comando)"
+# passava no build, e um número entre aspas simples, que parece
+# texto, também executava: as margens e a largura entram em conta.
+#
+# O que uma linha pode ser:
+#
+#   vazia, ou comentário
+#   PA_TEMA_NOME=123                número puro
+#   PA_TEMA_NOME="texto"            sem aspa, cifrão, crase nem barra
+#                                   invertida dentro
+#   PA_TEMA_NOME=("a" "b")          lista numa linha, de textos assim
+#   PA_TEMA_NOME=(                  lista em várias linhas: cada item
+#       'texto'                     entre aspas simples, numa linha só
+#   )
+#
+# E mais duas regras de tipo: o que entra em conta (largura, margens e
+# as chaves de 0 ou 1) tem de ser número puro, e cor tem de ser só
+# dígito e ponto e vírgula.
+conferir_tema() {
+	local rotulo="$1"
+	local texto='[^"$`\\]*'
+	local re_numero='^(PA_TEMA_[A-Z_]+)=[0-9]+$'
+	local re_texto="^(PA_TEMA_[A-Z_]+)=\"${texto}\"\$"
+	local re_lista="^(PA_TEMA_[A-Z_]+)=\\((\"${texto}\" ?)+\\)\$"
+	local re_abre='^(PA_TEMA_[A-Z_]+)=\($'
+	local re_item="^[[:space:]]+'[^']*'\$"
+	local re_cor='^PA_TEMA_COR_[A-Z_]+="[0-9;]+"$'
+	local re_conta='^PA_TEMA_(LARGURA|MARGEM_[A-Z]+|[A-Z]+_LINHA|[A-Z]+_FECHA)$'
+
+	local linha nome na_lista=0 n=0
+	while IFS= read -r linha || [[ -n "$linha" ]]; do
+		n=$((n + 1))
+
+		if [[ "$na_lista" -eq 1 ]]; then
+			if [[ "$linha" == ")" ]]; then
+				na_lista=0
+			elif [[ ! "$linha" =~ $re_item ]]; then
+				erro "${rotulo}: linha ${n} do tema não é um item de lista entre aspas simples"
+			fi
+			continue
+		fi
+
+		[[ -z "$linha" || "$linha" == "#"* ]] && continue
+
+		if [[ "$linha" =~ $re_abre ]]; then
+			na_lista=1
+			continue
+		fi
+
+		if [[ "$linha" =~ $re_numero ]]; then
+			continue
+		fi
+
+		if [[ "$linha" =~ $re_texto || "$linha" =~ $re_lista ]]; then
+			nome="${BASH_REMATCH[1]}"
+
+			if [[ "$nome" =~ $re_conta ]]; then
+				erro "${rotulo}: ${nome} entra em conta, e tem de ser número puro, sem aspas"
+			fi
+
+			if [[ "$nome" == PA_TEMA_COR_* && ! "$linha" =~ $re_cor ]]; then
+				erro "${rotulo}: ${nome} tem de ser só dígito e ponto e vírgula"
+			fi
+
+			continue
+		fi
+
+		erro "${rotulo}: linha ${n} do tema não é uma variável PA_TEMA_ com valor literal"
+	done
+
+	[[ "$na_lista" -eq 0 ]] || erro "${rotulo}: lista do tema sem o parêntese de fecho"
+}
+
 # verificar_temas
 #
-# Os temas de docs/visual/ só servem se puderem entrar no lugar do
-# bloco de tema do lib/ui.sh. Para isso têm de declarar exatamente as
-# mesmas variáveis. Um tema guardado que ficou para trás quando o
-# bloco ganhou uma variável nova quebraria no dia da troca, que é
-# justamente o dia em que ninguém lembra mais do motivo.
+# Duas conferências. O bloco TEMA do lib/ui.sh e cada arquivo de
+# docs/visual/ têm de ser só dados (ver conferir_tema): o arquivo
+# guardado é conferido inteiro, e não só o bloco, porque a prévia o
+# carrega inteiro.
+#
+# E os temas guardados só servem se puderem entrar no lugar do bloco
+# do lib/ui.sh. Para isso têm de declarar exatamente as mesmas
+# variáveis. Um tema guardado que ficou para trás quando o bloco
+# ganhou uma variável nova quebraria no dia da troca, que é justamente
+# o dia em que ninguém lembra mais do motivo.
 verificar_temas() {
 	local tema quantos=0
 
+	[[ -n "$(bloco_do_tema lib/ui.sh)" ]] ||
+		erro "não achei o bloco TEMA em lib/ui.sh"
+
+	bloco_do_tema lib/ui.sh | conferir_tema "lib/ui.sh"
+
 	for tema in docs/visual/tema-*.sh; do
 		[[ -f "$tema" ]] || continue
+
+		# O primeiro "$tema" é só o nome para a mensagem de erro: o
+		# arquivo é lido, e nunca escrito.
+		# shellcheck disable=SC2094
+		conferir_tema "$tema" <"$tema"
 
 		if [[ "$(variaveis_do_tema "$tema")" != "$(variaveis_do_tema lib/ui.sh)" ]]; then
 			erro "${tema} não declara as mesmas variáveis do tema de lib/ui.sh"
@@ -580,7 +695,7 @@ verificar_temas() {
 		quantos=$((quantos + 1))
 	done
 
-	info "temas de docs/visual: ${quantos}, com as mesmas variáveis de lib/ui.sh"
+	info "tema de lib/ui.sh e ${quantos} de docs/visual: só dados, com as mesmas variáveis"
 }
 
 # ------------------------------------------------------------
