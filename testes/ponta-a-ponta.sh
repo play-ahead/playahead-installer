@@ -544,6 +544,27 @@ else
 	falhou "mautic7.sh de novo não reconheceu a instalação"
 fi
 
+# A base de novo, sem dizer nada sobre o Portainer. Com um Portainer
+# no ar ela não pergunta o subdomínio nem exige a opção: diz que ele
+# foi encontrado, e não recria nada.
+antes="$(docker ps --format '{{.Names}} {{.ID}}' | sort)"
+
+if bash dist/base.sh --yes >"${LOGS}/base-de-novo.log" 2>&1; then
+	ok "base.sh de novo, sem opção do Portainer: saiu com 0"
+else
+	falhou "base.sh de novo, sem opção do Portainer, saiu com $?"
+	tail -n 20 "${LOGS}/base-de-novo.log"
+fi
+
+confere "base.sh de novo: disse que o Portainer foi encontrado e será mantido" \
+	grep -q "Já existe um Portainer nesta máquina" "${LOGS}/base-de-novo.log"
+
+if [[ "$(docker ps --format '{{.Names}} {{.ID}}' | sort)" == "$antes" ]]; then
+	ok "base.sh de novo: nenhum container foi recriado"
+else
+	falhou "base.sh de novo: a lista de containers mudou"
+fi
+
 # ------------------------------------------------------------
 passo "Modo de atualização: nada a fazer numa instalação nova"
 # ------------------------------------------------------------
@@ -752,6 +773,7 @@ conferir_etapas() {
 
 if [[ "${FORMATO_ANTES}${FORMATO_DEPOIS}" == *"{n}"* ]]; then
 	conferir_etapas "${LOGS}/base.log" 7
+	conferir_etapas "${LOGS}/base-de-novo.log" 7
 	conferir_etapas "${LOGS}/mautic.log" 8
 	conferir_etapas "${LOGS}/mautic-atualizar.log" 6
 	conferir_etapas "${LOGS}/base-atualizar.log" 5
