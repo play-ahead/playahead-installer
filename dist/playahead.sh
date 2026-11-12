@@ -16,7 +16,7 @@
 # https://playahead.com.br
 #
 # Versão: 0.1.0
-# Build:  2026-11-12T15:07:03Z
+# Build:  2026-11-12T15:37:13Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -1481,7 +1481,7 @@ ui_mascarar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-11-12T15:07:03Z"
+PA_BUILD="2026-11-12T15:37:13Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Menu de instaladores"
 
@@ -2016,7 +2016,7 @@ menu_conteudo_base() {
 # https://playahead.com.br
 #
 # Versão: 0.1.0
-# Build:  2026-11-12T15:07:03Z
+# Build:  2026-11-12T15:37:13Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -5641,19 +5641,26 @@ traefik_detectar() {
 traefik_mostrar_deteccao() {
 	ui_secao "O que encontrei no Traefik desta máquina"
 
-	printf '  %-16s %-24s %s\n' "ITEM" "VALOR" "ORIGEM"
-	printf '  %-16s %-24s %s\n' \
+	# Pelo ui_info, e não por printf direto, para a tabela começar na
+	# mesma coluna do resto da tela, seja qual for o tema.
+	local linha
+	printf -v linha '%-16s %-24s %s' "ITEM" "VALOR" "ORIGEM"
+	ui_info "$linha"
+	printf -v linha '%-16s %-24s %s' \
 		"rede" \
 		"${PA_TRAEFIK_NETWORK:-<não encontrada>}" \
 		"$PA_TRAEFIK_NETWORK_ORIGEM"
-	printf '  %-16s %-24s %s\n' \
+	ui_info "$linha"
+	printf -v linha '%-16s %-24s %s' \
 		"entrypoint" \
 		"${PA_TRAEFIK_ENTRYPOINT:-<não encontrado>}" \
 		"$PA_TRAEFIK_ENTRYPOINT_ORIGEM"
-	printf '  %-16s %-24s %s\n' \
+	ui_info "$linha"
+	printf -v linha '%-16s %-24s %s' \
 		"certresolver" \
 		"${PA_TRAEFIK_CERTRESOLVER:-<nenhum>}" \
 		"$PA_TRAEFIK_CERTRESOLVER_ORIGEM"
+	ui_info "$linha"
 
 	ui_vazio
 
@@ -7220,7 +7227,7 @@ base_atualizar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-11-12T15:07:03Z"
+PA_BUILD="2026-11-12T15:37:13Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
@@ -7724,7 +7731,7 @@ menu_conteudo_mautic7() {
 # https://playahead.com.br
 #
 # Versão: 0.1.0
-# Build:  2026-11-12T15:07:03Z
+# Build:  2026-11-12T15:37:13Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -10560,19 +10567,26 @@ traefik_detectar() {
 traefik_mostrar_deteccao() {
 	ui_secao "O que encontrei no Traefik desta máquina"
 
-	printf '  %-16s %-24s %s\n' "ITEM" "VALOR" "ORIGEM"
-	printf '  %-16s %-24s %s\n' \
+	# Pelo ui_info, e não por printf direto, para a tabela começar na
+	# mesma coluna do resto da tela, seja qual for o tema.
+	local linha
+	printf -v linha '%-16s %-24s %s' "ITEM" "VALOR" "ORIGEM"
+	ui_info "$linha"
+	printf -v linha '%-16s %-24s %s' \
 		"rede" \
 		"${PA_TRAEFIK_NETWORK:-<não encontrada>}" \
 		"$PA_TRAEFIK_NETWORK_ORIGEM"
-	printf '  %-16s %-24s %s\n' \
+	ui_info "$linha"
+	printf -v linha '%-16s %-24s %s' \
 		"entrypoint" \
 		"${PA_TRAEFIK_ENTRYPOINT:-<não encontrado>}" \
 		"$PA_TRAEFIK_ENTRYPOINT_ORIGEM"
-	printf '  %-16s %-24s %s\n' \
+	ui_info "$linha"
+	printf -v linha '%-16s %-24s %s' \
 		"certresolver" \
 		"${PA_TRAEFIK_CERTRESOLVER:-<nenhum>}" \
 		"$PA_TRAEFIK_CERTRESOLVER_ORIGEM"
+	ui_info "$linha"
 
 	ui_vazio
 
@@ -13751,7 +13765,7 @@ mautic_atualizar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-11-12T15:07:03Z"
+PA_BUILD="2026-11-12T15:37:13Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 
 # Qual ferramenta este instalador instala.
