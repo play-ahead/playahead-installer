@@ -96,6 +96,10 @@ prefixo da ferramenta: `mautic7-v0.1.0`. Uma tag `v0.1.0` solta ficaria
 ambígua no dia em que o segundo instalador entrar, e aí conviveriam dois
 formatos.
 
+**A base também leva tag (decisão do Fabio em 2026-11-12).** As duas
+primeiras saem juntas, depois do teste final dele: `base-v0.1.0` e
+`mautic7-v0.1.0`. Para o menu não foi pedida tag.
+
 O script diz qual ferramenta instala, no cabeçalho de tela, no cabeçalho do
 artefato e no `--version`. O nome vive em `PA_FERRAMENTA`, em `lib/main.sh`, e
 não em `lib/ui.sh`: o `ui.sh` é genérico e vai ser reaproveitado pelos
@@ -183,6 +187,33 @@ Para pular: `--sem-portainer`, ou Enter na pergunta do subdomínio. No modo
 `--yes` o subdomínio passou a ser dado obrigatório, e faltando ele o script para
 e pede `--portainer-domain=` ou `--sem-portainer`, em vez de escolher em
 silêncio.
+
+**Com um Portainer já no ar, a base não pergunta o subdomínio (2026-11-12,
+decisão do Fabio depois do ensaio do teste final).** Rodar a base de novo
+pedia outra vez o subdomínio, e com Enter a tela dizia "Portainer não será
+instalado" ao lado de um Portainer funcionando. Agora a etapa que descobre a
+situação da máquina diz que ele foi encontrado e que fica como está. A
+decisão de nunca mexer num Portainer que já existe não mudou: mudou só a
+pergunta.
+
+- Vale para Portainer **no ar**, o nosso ou o de outra pessoa
+  (`portainer_ja_existe`, que olha os containers em execução).
+- O endereço aparece quando o compose é o que esta base gravou
+  (`portainer_dominio_instalado` lê a regra `Host()` dele). Só passa para a
+  tela o que tem cara de domínio.
+- A tela de confirmação mostra "manter o que já está no ar", como
+  `detectado`, e a etapa do Portainer aponta o `credenciais.txt` dele.
+- No modo `--yes`, o subdomínio deixa de ser dado obrigatório nesse caso.
+  Um `--portainer-domain=` passado junto não tem efeito, e a tela diz isso.
+- Com o compose gravado e o container parado, que é como fica uma base
+  interrompida no meio, nada mudou: a pergunta aparece, e o
+  `portainer_instalar` mantém o compose e sobe o container.
+
+Testado na VPS de 2 GB em 2026-11-12: pelo menu, a base rodou de novo sem
+perguntar nada e sem recriar container; com `--yes` e sem flag nenhuma do
+Portainer, saída 0; com o Portainer parado, a pergunta apareceu. O teste
+fixo ganhou a conferência: roda a base de novo com `--yes` e exige a saída
+0, a frase na tela, as 7 etapas na ordem e os mesmos containers de antes.
 
 ### O menu
 
@@ -379,9 +410,10 @@ fim sem input. Cada instalador é dono da própria conversa.
 1. Checagens de máquina: bash real, root/sudo, arquitetura, sistema
    operacional, RAM, disco.
 2. Classificação do estado. Swarm ativo para aqui. Havendo proxy, mostra o que
-   detectou; não havendo, exige as portas 80 e 443 livres.
+   detectou; não havendo, exige as portas 80 e 443 livres. Havendo um
+   Portainer no ar, diz que ele foi encontrado e será mantido.
 3. Perguntas: e-mail do ACME, se vai instalar o Traefik; subdomínio do
-   Portainer, sempre, com Enter pulando.
+   Portainer, com Enter pulando, quando não há Portainer no ar.
 4. Validação do DNS do Portainer, que **avisa em vez de abortar**.
 5. Swap, Docker, Compose, rede do proxy, Traefik.
 6. Portainer, com a senha do admin gerada pelo script.
@@ -563,7 +595,7 @@ o que saiu do `mautic7.sh` saiu porque a responsabilidade mudou de dono.
 | # | Pergunta | Quando | Default | Flag |
 |---|---|---|---|---|
 | 1 | E-mail para o Let's Encrypt | só se vai instalar o Traefik | - | `--acme-email=` |
-| 2 | Subdomínio do Portainer | sempre; Enter pula | - | `--portainer-domain=` |
+| 2 | Subdomínio do Portainer | quando não há Portainer no ar; Enter pula | - | `--portainer-domain=` |
 | 3 | Continuar em Ubuntu LTS não testado? | só se o SO for LTS mais nova | sim | - |
 
 **mautic7.sh**
@@ -584,6 +616,9 @@ todo Traefik como sendo de outro script.
 Uma terceira em 2026-09-30: a pergunta do Portainer deixou de depender de
 `--portainer` e passou a aparecer sempre, porque o Portainer entrou no fluxo
 normal da base. É a única pergunta do bloco que aceita Enter como resposta.
+
+Uma quarta em 2026-11-12: com um Portainer já no ar, a pergunta não aparece.
+Ver "Onde o Portainer ficou".
 
 Nenhuma exige digitar "concordo". Com `--yes` mais as flags, nenhuma aparece.
 
@@ -1061,6 +1096,29 @@ executar. Estão na ordem do risco.
    das ferramentas passaria a ver duas candidatas e a perguntar.
 8. **Leitura de segredos e proteção de push** do GitHub, desligadas neste
    repositório público.
+
+### O que o Fabio decidiu (2026-11-12)
+
+- **Item 1, a conta da rotina: conta de máquina, e aprovação obrigatória.**
+  O Fabio cria uma conta do GitHub só para a rotina. Ela não é dona, e tem
+  escrita só neste repositório. No `main`, a regra do teste continua sem
+  exceção, e uma regra nova exige 1 aprovação, com exceção só para os
+  donos. A regra já existe: ver "Proteção do `main`". Enquanto a conta não
+  estiver criada e conectada no claude.ai, a rotina segue rodando com a
+  conta dona, e portanto dentro da exceção.
+- **A decidir, com a conta criada:** a permissão padrão dos membros da
+  organização é leitura, então entrar como membro daria à conta leitura
+  nos repositórios privados. Para ela enxergar só este repositório, o
+  caminho é entrar como colaboradora externa dele, ou a permissão padrão
+  passar a nenhuma. E a conexão do GitHub no claude.ai é uma por conta:
+  trocá-la muda a conta com que todas as rotinas agem, não só esta.
+- **Item 2, 2FA:** as duas contas donas ligaram o 2FA em 2026-11-12
+  (conferido pela API: nenhum membro sem 2FA). Falta ligar a exigência na
+  organização. Isso só se faz pela tela do GitHub, e é do Fabio.
+- **Item 3, o app do Claude:** vai ser restrito aos repositórios que as
+  sessões e as rotinas usam, depois do ok do Fabio para a lista.
+
+Os itens 4 a 8 seguem sem decisão.
 
 ### Decisões tomadas na correção, e o motivo
 
@@ -1590,6 +1648,8 @@ Estas foram verificadas. Não mudar sem checar a fonte de novo.
                             painéis num navegador (Playwright)
     docs/visual/            os dois temas que não estão em uso, a prévia
                             e as telas dos três (não publicado)
+    docs/ensaio/            telas do ensaio do teste final de 2026-11-12,
+                            sem senha e sem o endereço de teste
     rotinas/vigia-de-versoes.md
                             prompt da rotina semanal de versões
     .github/workflows/teste-instalador.yml
@@ -2545,6 +2605,8 @@ está protegido como descrito no item 6, no andamento do bloco 2.
 - **O pedido 4 espera a decisão do Fabio.** As três etapas passaram (trava,
   `dist/` em dia, instalação de ponta a ponta com o Traefik v3.7.18). Pela
   política de versões, quem aprova é o teste passar e o Fabio aceitar.
+  **Aprovado pelo Fabio e mesclado em 2026-11-12** (commit `f0dc3f7`),
+  depois de refeito em cima do `main`.
 
 **Bloco 2, item 8 (modo de atualização): feito e testado em 2026-11-11.**
 Ver a seção "Modo de atualização", com o desenho, as decisões de
@@ -2571,19 +2633,35 @@ com as correções, e o ensaio do teste final (pedido 7). O prompt da rotina
 no claude.ai foi atualizado em 2026-11-12 com o texto do
 `rotinas/vigia-de-versoes.md` que entrou pelo pedido 6.
 
+**Depois do relatório, no mesmo dia, por decisão do Fabio:**
+
+- **O pedido 4, da rotina, entrou** (Traefik v3.7.16 para v3.7.18, commit
+  `f0dc3f7`). O Claude refez o pedido em cima do `main`, na mesma branch, e
+  as três etapas passaram. Antes do merge a versão foi conferida na VPS de
+  teste com `base.sh --atualizar`: v3.7.16 para v3.7.18, os mesmos
+  certificados (hash do `acme.json` igual, nenhuma emissão), Mautic e
+  Portainer respondendo 200, e nenhum erro no log do Traefik.
+- **A base não pergunta mais o subdomínio de um Portainer que já está no
+  ar.** Ver "Onde o Portainer ficou".
+- **As telas do ensaio foram guardadas em `docs/ensaio/`.**
+- **A regra de 1 aprovação no `main` foi criada.** Ver "Proteção do
+  `main`".
+
 **Falta, e é do Fabio:**
 
 - **O teste final dele**, numa VPS limpa de 2 GB, pelo menu, e a gravação.
   O ensaio abaixo já passou por toda a lista. O que só ele pode fazer:
   configurar o SMTP do SES na porta 2587 no painel, enviar um e-mail a um
   contato e conferir na caixa de entrada e no log, não no histórico do
-  contato (item 5 do teste de envio). Só depois sai a tag `mautic7-v0.1.0`.
-- **O pedido 4, da rotina** (Traefik v3.7.16 para v3.7.18): espera a
-  decisão dele. Como a regra do teste exige a branch em dia, o pedido
-  precisa ser refeito em cima do `main` antes de entrar; o caminho mais
-  simples é fechá-lo e deixar a rotina abrir outro na segunda-feira.
-- **As decisões saídas da primeira auditoria**: ver "O que ficou para o
-  Fabio decidir", em "Auditoria de segurança".
+  contato (item 5 do teste de envio). Só depois saem as tags `base-v0.1.0`
+  e `mautic7-v0.1.0`.
+- **Criar a conta de máquina da rotina** no GitHub, com 2FA, e conectá-la
+  no claude.ai. Ver "O que o Fabio decidiu (2026-11-12)", em "Auditoria de
+  segurança".
+- **Ligar a exigência de 2FA na organização**, e dar o ok para a lista de
+  repositórios do app do Claude.
+- **As decisões da primeira auditoria que seguem abertas** (itens 4 a 8):
+  ver "O que ficou para o Fabio decidir", em "Auditoria de segurança".
 - **O titular da licença**, a confirmar com o contador, e **o tamanho do
   arquivo único do menu**, a avaliar na terceira ferramenta: os dois têm
   seção própria mais abaixo.
@@ -2593,11 +2671,10 @@ no claude.ai foi atualizado em 2026-11-12 com o texto do
 
 **Observações do ensaio, sem mudança de código:**
 
-- **Rodar a base de novo pergunta outra vez o subdomínio do Portainer**,
-  mesmo com o Portainer já instalado, e com Enter a tela diz "Portainer não
-  será instalado". Nada é tocado, e o Portainer segue no ar, mas a frase
-  confunde. Mexer nisso muda a pergunta 2 do inventário da base, que é
-  decisão registrada: fica para o Fabio decidir.
+- **Rodar a base de novo perguntava outra vez o subdomínio do Portainer**,
+  mesmo com o Portainer já instalado, e com Enter a tela dizia "Portainer
+  não será instalado". Nada era tocado, mas a frase confundia. Resolvido no
+  mesmo dia, por decisão do Fabio: ver "Onde o Portainer ficou".
 - **A tela de login do Mautic sai parte em inglês** ("Username or email",
   "Keep me logged in", "Login", "Forgot your password?"), como já
   registrado em "Login em inglês". O painel, depois do login, abre em
@@ -2621,7 +2698,7 @@ SES.
 |---|---|
 | Teste fixo inteiro, do zero, com pedidos chegando ao domínio durante toda a instalação | 91 conferências, todas passaram |
 | Login no Mautic num navegador (Chromium, pelo Playwright), com o e-mail e a senha do `credenciais.txt` | entrou em `/s/dashboard`; página em `pt_BR`, título "Painel Principal"; menu em português |
-| Login no Portainer com a senha do `credenciais.txt` | entrou em `#!/home`, sem pedir token; 6 de 6 containers |
+| Login no Portainer com a senha do `credenciais.txt` | entrou em `#!/home`, sem pedir token; o Docker da máquina aparece no ar, com "3 / 6" em containers |
 
 Os logins foram feitos nos domínios `.test`, e não nos de verdade, porque o
 navegador digitando senha só é usado em endereço local de teste. O
@@ -2649,6 +2726,18 @@ verdade:**
 A emissão de certificado foi de verdade nesta parte: a segunda da semana
 para os dois nomes de teste (o limite do Let's Encrypt é de 5 por semana
 para os mesmos nomes).
+
+**As telas deste ensaio estão em `docs/ensaio/`** (pedido do Fabio em
+2026-11-12, porque as capturas estavam numa pasta temporária): o `README.md`
+com as telas em texto, o `telas.html` com as cores do terminal, e três
+fotos do navegador. O repositório é público, então o domínio e o IP de
+teste viraram exemplos e as senhas foram ocultadas. Conferido antes do
+commit: nenhuma senha das capturas está nos arquivos. A última tela, da
+base rodando de novo, foi capturada depois da mudança da pergunta do
+Portainer.
+
+Uma correção: este arquivo dizia "6 de 6 containers" no login do Portainer.
+A foto mostra "3 / 6", e não foi conferido o que o primeiro número conta.
 
 **Ambiente de teste**
 
@@ -3252,6 +3341,20 @@ testado junto com o que mudou depois, e a trava que o conferiu seria a do
 `main` antigo. O custo: pedido aberto antes de outro merge precisa ser
 atualizado antes de entrar. O pedido 4, da rotina, ficou nessa situação.
 
+**Terceira regra, de 2026-11-12: 1 aprovação, com exceção só para os
+donos.** "main: exige 1 aprovação, menos dos donos", por decisão do Fabio,
+saída da auditoria. Todo pedido precisa da aprovação de uma pessoa que não
+seja quem fez o último push, e um push novo derruba a aprovação anterior.
+Os donos da organização passam sem ela, e só por pedido de atualização (a
+exceção é do tipo `pull_request`): push direto no `main` continua recusado
+pela regra do teste, que não tem exceção. Conferido pela API: para a conta
+dona, `current_user_can_bypass` é `pull_requests_only` nesta regra e
+`never` na do teste.
+
+Ela existe para a conta de máquina da rotina de versões, que não vai ser
+dona: o que a rotina abrir só entra depois de um dono olhar. Enquanto a
+rotina rodar com a conta dona, a regra não muda nada para ela.
+
 Consequências:
 
 - **Ninguém mais faz commit direto no `main`.** Todo trabalho vai numa
@@ -3260,6 +3363,9 @@ Consequências:
 - A rotina de versões não precisa de conta própria. A ideia de convidar a
   conta pessoal do Fabio como membro e trocar a conexão do claude.ai foi
   abandonada: com a regra valendo para donos, ela deixou de ser necessária.
+  **Mudou em 2026-11-12:** a rotina vai ter uma conta de máquina, por
+  decisão do Fabio depois da auditoria. Ver "O que o Fabio decidiu
+  (2026-11-12)".
 - O que a regra não cobre, e não tem como cobrir: um dono da organização
   pode editar ou apagar a própria regra. Ela protege contra engano e contra
   pressa, não contra quem tem a chave.
