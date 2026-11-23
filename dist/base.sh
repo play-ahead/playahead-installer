@@ -16,7 +16,7 @@
 # https://playahead.com.br
 #
 # Versão: 0.1.0
-# Build:  2026-11-19T11:50:17Z
+# Build:  2026-11-23T11:09:44Z
 # Fonte:  https://github.com/play-ahead/playahead-installer
 #
 # Licença MIT. Consulte o arquivo LICENSE.
@@ -4134,11 +4134,11 @@ cenario_faltando() {
 # Versão fixa, nunca `latest` nem `lts`. Política de versões do
 # CLAUDE.md: o painel com LTS segue a linha LTS.
 #
-# 2.45.3 é a LTS em 2026-10-27. Conferido comparando o digest da
-# tag `lts` com o da tag numerada, e não assumido pelo número:
-# a linha 2.39.x recebe patches e parece LTS, mas o digest da
-# `lts` bate com a 2.45.3.
-PA_PORTAINER_VERSAO="2.45.3"
+# 2.45.4 é a LTS em 2026-11-23. Conferido comparando o digest da
+# tag `lts` com o da tag numerada, e não assumido pelo número: o
+# digest da `lts` bate com o da 2.45.4. Traz correções de controle
+# de acesso (stacks, redes, websockets).
+PA_PORTAINER_VERSAO="2.45.4"
 
 PA_PORTAINER_DIR="/opt/playahead/portainer"
 PA_PORTAINER_CREDENCIAIS="${PA_PORTAINER_DIR}/credenciais.txt"
@@ -5252,7 +5252,7 @@ base_atualizar() {
 # ------------------------------------------------------------
 
 PA_VERSAO="0.1.0"
-PA_BUILD="2026-11-19T11:50:17Z"
+PA_BUILD="2026-11-23T11:09:44Z"
 PA_FONTE="https://github.com/play-ahead/playahead-installer"
 PA_FERRAMENTA="Base: Docker, Traefik e Portainer"
 
